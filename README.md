@@ -2,6 +2,7 @@
   <img src="src-tauri/icons/icon.png" width="128" height="128" alt="SkillHub Logo" />
   <h1>SkillHub</h1>
   <p>🚀 一款基于 Rust 打造的高性能跨平台 AI 技能（Agent Skill）管理与分发工作站</p>
+</div>
 
 ## ✨ 核心卖点
 
