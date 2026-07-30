@@ -1,0 +1,66 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+@theme {
+  /* Brand Colors matching the logo */
+  --color-brand-cyan: #00E5FF;
+  --color-brand-blue: #0055FF;
+  --color-primary: #0055FF;
+  --color-primary-hover: #0044CC;
+  --color-on-primary: #FFFFFF;
+  
+  --color-background: #F5F5F7;
+  --color-sidebar: rgba(235, 235, 240, 0.65);
+  --color-card: rgba(255, 255, 255, 0.85);
+  --color-foreground: #1D1D1F;
+  --color-muted: #86868B;
+  --color-muted-bg: rgba(0, 0, 0, 0.04);
+  --color-border: rgba(0, 0, 0, 0.08);
+  --color-ring: rgba(0, 85, 255, 0.3);
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Icons", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  
+  /* Refined Shadows */
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+  --shadow-card: 0 2px 8px rgba(0,0,0,0.04), 0 8px 24px rgba(0,0,0,0.02);
+  --shadow-card-hover: 0 8px 24px rgba(0,0,0,0.06), 0 16px 40px rgba(0,0,0,0.04), 0 0 0 1px rgba(0,0,0,0.02);
+  --shadow-glass: 0 12px 40px rgba(0,0,0,0.06);
+}
+
+@layer base {
+  :root {
+    --background: var(--color-background);
+    --foreground: var(--color-foreground);
+  }
+
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    margin: 0;
+    padding: 0;
+    overflow: hidden; /* macOS app feel */
+    background-image: none; /* Removed heavy mesh background */
+  }
+
+  /* Prevent text selection everywhere except where explicitly allowed */
+  * {
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  input, textarea, code, pre {
+    user-select: auto;
+    -webkit-user-select: auto;
+  }
+}
+
+
+
+@layer utilities {
+  .prose :where(h1, h2, h3, h4, h5, h6) {
+    text-align: left !important;
+  }
+}
