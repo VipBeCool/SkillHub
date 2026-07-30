@@ -3,17 +3,6 @@
   <h1>SkillHub</h1>
   <p>🚀 一款基于 Rust 打造的高性能跨平台 AI 技能（Agent Skill）管理与分发工作站</p>
 
-  <p>
-    <a href="https://github.com/VipBeCool/SkillHub/blob/main/LICENSE">
-      <img src="https://img.shields.io/badge/License-GPL%20v3-blue.svg" alt="License: GPL v3" />
-    </a>
-    <img src="https://img.shields.io/badge/Platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey.svg" alt="Platforms" />
-    <img src="https://img.shields.io/badge/Tauri-2.0-orange.svg" alt="Tauri" />
-    <img src="https://img.shields.io/badge/React-18.0-61dafb.svg" alt="React" />
-    <img src="https://img.shields.io/badge/Rust-1.80%2B-black.svg" alt="Rust" />
-  </p>
-</div>
-
 ## ✨ 核心卖点
 
 - ⚡️ **极速轻量**：采用 Tauri + Rust 底层重构，内存占用极低（相比 Electron 节省 80% 以上内存），启动快如闪电。
@@ -24,15 +13,16 @@
 
 ## 🛠 技术栈
 
-*   **前端（GUI）**：React, TypeScript, TailwindCSS, Vite
-*   **后端（核心逻辑 & OS 交互）**：Rust, Tauri v2
-*   **其他构建工具**：Node.js, Cargo
+* **前端（GUI）**：React, TypeScript, TailwindCSS, Vite
+* **后端（核心逻辑 & OS 交互）**：Rust, Tauri v2
+* **其他构建工具**：Node.js, Cargo
 
 ## 🚀 快速开始
 
 ### 环境依赖
 
 在开始之前，请确保您的电脑已经安装了以下环境：
+
 1. [Node.js](https://nodejs.org/) (v18+)
 2. [Rust 编译环境](https://www.rust-lang.org/tools/install)
 3. 对应的原生系统开发工具（macOS 需要 Xcode Command Line Tools，Windows 需要 C++ Build Tools）
@@ -58,6 +48,7 @@ npm run tauri dev
 ```bash
 npm run tauri build
 ```
+
 生成的安装包将位于 `src-tauri/target/release/bundle/` 目录下。
 
 ## 🤝 参与贡献与商业授权
@@ -67,9 +58,11 @@ npm run tauri build
 **开源协议与商用说明**：
 本项目采用 **[GPL-3.0 License](./LICENSE)** 协议开源。
 这意味着：
+
 1. 任何人都可以免费下载、使用、修改本项目的源代码。
-2. **防白嫖机制**：任何使用了本项目源代码的衍生软件，**也必须以 GPL-3.0 协议开源**，严禁闭源套壳。
+2. 任何使用了本项目源代码的衍生软件，**也必须以 GPL-3.0 协议开源**，严禁闭源套壳。
 3. 如果您所在的商业公司希望将本代码用于闭源的商业产品，请联系作者获取**商业授权 (Commercial License)**。
 
 ---
+
 *Made with ❤️ by VipBeCool*
