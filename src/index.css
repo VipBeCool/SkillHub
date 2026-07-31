@@ -55,9 +55,35 @@
     user-select: auto;
     -webkit-user-select: auto;
   }
+
+  /* Tauri Custom Titlebar Drag Region */
+  [data-tauri-drag-region] {
+    -webkit-app-region: drag;
+  }
+
+  /* Ensure buttons inside drag regions remain clickable */
+  [data-tauri-drag-region] button,
+  [data-tauri-drag-region] input,
+  [data-tauri-drag-region] a {
+    -webkit-app-region: no-drag;
+  }
 }
 
 
+@layer components {
+  .input-field {
+    @apply px-3 py-2 bg-black/5 border border-black/10 rounded-lg text-[13px] text-[var(--foreground)] outline-none transition-all;
+  }
+  .input-field::placeholder {
+    @apply text-[var(--color-muted)];
+  }
+  .input-field:focus {
+    @apply bg-white border-blue-500 ring-2 ring-blue-500/20;
+  }
+  .input-field:read-only {
+    @apply cursor-not-allowed opacity-80 focus:ring-0 focus:border-black/10;
+  }
+}
 
 @layer utilities {
   .prose :where(h1, h2, h3, h4, h5, h6) {

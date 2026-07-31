@@ -1,8 +1,37 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { invoke } from '@tauri-apps/api/core';
-import { Folder, ChevronRight, Plus, Search, MoreHorizontal, Smile, Trash2, ExternalLink, ArrowRightLeft, Check } from 'lucide-react';
+import { Folder, ChevronRight, Plus, Search, MoreHorizontal, Smile, Trash2, ExternalLink, ArrowRightLeft, Check, Edit2 } from 'lucide-react';
 import { SourceDirectory } from '../../types';
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent, DragStartEvent, DragOverlay } from '@dnd-kit/core';
+import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
+import { restrictToVerticalAxis, restrictToWindowEdges } from '@dnd-kit/modifiers';
+import { CSS } from '@dnd-kit/utilities';
+
+function SortableItem({ id, children }: { id: string, children: React.ReactNode }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 1 : 0,
+    opacity: isDragging ? 0.8 : 1,
+    position: 'relative' as const,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+      {children}
+    </div>
+  );
+}
 
 interface SkillLibrarySelectorProps {
   directories: SourceDirectory[];
@@ -36,6 +65,23 @@ export function SkillLibrarySelector({
   const [menuPos, setMenuPos] = useState<{ top: number; left: number; right: number; bottom: number } | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+
+  const handleRenameSubmit = async (id: string) => {
+    if (!renameValue.trim()) {
+      setRenamingId(null);
+      return;
+    }
+    try {
+      await invoke('rename_source_directory', { id, newLabel: renameValue.trim() });
+      onDirectoriesChange();
+    } catch (err) {
+      console.error(err);
+    }
+    setRenamingId(null);
+  };
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -74,42 +120,53 @@ export function SkillLibrarySelector({
     };
   }, [menuOpenId]);
 
-  const selectedDir = directories.find(d => d.id === selectedId);
-  const filteredDirs = directories.filter(d => d.label.toLowerCase().includes(search.toLowerCase()));
+  // Local state for optimistic UI updates during drag-and-drop
+  const [localDirs, setLocalDirs] = useState<SourceDirectory[]>(directories);
+  
+  useEffect(() => {
+    setLocalDirs(directories);
+  }, [directories]);
 
-  // Drag and Drop State
-  const [draggedId, setDraggedId] = useState<string | null>(null);
+  const selectedDir = localDirs.find(d => d.id === selectedId);
+  const filteredDirs = localDirs.filter(d => d.label.toLowerCase().includes(search.toLowerCase()));
 
-  const handleDragStart = (e: React.DragEvent, id: string) => {
-    setDraggedId(id);
-    e.dataTransfer.effectAllowed = 'move';
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 2,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const [activeId, setActiveId] = useState<string | null>(null);
+
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveId(event.active.id as string);
   };
 
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-  };
+  const handleDragEnd = async (event: DragEndEvent) => {
+    setActiveId(null);
+    const { active, over } = event;
 
-  const handleDrop = async (e: React.DragEvent, targetId: string) => {
-    e.preventDefault();
-    if (!draggedId || draggedId === targetId) return;
-
-    const newDirs = [...directories];
-    const draggedIndex = newDirs.findIndex(d => d.id === draggedId);
-    const targetIndex = newDirs.findIndex(d => d.id === targetId);
-    
-    const [draggedItem] = newDirs.splice(draggedIndex, 1);
-    newDirs.splice(targetIndex, 0, draggedItem);
-    
-    // Update backend
-    const ids = newDirs.map(d => d.id);
-    try {
-      await invoke('update_source_directories_order', { ids });
-      onDirectoriesChange();
-    } catch (err) {
-      console.error(err);
+    if (over && active.id !== over.id) {
+      const oldIndex = localDirs.findIndex((d) => d.id === active.id);
+      const newIndex = localDirs.findIndex((d) => d.id === over.id);
+      const newDirs = arrayMove(localDirs, oldIndex, newIndex);
+      
+      setLocalDirs(newDirs);
+      
+      try {
+        const ids = newDirs.map(d => d.id);
+        await invoke('update_source_directories_order', { ids });
+        onDirectoriesChange();
+      } catch (err) {
+        console.error(err);
+        setLocalDirs(directories);
+      }
     }
-    setDraggedId(null);
   };
 
   const handleSetIcon = async (id: string, icon: string | null) => {
@@ -179,7 +236,7 @@ export function SkillLibrarySelector({
       </button>
 
       {isOpen && (
-        <div className="absolute top-0 left-full ml-2 w-[260px] bg-white/95 backdrop-blur-2xl border border-black/[0.08] rounded-xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] z-50 overflow-hidden animate-in fade-in slide-in-from-left-2 duration-200 flex flex-col max-h-[400px]">
+        <div className="absolute top-full left-3 right-3 mt-1 bg-white/95 backdrop-blur-2xl border border-black/[0.08] rounded-xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] z-[100] overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200 flex flex-col max-h-[400px]">
           
           {/* Search Bar */}
           <div className="p-1.5 pb-1">
@@ -197,66 +254,130 @@ export function SkillLibrarySelector({
 
           {/* Directory List */}
           <div className="flex-1 overflow-y-auto p-1.5 space-y-0.5">
-            {filteredDirs.map(dir => (
-              <div 
-                key={dir.id}
-                draggable
-                onDragStart={(e) => handleDragStart(e, dir.id)}
-                onDragOver={handleDragOver}
-                onDrop={(e) => handleDrop(e, dir.id)}
-                className={`relative flex items-center justify-between px-2 py-1.5 rounded-lg text-[13px] transition-colors group cursor-default
-                  ${selectedId === dir.id ? 'bg-blue-50 text-blue-600 font-medium' : 'text-[var(--foreground)] hover:bg-black/5 font-normal'}
-                  ${draggedId === dir.id ? 'opacity-50' : ''}
-                `}
+            <DndContext 
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              modifiers={[restrictToVerticalAxis]}
+              onDragStart={handleDragStart}
+              onDragEnd={handleDragEnd}
+            >
+              <SortableContext 
+                items={filteredDirs.map(d => d.id)}
+                strategy={verticalListSortingStrategy}
               >
-                <div 
-                  className="flex items-center flex-1 min-w-0"
-                  onClick={() => { onSelect(dir.id); setIsOpen(false); }}
-                >
-                  <div className="w-5 h-5 flex items-center justify-center shrink-0 mr-1.5">
-                    {dir.icon ? (
-                      <span className="text-[14px]">{dir.icon}</span>
-                    ) : (
-                      <Folder className={`w-3.5 h-3.5 ${selectedId === dir.id ? 'text-blue-500' : 'text-[var(--color-muted)] group-hover:text-[var(--foreground)]'}`} />
-                    )}
-                  </div>
-                  <span className="truncate">{dir.label}</span>
-                </div>
-                
-                <div className="flex items-center shrink-0 space-x-1">
-                  {/* 3 dots menu */}
-                  <button
-                    data-menu-button="true"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (menuOpenId === dir.id) {
-                        setMenuOpenId(null);
-                        setIconPickerId(null);
-                        setMenuPos(null);
-                      } else {
-                        const rect = e.currentTarget.getBoundingClientRect();
-                        setMenuOpenId(dir.id);
-                        setIconPickerId(null);
-                        setMenuPos({
-                          top: rect.top,
-                          left: rect.left,
-                          right: rect.right,
-                          bottom: rect.bottom
-                        });
-                      }
-                    }}
-                    className={`p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity ${menuOpenId === dir.id ? 'opacity-100 bg-black/5' : 'hover:bg-black/5 text-[var(--color-muted)] hover:text-[var(--foreground)]'}`}
-                  >
-                    <MoreHorizontal className="w-3.5 h-3.5" />
-                  </button>
-                  {selectedId === dir.id && (
-                    <div className="w-4 flex justify-center">
-                      <Check className="w-3.5 h-3.5 text-blue-500" />
+                {filteredDirs.map(dir => (
+                  <SortableItem key={dir.id} id={dir.id}>
+                    <div 
+                      className={`relative flex items-center justify-between px-2 py-1.5 rounded-lg text-[13px] transition-colors group cursor-pointer
+                        ${selectedId === dir.id ? 'bg-blue-50 text-blue-600 font-medium' : 'text-[var(--foreground)] hover:bg-black/5 font-normal'}
+                        ${activeId === dir.id ? 'opacity-40' : ''}
+                      `}
+                    >
+                      <div 
+                        className="flex items-center flex-1 min-w-0"
+                        onClick={() => { onSelect(dir.id); setIsOpen(false); }}
+                      >
+                        <div className="w-5 h-5 flex items-center justify-center shrink-0 mr-1.5">
+                          {dir.icon ? (
+                            <span className="text-[14px]">{dir.icon}</span>
+                          ) : (
+                            <Folder className={`w-3.5 h-3.5 ${selectedId === dir.id ? 'text-blue-500' : 'text-[var(--color-muted)] group-hover:text-[var(--foreground)]'}`} />
+                          )}
+                        </div>
+                        {renamingId === dir.id ? (
+                          <input
+                            autoFocus
+                            value={renameValue}
+                            onChange={(e) => setRenameValue(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') handleRenameSubmit(dir.id);
+                              if (e.key === 'Escape') setRenamingId(null);
+                            }}
+                            onBlur={() => handleRenameSubmit(dir.id)}
+                            onClick={(e) => e.stopPropagation()}
+                            onPointerDown={(e) => e.stopPropagation()}
+                            className="bg-white border border-blue-400 rounded px-1.5 py-0.5 text-[13px] text-[var(--foreground)] outline-none w-full max-w-[140px] shadow-sm"
+                          />
+                        ) : (
+                          <span className="truncate">{dir.label}</span>
+                        )}
+                      </div>
+                      
+                      <div className="flex items-center shrink-0 space-x-1">
+                        {/* 3 dots menu */}
+                        <button
+                          data-menu-button="true"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (menuOpenId === dir.id) {
+                              setMenuOpenId(null);
+                              setIconPickerId(null);
+                              setMenuPos(null);
+                            } else {
+                              const rect = e.currentTarget.getBoundingClientRect();
+                              setMenuOpenId(dir.id);
+                              setIconPickerId(null);
+                              setMenuPos({
+                                top: rect.top,
+                                left: rect.left,
+                                right: rect.right,
+                                bottom: rect.bottom
+                              });
+                            }
+                          }}
+                          className={`p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity ${menuOpenId === dir.id ? 'opacity-100 bg-black/5' : 'hover:bg-black/5 text-[var(--color-muted)] hover:text-[var(--foreground)]'}`}
+                        >
+                          <MoreHorizontal className="w-3.5 h-3.5" />
+                        </button>
+                        {selectedId === dir.id && (
+                          <div className="w-4 flex justify-center">
+                            <Check className="w-3.5 h-3.5 text-blue-500" />
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  )}
-                </div>
-              </div>
-            ))}
+                  </SortableItem>
+                ))}
+              </SortableContext>
+              
+              <DragOverlay dropAnimation={null}>
+                {activeId ? (
+                  (() => {
+                    const dir = localDirs.find(d => d.id === activeId);
+                    if (!dir) return null;
+                    const isSelected = selectedId === dir.id;
+                    return (
+                      <div 
+                        className={`relative flex items-center justify-between px-2 py-1.5 rounded-lg text-[13px] shadow-lg cursor-grabbing w-full box-border m-0
+                          ${isSelected ? 'bg-blue-50 text-blue-600 font-medium' : 'bg-white text-[var(--foreground)]'}
+                        `}
+                      >
+                        <div className="flex items-center flex-1 min-w-0">
+                          <div className="w-5 h-5 flex items-center justify-center shrink-0 mr-1.5">
+                            {dir.icon ? (
+                              <span className="text-[14px]">{dir.icon}</span>
+                            ) : (
+                              <Folder className={`w-3.5 h-3.5 ${isSelected ? 'text-blue-500' : 'text-[var(--color-muted)]'}`} />
+                            )}
+                          </div>
+                          <span className="truncate">{dir.label}</span>
+                        </div>
+                        <div className="flex items-center shrink-0 space-x-1">
+                          <button className="p-1 rounded text-[var(--color-muted)] opacity-50">
+                            <MoreHorizontal className="w-3.5 h-3.5" />
+                          </button>
+                          {isSelected && (
+                            <div className="w-4 flex justify-center">
+                              <Check className="w-3.5 h-3.5 text-blue-500" />
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()
+                ) : null}
+              </DragOverlay>
+            </DndContext>
             {filteredDirs.length === 0 && (
               <div className="text-center py-4 text-[12px] text-[var(--color-muted)]">
                 没有找到匹配的技能库
@@ -355,6 +476,17 @@ export function SkillLibrarySelector({
                   </button>
                 )}
                 <div className="h-px bg-[var(--color-border)]/60 my-1" />
+                <button 
+                  onClick={() => {
+                    setRenamingId(dir.id);
+                    setRenameValue(dir.label);
+                    setMenuOpenId(null);
+                  }}
+                  className="w-full flex items-center px-3 py-1.5 text-[12px] text-[var(--foreground)] hover:bg-black/5 transition-colors"
+                >
+                  <Edit2 className="w-3.5 h-3.5 mr-2 text-[var(--color-muted)]" />
+                  修改名称
+                </button>
                 <button 
                   onClick={() => handleDelete(dir, false)}
                   className="w-full flex items-center px-3 py-1.5 text-[12px] text-[var(--foreground)] hover:bg-black/5 transition-colors"

@@ -3,6 +3,7 @@ import { Search, FolderGit2, HardDrive, X, Command, Sparkles, PanelRight, Filter
 import { GroupedRepo, Skill, SyncRecord, AgentConfig } from '../../types';
 import { RepoCard } from '../skill/RepoCard';
 import { SkillCard } from '../skill/SkillCard';
+import { Tooltip } from "../ui/Tooltip";
 
 interface SearchModalProps {
   isOpen: boolean;
@@ -120,7 +121,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[8vh] bg-black/30 transition-opacity" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30 transition-opacity" onClick={onClose}>
       <div 
         className="w-full max-w-[1000px] bg-white rounded-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] overflow-hidden flex flex-col h-[70vh] border border-black/10 animate-in fade-in zoom-in-95 duration-200"
         onClick={e => e.stopPropagation()}
@@ -148,24 +149,28 @@ export const SearchModal: React.FC<SearchModalProps> = ({
             }}
           />
           <div className="flex items-center space-x-1.5 shrink-0 ml-4">
-            <button 
-              onClick={() => setShowFilters(!showFilters)} 
-              className={`p-1 rounded-md text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-colors ${showFilters ? 'bg-black/5 text-[var(--foreground)]' : ''}`}
-              title="筛选"
-            >
-              <Filter className="w-4.5 h-4.5" />
-            </button>
-            <button 
-              onClick={() => setShowPreview(!showPreview)} 
-              className={`p-1 rounded-md text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-colors ${showPreview ? 'bg-black/5 text-[var(--foreground)]' : ''}`}
-              title="预览面板"
-            >
-              <PanelRight className="w-4.5 h-4.5" />
-            </button>
+            <Tooltip content="筛选">
+              <button 
+                onClick={() => setShowFilters(!showFilters)} 
+                className={`p-1 rounded-md text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-colors ${showFilters ? 'bg-black/5 text-[var(--foreground)]' : ''}`}
+              >
+                <Filter className="w-4.5 h-4.5" />
+              </button>
+            </Tooltip>
+            <Tooltip content="预览面板">
+              <button 
+                onClick={() => setShowPreview(!showPreview)} 
+                className={`p-1 rounded-md text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-colors ${showPreview ? 'bg-black/5 text-[var(--foreground)]' : ''}`}
+              >
+                <PanelRight className="w-4.5 h-4.5" />
+              </button>
+            </Tooltip>
             <div className="w-px h-4 bg-gray-200 mx-1.5"></div>
-            <button onClick={onClose} className="p-1 rounded-md text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-colors ml-2" title="关闭">
-              <X className="w-5 h-5" />
-            </button>
+            <Tooltip content="关闭">
+              <button onClick={onClose} className="p-1 rounded-md text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-colors ml-2">
+                <X className="w-5 h-5" />
+              </button>
+            </Tooltip>
           </div>
         </div>
 

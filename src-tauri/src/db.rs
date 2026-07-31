@@ -257,10 +257,22 @@ pub fn update_source_directory_icon(db: &Connection, id: &str, icon: Option<Stri
 }
 
 pub fn update_source_directories_order(db: &Connection, ids: Vec<String>) -> Result<(), String> {
-    let mut stmt = db.prepare("UPDATE source_directories SET sort_order = ?1 WHERE id = ?2").map_err(|e| e.to_string())?;
-    for (index, id) in ids.iter().enumerate() {
-        stmt.execute(rusqlite::params![index as i32, id]).map_err(|e| e.to_string())?;
+    for (i, id) in ids.iter().enumerate() {
+        db.execute(
+            "UPDATE source_directories SET sort_order = ?1 WHERE id = ?2",
+            rusqlite::params![i as i64, id],
+        )
+        .map_err(|e| format!("Failed to update sort_order: {}", e))?;
     }
+    Ok(())
+}
+
+pub fn rename_source_directory(db: &Connection, id: &str, new_label: &str) -> Result<(), String> {
+    db.execute(
+        "UPDATE source_directories SET label = ?1 WHERE id = ?2",
+        rusqlite::params![new_label, id],
+    )
+    .map_err(|e| format!("Failed to update label: {}", e))?;
     Ok(())
 }
 

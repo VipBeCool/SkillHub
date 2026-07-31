@@ -113,12 +113,7 @@ pub fn get_git_repos_in_directory(path: String) -> Result<Vec<GitRepoInfo>, Stri
 
 #[tauri::command]
 pub async fn pull_single_repo(path: String) -> Result<String, String> {
-    let path_clone = path.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        git_engine::pull_repository(Path::new(&path_clone))
-    })
-    .await
-    .map_err(|e| format!("Pull task panicked: {}", e))?
+    crate::git_engine::pull_repository(std::path::Path::new(&path)).await
 }
 
 #[tauri::command]
@@ -316,26 +311,77 @@ pub async fn scan_and_add_source_directory(
     }
     tx.commit().map_err(|e| e.to_string())?;
     
+    #[cfg(target_os = "macos")]
+    {
+        set_macos_folder_icon(&final_path);
+    }
+    
     Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn set_macos_folder_icon(folder_path: &str) {
+    let icon_data = include_bytes!("../../src/assets/folder_icon.png");
+    let temp_icon_path = std::env::temp_dir().join("skillhub_folder_icon.png");
+    if std::fs::write(&temp_icon_path, icon_data).is_ok() {
+        let script = format!(r#"
+use framework "AppKit"
+use scripting additions
+on run
+    set iconPath to "{icon}"
+    set folderPath to "{folder}"
+    set workspace to current application's NSWorkspace's sharedWorkspace()
+    set img to current application's NSImage's alloc()'s initWithContentsOfFile:iconPath
+    workspace's setIcon:img forFile:folderPath options:0
+end run
+"#, icon = temp_icon_path.to_string_lossy(), folder = folder_path);
+
+        let _ = std::process::Command::new("osascript")
+            .arg("-e")
+            .arg(&script)
+            .output();
+    }
 }
 
 #[tauri::command]
 pub async fn add_github_repository(app: tauri::AppHandle, state: State<'_, AppState>, url: String, target_dir: String, parent_dir: String) -> Result<(), String> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    {
+        let mut tokens = state.clone_cancel_tokens.lock().unwrap();
+        tokens.insert(target_dir.clone(), tx);
+    }
+    
+    let target_path = std::path::PathBuf::from(&target_dir);
     let url_clone = url.clone();
-    let target_dir_clone = target_dir.clone();
     
-    // 1. Clone repository in a background thread
-    tauri::async_runtime::spawn_blocking(move || {
-        let target_path = Path::new(&target_dir_clone);
-        git_engine::clone_repository(&url_clone, target_path)
-    })
-    .await
-    .map_err(|e| format!("Clone task panicked: {}", e))?
-    ?;
+    let clone_future = crate::git_engine::clone_repository(&url_clone, &target_path);
     
-    // 2. Scan and add the PARENT directory instead of creating a new isolated storage node
+    let res = tokio::select! {
+        res = clone_future => res,
+        _ = rx => {
+            let _ = std::fs::remove_dir_all(&target_path);
+            Err("克隆已被取消".to_string())
+        }
+    };
+    
+    {
+        let mut tokens = state.clone_cancel_tokens.lock().unwrap();
+        tokens.remove(&target_dir);
+    }
+    
+    res?;
+    
     scan_and_add_source_directory(app, state, parent_dir, "github".to_string(), None, None).await?;
     
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn cancel_github_clone(state: State<'_, AppState>, target_dir: String) -> Result<(), String> {
+    let mut tokens = state.clone_cancel_tokens.lock().unwrap();
+    if let Some(tx) = tokens.remove(&target_dir) {
+        let _ = tx.send(());
+    }
     Ok(())
 }
 
@@ -382,13 +428,7 @@ pub async fn pull_repository(state: State<'_, AppState>, path: String) -> Result
     let target_path = Path::new(&path);
     
     // Pull from git asynchronously
-    let path_clone = path.clone();
-    let msg = tauri::async_runtime::spawn_blocking(move || {
-        git_engine::pull_repository(Path::new(&path_clone))
-    })
-    .await
-    .map_err(|e| format!("Pull task panicked: {}", e))?
-    ?;
+    let msg = crate::git_engine::pull_repository(target_path).await?;
     
     let mut db = state.db.lock().unwrap();
     let (source_dir_id, source_type): (String, String) = db.query_row(
@@ -638,8 +678,14 @@ pub fn update_source_directory_icon(state: State<'_, AppState>, id: String, icon
 
 #[tauri::command]
 pub fn update_source_directories_order(state: State<'_, AppState>, ids: Vec<String>) -> Result<(), String> {
-    let db = state.db.lock().unwrap();
+    let db = state.db.lock().map_err(|_| "Failed to lock database")?;
     crate::db::update_source_directories_order(&db, ids)
+}
+
+#[tauri::command]
+pub fn rename_source_directory(state: State<'_, AppState>, id: String, new_label: String) -> Result<(), String> {
+    let db = state.db.lock().map_err(|_| "Failed to lock database")?;
+    crate::db::rename_source_directory(&db, &id, &new_label)
 }
 
 #[tauri::command]

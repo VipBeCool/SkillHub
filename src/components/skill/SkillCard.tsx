@@ -1,6 +1,7 @@
 import React from 'react';
 import { HardDrive, Copy, Folder } from 'lucide-react';
 import { invoke } from "@tauri-apps/api/core";
+import { Tooltip } from "../ui/Tooltip";
 import { Skill, SyncRecord, AgentConfig } from '../../types';
 
 export interface SkillCardProps {
@@ -32,29 +33,31 @@ export const SkillCard: React.FC<SkillCardProps> = ({
         </div>
         
         <div className="flex items-center space-x-1.5 opacity-0 group-hover:opacity-100 transition-all duration-200">
-          <button
-            onClick={async (e) => {
-              e.stopPropagation();
-              try {
-                await invoke("open_local_folder", { path: skill.local_path });
-              } catch (err) {
-                console.error("Failed to open folder:", err);
-              }
-            }}
-            className="flex items-center justify-center text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-white transition-all cursor-pointer bg-white/60 backdrop-blur-md border border-white/40 shadow-sm"
-            style={{ width: '28px', height: '28px', borderRadius: '50%', padding: 0 }}
-            title="在本地打开"
-          >
-            <Folder size={14} />
-          </button>
-          <button
-            onClick={(e) => onCopyPath(e, skill)}
-            className="flex items-center justify-center text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-white transition-all cursor-pointer bg-white/60 backdrop-blur-md border border-white/40 shadow-sm"
-            style={{ width: '28px', height: '28px', borderRadius: '50%', padding: 0 }}
-            title="复制路径"
-          >
-            <Copy size={14} />
-          </button>
+          <Tooltip content="在本地打开">
+            <button
+              onClick={async (e) => {
+                e.stopPropagation();
+                try {
+                  await invoke("open_local_folder", { path: skill.local_path });
+                } catch (err) {
+                  console.error("Failed to open folder:", err);
+                }
+              }}
+              className="flex items-center justify-center text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-white transition-all cursor-pointer bg-white/60 backdrop-blur-md border border-white/40 shadow-sm"
+              style={{ width: '28px', height: '28px', borderRadius: '50%', padding: 0 }}
+            >
+              <Folder size={14} />
+            </button>
+          </Tooltip>
+          <Tooltip content="复制路径">
+            <button
+              onClick={(e) => onCopyPath(e, skill)}
+              className="flex items-center justify-center text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-white transition-all cursor-pointer bg-white/60 backdrop-blur-md border border-white/40 shadow-sm"
+              style={{ width: '28px', height: '28px', borderRadius: '50%', padding: 0 }}
+            >
+              <Copy size={14} />
+            </button>
+          </Tooltip>
         </div>
       </div>
       

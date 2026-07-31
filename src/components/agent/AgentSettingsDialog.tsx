@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { X, Plus, Trash2, Bot, Folder } from "lucide-react";
+import { Tooltip } from "../ui/Tooltip";
 
 interface AgentConfig {
   id: string;
@@ -206,13 +207,14 @@ export function AgentSettingsDialog({ isOpen, onClose }: AgentSettingsDialogProp
                           <div className="text-xs text-[var(--color-muted)] font-mono mt-0.5">ID: {agent.name}</div>
                         </div>
                       </div>
-                      <button 
-                        onClick={() => handleDeleteAgent(agent.id)}
-                        className="p-1.5 rounded-lg text-[var(--color-muted)] hover:bg-red-50 hover:text-red-500 transition-colors"
-                        title="删除 Agent"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      <Tooltip content="删除 Agent">
+                        <button 
+                          onClick={() => handleDeleteAgent(agent.id)}
+                          className="p-1.5 rounded-lg text-[var(--color-muted)] hover:bg-red-50 hover:text-red-500 transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </Tooltip>
                     </div>
                     <div className="mt-3 text-xs text-[var(--foreground)] bg-[var(--color-muted-bg)]/50 p-2 rounded border border-[var(--color-border)] break-all flex items-start">
                       <Folder className="w-3.5 h-3.5 mr-1.5 text-[var(--color-muted)] shrink-0 mt-0.5" />

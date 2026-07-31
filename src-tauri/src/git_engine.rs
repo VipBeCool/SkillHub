@@ -1,44 +1,73 @@
 use git2::{Repository, build::RepoBuilder, FetchOptions, RemoteCallbacks};
 use std::path::Path;
+use tokio::process::Command;
+use tokio::time::{timeout, Duration};
 
-pub fn clone_repository(url: &str, target_path: &Path) -> Result<(), String> {
+pub async fn clone_repository(url: &str, target_path: &Path) -> Result<(), String> {
     if target_path.exists() {
-        return Err("Target directory already exists".into());
+        return Err("目标文件夹已存在，请先删除旧目录。".into());
     }
 
-    let output = std::process::Command::new("git")
+    let mut child = Command::new("git")
         .arg("clone")
         .arg(url)
         .arg(target_path)
-        .output()
+        .env("GIT_TERMINAL_PROMPT", "0") // Prevent hanging on authentication
+        .kill_on_drop(true)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
         .map_err(|e| format!("无法执行 git clone 命令: {}", e))?;
 
-    if output.status.success() {
-        Ok(())
-    } else {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        Err(format!("Failed to clone repository: {}", stderr))
+    match timeout(Duration::from_secs(120), child.wait_with_output()).await {
+        Ok(Ok(output)) => {
+            if output.status.success() {
+                Ok(())
+            } else {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                let _ = std::fs::remove_dir_all(target_path); // Cleanup on error
+                Err(format!("拉取失败: {}", stderr))
+            }
+        },
+        Ok(Err(e)) => {
+            let _ = std::fs::remove_dir_all(target_path); // Cleanup on error
+            Err(format!("拉取命令执行出错: {}", e))
+        },
+        Err(_) => {
+            let _ = std::fs::remove_dir_all(target_path); // Cleanup on timeout
+            Err("拉取超时，已被取消".into())
+        }
     }
 }
 
-pub fn pull_repository(repo_path: &Path) -> Result<String, String> {
-    let output = std::process::Command::new("git")
+pub async fn pull_repository(repo_path: &Path) -> Result<String, String> {
+    let mut child = Command::new("git")
         .arg("pull")
         .current_dir(repo_path)
-        .output()
-        .map_err(|e| format!("无法执行 git 命令: {}", e))?;
+        .env("GIT_TERMINAL_PROMPT", "0") // Prevent hanging on authentication
+        .kill_on_drop(true)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("无法执行 git pull 命令: {}", e))?;
 
-    let stdout = String::from_utf8_lossy(&output.stdout).to_lowercase();
-    let stderr = String::from_utf8_lossy(&output.stderr).to_lowercase();
+    match timeout(Duration::from_secs(60), child.wait_with_output()).await {
+        Ok(Ok(output)) => {
+            let stdout = String::from_utf8_lossy(&output.stdout).to_lowercase();
+            let stderr = String::from_utf8_lossy(&output.stderr).to_lowercase();
 
-    if output.status.success() {
-        if stdout.contains("already up to date") || stdout.contains("already up-to-date") || stdout.contains("已经是最新") {
-            Ok("已是最新".to_string())
-        } else {
-            Ok("更新成功".to_string())
-        }
-    } else {
-        Err(format!("拉取失败: {}", stderr))
+            if output.status.success() {
+                if stdout.contains("already up to date") || stdout.contains("already up-to-date") || stdout.contains("已经是最新") {
+                    Ok("已是最新".to_string())
+                } else {
+                    Ok("更新成功".to_string())
+                }
+            } else {
+                Err(format!("拉取失败: {}", stderr))
+            }
+        },
+        Ok(Err(e)) => Err(format!("同步命令执行出错: {}", e)),
+        Err(_) => Err("同步超时，已被取消".into()),
     }
 }
 

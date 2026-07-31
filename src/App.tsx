@@ -1,5 +1,6 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { FolderGit2, HardDrive, Settings, Search, Plus, RefreshCw, ChevronRight, ChevronLeft, X, LayoutGrid, Sparkles, FileQuestion, Globe } from "lucide-react";
 import { confirm } from '@tauri-apps/plugin-dialog';
 import { AddRepositoryDialog } from "./components/library/AddRepositoryDialog";
@@ -11,6 +12,7 @@ import { SearchModal } from "./components/search/SearchModal";
 import { RepoCard } from "./components/skill/RepoCard";
 import { SkillCard } from "./components/skill/SkillCard";
 import { ToastContainer, showToast } from "./components/ui/Toast";
+import { Tooltip } from "./components/ui/Tooltip";
 import { Skill, SourceDirectory, AgentConfig, SyncRecord, GroupedRepo } from "./types";
 
 function App() {
@@ -37,6 +39,8 @@ function App() {
   const [syncLogs, setSyncLogs] = useState<{ id: string, label: string, status: 'pending' | 'success' | 'error' | 'skipped', message?: string }[]>([]);
   const [isSyncPopupMinimized, setIsSyncPopupMinimized] = useState(false);
   const [cloningRepos, setCloningRepos] = useState<{ path: string, name: string }[]>([]);
+
+  const currentSyncRunId = useRef<number>(0);
 
   const fetchData = async () => {
     try {
@@ -139,8 +143,21 @@ function App() {
     setIsAddDialogOpen(true);
   };
 
+  const handleCancelClone = async (e: React.MouseEvent, targetPath: string) => {
+    e.stopPropagation();
+    try {
+      await invoke("cancel_github_clone", { targetDir: targetPath });
+      setCloningRepos(prev => prev.filter(r => r.path !== targetPath));
+    } catch (err) {
+      showToast(String(err), 'error');
+    }
+  };
+
   const handleSyncAll = async (isManual = true, dirsToSync = directories) => {
     if (isSyncingAll) return;
+    
+    const runId = Date.now();
+    currentSyncRunId.current = runId;
     setIsSyncingAll(true);
     
     if (isManual) {
@@ -152,6 +169,7 @@ function App() {
 
     for (const dir of dirsToSync) {
       try {
+        if (currentSyncRunId.current !== runId) break;
         const repos = await invoke<{name: string, path: string}[]>("get_git_repos_in_directory", { path: dir.path });
         
         if (repos.length === 0) {
@@ -166,8 +184,11 @@ function App() {
         }
 
         for (const repo of repos) {
+           if (currentSyncRunId.current !== runId) break;
            try {
              const msg = await invoke<string>("pull_single_repo", { path: repo.path });
+             if (currentSyncRunId.current !== runId) break; // Check again after await
+             
              if (msg === '已是最新') {
                totalLogs = totalLogs.map(l => l.id === repo.path ? { ...l, status: 'skipped', message: msg } : l);
              } else {
@@ -187,13 +208,18 @@ function App() {
         } catch (err) {}
       }
     }
-    await fetchData();
-    setIsSyncingAll(false);
     
-    if (isManual) {
-      setTimeout(() => {
-        setSyncLogs([]);
-      }, 5000); // 同步完默认5秒自动隐藏
+    if (currentSyncRunId.current === runId) {
+      await fetchData();
+      setIsSyncingAll(false);
+      
+      if (isManual) {
+        setTimeout(() => {
+          if (currentSyncRunId.current === runId) {
+            setSyncLogs([]);
+          }
+        }, 5000); // 同步完默认5秒自动隐藏
+      }
     }
   };
 
@@ -233,7 +259,7 @@ function App() {
     <div className="flex h-screen w-full bg-transparent text-[var(--foreground)] overflow-hidden font-sans">
       
       <div className="w-64 bg-[var(--color-sidebar)] flex flex-col h-full shrink-0 relative z-20 text-[13px] border-r border-black/[0.05]">
-        <div data-tauri-drag-region className="h-10 w-full shrink-0"></div>
+        <div data-tauri-drag-region onPointerDown={() => getCurrentWindow().startDragging()} className="h-10 w-full shrink-0"></div>
 
         {/* Workspace Switcher */}
         <SkillLibrarySelector
@@ -334,7 +360,11 @@ function App() {
       </div>
 
       <div className="flex-1 flex flex-col h-full min-w-0 bg-transparent relative">
-        <div data-tauri-drag-region className="h-16 border-b border-[var(--color-border)] bg-white/70 backdrop-blur-xl flex items-center justify-between px-8 shrink-0 relative z-0">
+        <div data-tauri-drag-region onPointerDown={(e) => {
+          if (e.target === e.currentTarget) {
+            getCurrentWindow().startDragging();
+          }
+        }} className="h-16 border-b border-[var(--color-border)] bg-white/70 backdrop-blur-xl flex items-center justify-between px-8 shrink-0 relative z-0">
           <div className="flex items-center space-x-3">
             {selectedRepoId && (
               <button onClick={() => setSelectedRepoId(null)} className="p-1.5 rounded-lg text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] transition-colors mr-1">
@@ -360,9 +390,9 @@ function App() {
               <RefreshCw className={`w-4 h-4 ${isSyncingAll ? 'animate-spin text-[var(--color-primary)]' : ''}`} />
               <span>{isSyncingAll ? '正在同步...' : '同步当前库'}</span>
             </button>
-            <button onClick={handleAddRepo} className="flex items-center space-x-1.5 bg-[var(--color-foreground)] text-white px-2.5 py-1 rounded-md text-[13px] font-medium hover:bg-black transition-all ml-2">
+            <button onClick={handleAddRepo} className="flex items-center space-x-1.5 bg-blue-500 text-white px-3 py-1.5 rounded-md text-[13px] font-medium hover:bg-blue-600 shadow-sm shadow-blue-500/20 transition-all ml-2">
               <Plus className="w-4 h-4" />
-              <span>新建技能</span>
+              <span>添加技能</span>
             </button>
           </div>
         </div>
@@ -407,6 +437,14 @@ function App() {
                     <div className="w-10 h-10 rounded-xl bg-[var(--color-muted-bg)] flex items-center justify-center shrink-0">
                       <div className="w-5 h-5 border-2 border-[var(--color-muted)] border-t-transparent rounded-full animate-spin"></div>
                     </div>
+                    <Tooltip content="取消拉取">
+                      <button 
+                        onClick={(e) => handleCancelClone(e, repo.path)}
+                        className="p-1.5 rounded-lg text-[var(--color-muted)] hover:text-red-500 hover:bg-red-50 transition-colors z-10 relative"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </Tooltip>
                   </div>
                   <h3 className="text-lg font-semibold text-[var(--foreground)] truncate pr-2 mt-2" title={repo.name}>
                     {repo.name}
@@ -467,9 +505,16 @@ function App() {
                 <RefreshCw className={`w-5 h-5 ${isSyncingAll ? 'animate-spin text-[var(--color-primary)]' : 'text-green-500'}`} />
                 <div className="flex flex-col pr-2">
                   <span className="text-sm font-medium text-[var(--foreground)]">{isSyncingAll ? "正在同步更新..." : "同步完成"}</span>
-                  <span className="text-[10px] text-[var(--color-muted)]">{syncLogs.length} 仓库 ({syncLogs.filter(l => l.status === 'success').length} 成功, {syncLogs.filter(l => l.status === 'error').length} 失败)</span>
+                  <span className="text-[10px] text-[var(--color-muted)]">{syncLogs.length} 仓库 ({syncLogs.filter(l => l.status === 'success').length} 同步, {syncLogs.filter(l => l.status === 'error').length} 失败)</span>
                 </div>
-                <button onClick={(e) => { e.stopPropagation(); setSyncLogs([]); }} className="p-1.5 rounded-lg text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-colors ml-2 border-l border-[var(--color-border)] rounded-none pl-2">
+                <button onClick={(e) => { 
+                  e.stopPropagation(); 
+                  if (isSyncingAll) {
+                    currentSyncRunId.current = 0;
+                    setIsSyncingAll(false);
+                  }
+                  setSyncLogs([]); 
+                }} className="p-1.5 rounded-lg text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-colors ml-2 border-l border-[var(--color-border)] rounded-none pl-2">
                   <X className="w-4 h-4" />
                 </button>
               </>
@@ -481,23 +526,34 @@ function App() {
                     {isSyncingAll ? "正在同步更新..." : "同步完成"}
                   </span>
                   <div className="flex items-center">
-                    <button onClick={(e) => { e.stopPropagation(); setIsSyncPopupMinimized(true); }} className="p-1.5 rounded-lg text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-colors mr-1" title="最小化">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                    </button>
-                    <button onClick={() => setSyncLogs([])} className="p-1.5 rounded-lg text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-colors" title="关闭">
-                      <X className="w-4 h-4" />
-                    </button>
+                    <Tooltip content="最小化">
+                      <button onClick={(e) => { e.stopPropagation(); setIsSyncPopupMinimized(true); }} className="p-1.5 rounded-lg text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-colors mr-1">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                      </button>
+                    </Tooltip>
+                    <Tooltip content="停止/关闭">
+                      <button onClick={(e) => { 
+                        e.stopPropagation(); 
+                        if (isSyncingAll) {
+                          currentSyncRunId.current = 0;
+                          setIsSyncingAll(false);
+                        }
+                        setSyncLogs([]); 
+                      }} className="p-1.5 rounded-lg text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-colors">
+                        <X className="w-4 h-4" />
+                      </button>
+                    </Tooltip>
                   </div>
                 </div>
                 
                 <div className="text-[10px] text-[var(--color-muted)] mb-3 pb-2 border-b border-[var(--color-border)]">
-                  共 {syncLogs.length} 个仓库 <span className="text-green-500 font-semibold ml-1">成功 {syncLogs.filter(l => l.status === 'success').length}</span> <span className="text-gray-500 font-semibold ml-1">跳过 {syncLogs.filter(l => l.status === 'skipped').length}</span> <span className="text-red-500 font-semibold ml-1">失败 {syncLogs.filter(l => l.status === 'error').length}</span>
+                  共 {syncLogs.length} 个仓库 <span className="text-green-500 font-semibold ml-1">同步 {syncLogs.filter(l => l.status === 'success').length}</span> <span className="text-gray-500 font-semibold ml-1">跳过 {syncLogs.filter(l => l.status === 'skipped').length}</span> <span className="text-red-500 font-semibold ml-1">失败 {syncLogs.filter(l => l.status === 'error').length}</span>
                 </div>
                 
-                <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+                <div className="space-y-2 max-h-[300px] overflow-y-auto pr-5 custom-scrollbar">
                   {syncLogs.map(log => (
-                    <div key={log.id} className="flex items-center justify-between text-xs py-0.5">
-                      <span className="text-[var(--color-muted)] truncate flex-1 mr-2" title={log.label}>{log.label}</span>
+                    <div key={log.id} className="flex items-center justify-between text-xs py-0.5 pr-2">
+                      <span className="text-[var(--color-muted)] truncate flex-1 mr-3" title={log.label}>{log.label}</span>
                       {log.status === 'pending' && <span className="text-blue-500 font-medium shrink-0 animate-pulse">正在扫描...</span>}
                       {log.status === 'success' && <span className="text-green-500 font-medium shrink-0 text-right w-16 truncate">{log.message || '更新成功'}</span>}
                       {log.status === 'skipped' && <span className="text-gray-500 font-medium shrink-0 text-right w-16 truncate">{log.message || '已跳过'}</span>}
@@ -520,9 +576,11 @@ function App() {
           setCloningRepos(prev => prev.filter(r => r.path !== path));
           // 可选：克隆成功后提示
         }}
-        onCloningError={(path) => {
+        onCloningError={(path, err) => {
            setCloningRepos(prev => prev.filter(r => r.path !== path));
-           // Error is handled in dialog mostly
+           if (err) {
+             showToast(`克隆失败: ${err}`, 'error');
+           }
         }}
         defaultTab={addDialogTab}
         defaultTargetDir={selectedWorkspaceId !== "all" ? directories.find(d => d.id === selectedWorkspaceId)?.path : undefined}

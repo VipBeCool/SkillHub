@@ -6,11 +6,14 @@ pub mod agents;
 pub mod git_engine;
 pub mod agent_sync;
 
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
+use std::collections::HashMap;
+use tokio::sync::oneshot;
 use tauri::Manager;
 
 pub struct AppState {
     pub db: Mutex<rusqlite::Connection>,
+    pub clone_cancel_tokens: Arc<Mutex<HashMap<String, oneshot::Sender<()>>>>,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -27,6 +30,7 @@ pub fn run() {
             
             app.manage(AppState {
                 db: Mutex::new(conn),
+                clone_cancel_tokens: Arc::new(Mutex::new(HashMap::new())),
             });
             
             Ok(())
@@ -58,8 +62,10 @@ pub fn run() {
             commands::save_skill_file,
             commands::save_skill_file_by_path,
             commands::open_local_folder,
+            commands::cancel_github_clone,
             commands::update_source_directory_icon,
             commands::update_source_directories_order,
+            commands::rename_source_directory,
             commands::remove_source_directory,
             commands::create_local_skill_library,
             commands::merge_skill_libraries

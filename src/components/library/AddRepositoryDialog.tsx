@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { Globe, X, FolderGit2, HardDrive, ArrowLeft, Link as LinkIcon, Copy, FileOutput } from "lucide-react";
+import { showToast } from "../ui/Toast";
 
 interface AddRepositoryDialogProps {
   isOpen: boolean;
@@ -119,28 +120,50 @@ export function AddRepositoryDialog({ isOpen, onClose, onSuccess, onCloningStart
         const repoName = githubUrl.split('/').filter(Boolean).pop()?.replace('.git', '') || 'repo';
         const finalTargetDir = `${githubTargetDir}/${repoName}`.replace(/\\/g, '/').replace(/\/{2,}/g, '/');
         
-        onCloningStart?.(finalTargetDir, repoName);
-        onClose(); // 立即关闭弹窗
-        setGithubUrl(""); // 清空输入框
-        setTimeout(() => setStep("select"), 300);
+        // 延迟 150ms 才将加载状态推送到外部卡片，防止瞬间失败导致主界面列表闪烁
+        let isSlow = false;
+        const slowTimer = setTimeout(() => {
+          isSlow = true;
+          onCloningStart?.(finalTargetDir, repoName);
+          onClose(); // 关闭弹窗
+          setGithubUrl(""); // 清空输入框
+          setTimeout(() => setStep("select"), 300);
+          setLoading(false);
+        }, 150);
 
-        // 后台继续执行克隆
+        // 后台执行克隆
         invoke("add_github_repository", {
           url: githubUrl,
           targetDir: finalTargetDir,
           parentDir: githubTargetDir,
         }).then(() => {
+          clearTimeout(slowTimer);
+          if (!isSlow) {
+            onClose();
+            setGithubUrl("");
+            setTimeout(() => setStep("select"), 300);
+            setLoading(false);
+          }
           onCloningSuccess?.(finalTargetDir);
           onSuccess();
         }).catch(err => {
-          onCloningError?.(finalTargetDir, err);
-          alert(`克隆失败: ${err}`);
+          clearTimeout(slowTimer);
+          if (!isSlow) {
+            // 瞬间出错（如文件夹已存在）：不关闭弹窗，不闪烁列表，直接报错
+            showToast(`${err}`, 'error');
+            setLoading(false);
+          } else {
+            // 已经是慢速任务（卡片已在主列表）：由外部负责处理报错
+            onCloningError?.(finalTargetDir, err);
+          }
         });
+        
+        // 提前 return，避免触发外层的 finally 重置 loading
+        return;
       }
     } catch (err) {
-      alert(`Error: ${err}`);
+      showToast(`导入出错: ${err}`, 'error');
       console.error(err);
-    } finally {
       setLoading(false);
     }
   };
@@ -175,13 +198,13 @@ export function AddRepositoryDialog({ isOpen, onClose, onSuccess, onCloningStart
             <div className="p-4 space-y-3 animate-in fade-in slide-in-from-bottom-4 duration-300">
               <button 
                 onClick={() => handleSelectType("local")}
-                className="w-full text-left group flex items-start p-2 bg-transparent hover:bg-black/5 rounded-md transition-all"
+                className="w-full text-left group flex items-start p-2 bg-transparent hover:bg-blue-50 rounded-md transition-all border border-transparent hover:border-blue-100"
               >
-                <div className="w-8 h-8 rounded-md bg-black/5 group-hover:bg-black/10 flex items-center justify-center shrink-0 transition-colors">
-                  <HardDrive className="w-4 h-4 text-[var(--color-muted)] group-hover:text-[var(--foreground)] transition-colors" />
+                <div className="w-8 h-8 rounded-md bg-black/5 group-hover:bg-blue-100 flex items-center justify-center shrink-0 transition-colors">
+                  <HardDrive className="w-4 h-4 text-[var(--color-muted)] group-hover:text-blue-600 transition-colors" />
                 </div>
                 <div className="ml-3 flex-1">
-                  <h3 className="text-[13px] font-medium text-[var(--foreground)] transition-colors">导入本地技能</h3>
+                  <h3 className="text-[13px] font-medium text-[var(--foreground)] group-hover:text-blue-700 transition-colors">导入本地技能</h3>
                   <p className="text-[11px] text-[var(--color-muted)] mt-0.5 leading-relaxed">
                     选择一个本地文件夹。无论是单项技能还是包含多个子技能的根目录，系统都会聪明地自动扫描并提取。
                   </p>
@@ -190,13 +213,13 @@ export function AddRepositoryDialog({ isOpen, onClose, onSuccess, onCloningStart
 
               <button 
                 onClick={() => handleSelectType("github")}
-                className="w-full text-left group flex items-start p-2 bg-transparent hover:bg-black/5 rounded-md transition-all"
+                className="w-full text-left group flex items-start p-2 bg-transparent hover:bg-blue-50 rounded-md transition-all border border-transparent hover:border-blue-100 mt-2"
               >
-                <div className="w-8 h-8 rounded-md bg-black/5 group-hover:bg-black/10 flex items-center justify-center shrink-0 transition-colors">
-                  <Globe className="w-4 h-4 text-[var(--color-muted)] group-hover:text-[var(--foreground)] transition-colors" />
+                <div className="w-8 h-8 rounded-md bg-black/5 group-hover:bg-blue-100 flex items-center justify-center shrink-0 transition-colors">
+                  <Globe className="w-4 h-4 text-[var(--color-muted)] group-hover:text-blue-600 transition-colors" />
                 </div>
                 <div className="ml-3 flex-1">
-                  <h3 className="text-[13px] font-medium text-[var(--foreground)] transition-colors">克隆 GitHub 技能库</h3>
+                  <h3 className="text-[13px] font-medium text-[var(--foreground)] group-hover:text-blue-700 transition-colors">克隆 GitHub 技能库</h3>
                   <p className="text-[11px] text-[var(--color-muted)] mt-0.5 leading-relaxed">
                     输入 GitHub 仓库链接，后台将自动克隆并提取仓库内所有的可用技能到本地。
                   </p>
@@ -233,7 +256,7 @@ export function AddRepositoryDialog({ isOpen, onClose, onSuccess, onCloningStart
                       <button
                         type="button"
                         onClick={() => setStrategy("link")}
-                        className={`flex flex-col items-center justify-center py-2 px-2 rounded-md border transition-all ${strategy === "link" ? "bg-black/5 border-[var(--color-border)] text-[var(--foreground)]" : "bg-transparent border-[var(--color-border)] text-[var(--color-muted)] hover:bg-black/5"}`}
+                        className={`flex flex-col items-center justify-center py-2 px-2 rounded-md border transition-all ${strategy === "link" ? "bg-blue-50 border-blue-200 text-blue-600" : "bg-transparent border-[var(--color-border)] text-[var(--color-muted)] hover:bg-black/5"}`}
                       >
                         <LinkIcon className="w-4 h-4 mb-1.5" />
                         <span className="text-[11px] font-semibold">原址引用</span>
@@ -241,7 +264,7 @@ export function AddRepositoryDialog({ isOpen, onClose, onSuccess, onCloningStart
                       <button
                         type="button"
                         onClick={() => setStrategy("copy")}
-                        className={`flex flex-col items-center justify-center py-2 px-2 rounded-md border transition-all ${strategy === "copy" ? "bg-black/5 border-[var(--color-border)] text-[var(--foreground)]" : "bg-transparent border-[var(--color-border)] text-[var(--color-muted)] hover:bg-black/5"}`}
+                        className={`flex flex-col items-center justify-center py-2 px-2 rounded-md border transition-all ${strategy === "copy" ? "bg-blue-50 border-blue-200 text-blue-600" : "bg-transparent border-[var(--color-border)] text-[var(--color-muted)] hover:bg-black/5"}`}
                       >
                         <Copy className="w-4 h-4 mb-1.5" />
                         <span className="text-[11px] font-semibold">复制导入</span>
@@ -249,16 +272,16 @@ export function AddRepositoryDialog({ isOpen, onClose, onSuccess, onCloningStart
                       <button
                         type="button"
                         onClick={() => setStrategy("move")}
-                        className={`flex flex-col items-center justify-center py-2 px-2 rounded-md border transition-all ${strategy === "move" ? "bg-black/5 border-[var(--color-border)] text-[var(--foreground)]" : "bg-transparent border-[var(--color-border)] text-[var(--color-muted)] hover:bg-black/5"}`}
+                        className={`flex flex-col items-center justify-center py-2 px-2 rounded-md border transition-all ${strategy === "move" ? "bg-blue-50 border-blue-200 text-blue-600" : "bg-transparent border-[var(--color-border)] text-[var(--color-muted)] hover:bg-black/5"}`}
                       >
                         <FileOutput className="w-4 h-4 mb-1.5" />
                         <span className="text-[11px] font-semibold">移动导入</span>
                       </button>
                     </div>
-                    <div className="text-[11px] text-[var(--color-muted)] mt-2 leading-relaxed bg-[var(--color-muted-bg)] p-2.5 rounded-md border border-[var(--color-border)]/50">
-                      {strategy === "link" && <><span className="font-semibold text-[var(--foreground)]">仅挂载读取：</span>保持你上面选择的文件夹在原地不动。开发者首选，支持热更新测试。</>}
-                      {strategy === "copy" && <><span className="font-semibold text-[var(--foreground)]">创建副本：</span>将上面选中的源文件夹安全复制到下方选择的「目标集中目录」中，保留双份。</>}
-                      {strategy === "move" && <><span className="font-semibold text-[var(--foreground)]">物理转移：</span>将上面选中的源文件夹直接剪切到下方选择的「目标集中目录」中，节约空间。</>}
+                    <div className="text-[11px] mt-2 leading-relaxed bg-blue-50/50 text-blue-800 p-2.5 rounded-md border border-blue-100">
+                      {strategy === "link" && <><span className="font-semibold text-blue-900">仅挂载读取：</span>保持你上面选择的文件夹在原地不动。开发者首选，支持热更新测试。</>}
+                      {strategy === "copy" && <><span className="font-semibold text-blue-900">创建副本：</span>将上面选中的源文件夹安全复制到下方选择的「目标集中目录」中，保留双份。</>}
+                      {strategy === "move" && <><span className="font-semibold text-blue-900">物理转移：</span>将上面选中的源文件夹直接剪切到下方选择的「目标集中目录」中，节约空间。</>}
                     </div>
                   </div>
 
@@ -309,13 +332,21 @@ export function AddRepositoryDialog({ isOpen, onClose, onSuccess, onCloningStart
                         浏览
                       </button>
                     </div>
-                    <p className="text-[11px] text-[var(--color-muted)] mt-1.5 leading-relaxed h-8">
-                      {githubUrl && githubTargetDir ? (
-                        <span className="font-mono break-all text-[var(--color-primary)]">
-                          目标: {githubTargetDir.replace(/\\/g, '/')}/{githubUrl.split('/').filter(Boolean).pop()?.replace('.git', '') || 'repo'}
-                        </span>
-                      ) : "我们将把存储库克隆到该目录下。"}
-                    </p>
+                    {githubUrl && githubTargetDir ? (
+                      <div className="mt-3 p-2.5 bg-blue-50/80 rounded-lg border border-blue-100 flex items-start space-x-2.5 animate-in fade-in zoom-in-95 duration-200">
+                        <FolderGit2 className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[12px] font-medium text-blue-900 mb-0.5">将克隆至本地：</p>
+                          <p className="text-[11px] font-mono text-blue-700/90 truncate" title={`${githubTargetDir.replace(/\\/g, '/')}/${githubUrl.split('/').filter(Boolean).pop()?.replace('.git', '') || 'repo'}`}>
+                            {githubTargetDir.replace(/\\/g, '/')}/{githubUrl.split('/').filter(Boolean).pop()?.replace('.git', '') || 'repo'}
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-[11px] text-[var(--color-muted)] mt-2 leading-relaxed">
+                        我们将把存储库克隆到该目录下。
+                      </p>
+                    )}
                   </div>
                 </>
               )}
@@ -331,7 +362,7 @@ export function AddRepositoryDialog({ isOpen, onClose, onSuccess, onCloningStart
                 <button
                   type="submit"
                   disabled={loading || (tab === "local" && !localPath) || (tab === "local" && (strategy === "copy" || strategy === "move") && !localTargetDir) || (tab === "github" && (!githubUrl || !githubTargetDir))}
-                  className="flex items-center justify-center space-x-1.5 bg-[var(--color-foreground)] text-white px-2.5 py-1 rounded-md text-[13px] font-medium hover:bg-black transition-all"
+                  className="flex items-center justify-center space-x-1.5 bg-blue-500 text-white px-3 py-1.5 rounded-md text-[13px] font-medium hover:bg-blue-600 shadow-sm shadow-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                 >
                   {loading ? (
                     <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
