@@ -460,6 +460,21 @@ pub async fn rescan_directory(state: State<'_, AppState>, path: String) -> Resul
 }
 
 #[tauri::command]
+pub async fn update_source_directory_path(state: State<'_, AppState>, id: String, new_path: String) -> Result<(), String> {
+    {
+        let db = state.db.lock().unwrap();
+        db.execute(
+            "UPDATE source_directories SET path = ?1 WHERE id = ?2",
+            rusqlite::params![new_path, id],
+        ).map_err(|e| format!("Failed to update path: {}", e))?;
+    }
+    
+    rescan_directory(state, new_path).await?;
+    
+    Ok(())
+}
+
+#[tauri::command]
 pub fn get_skill_content(path: String) -> Result<String, String> {
     let base = Path::new(&path);
     if base.is_file() {
@@ -717,6 +732,12 @@ pub fn create_local_skill_library(state: State<'_, AppState>, name: String, path
         "INSERT INTO source_directories (id, path, label, source_type, is_default, icon, sort_order, is_protected, added_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         rusqlite::params![id, path, name, "local", false, Option::<String>::None, 0, false, added_at],
     ).map_err(|e| e.to_string())?;
+
+    #[cfg(target_os = "macos")]
+    {
+        set_macos_folder_icon(&path);
+    }
+    
     Ok(id)
 }
 

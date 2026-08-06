@@ -14,13 +14,13 @@ export const COMMON_AGENT_PATHS = [
   { name: 'Antigravity', path: '~/.gemini/skills', id: 'antigravity' },
 ];
 
-interface BaseModalProps {
+interface CreateSkillLibraryModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: (id?: string) => void;
 }
 
-export function CreateSkillLibraryModal({ isOpen, onClose, onSuccess }: BaseModalProps) {
+export function CreateSkillLibraryModal({ isOpen, onClose, onSuccess }: CreateSkillLibraryModalProps) {
   const [name, setName] = useState('');
   const [folderName, setFolderName] = useState('');
   const [parentPath, setParentPath] = useState('');
@@ -46,11 +46,11 @@ export function CreateSkillLibraryModal({ isOpen, onClose, onSuccess }: BaseModa
     setLoading(true);
     try {
       const fullPath = `${parentPath}/${folderName}`.replace(/\\/g, '/').replace(/\/{2,}/g, '/');
-      await invoke('create_local_skill_library', {
+      const id = await invoke<string>('create_local_skill_library', {
         name,
         path: fullPath
       });
-      onSuccess();
+      onSuccess(id);
       onClose();
     } catch (err) {
       alert(`创建失败: ${err}`);
@@ -134,7 +134,13 @@ export function CreateSkillLibraryModal({ isOpen, onClose, onSuccess }: BaseModa
   );
 }
 
-export function OpenSkillLibraryModal({ isOpen, onClose, onSuccess }: BaseModalProps) {
+interface OpenSkillLibraryModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onSuccess: (id?: string) => void;
+}
+
+export function OpenSkillLibraryModal({ isOpen, onClose, onSuccess }: OpenSkillLibraryModalProps) {
   const [tab, setTab] = useState<'local' | 'agent'>('local');
   const [name, setName] = useState('');
   const [localPath, setLocalPath] = useState('');
@@ -163,12 +169,9 @@ export function OpenSkillLibraryModal({ isOpen, onClose, onSuccess }: BaseModalP
     if (!name || !localPath) return;
     setLoading(true);
     try {
-      await invoke('add_source_directory', { path: localPath, dirType: 'local' });
+      const id = await invoke<string>('add_source_directory', { path: localPath, dirType: 'local' });
       await invoke('scan_and_add_source_directory', { path: localPath, dirType: 'local', strategy: 'none', targetDir: null });
-      // Rename via db (just use scan to add, then update label... wait, we need a way to set name. 
-      // But let's keep it simple. It's added with original folder name. 
-      // We could add `update_source_directory_label` command, but for now this is ok.
-      onSuccess();
+      onSuccess(id);
       onClose();
     } catch (err) {
       alert(`打开失败: ${err}`);
@@ -278,7 +281,10 @@ export function OpenSkillLibraryModal({ isOpen, onClose, onSuccess }: BaseModalP
   );
 }
 
-interface MergeSkillLibraryModalProps extends BaseModalProps {
+interface MergeSkillLibraryModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onSuccess: () => void;
   targetLibrary: SourceDirectory | null;
 }
 

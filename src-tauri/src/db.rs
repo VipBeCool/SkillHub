@@ -209,6 +209,8 @@ pub fn get_repositories_with_skills(db: &Connection) -> Result<Vec<GroupedRepo>,
             }
         }
 
+        let exists = std::path::Path::new(&repo_path).exists();
+        println!("Checking repo with skills: path='{}', exists={}", repo_path, exists);
         let repo = repo_map.entry(repo_path.clone()).or_insert_with(|| GroupedRepo {
             id: repo_path.clone(),
             name: repo_name.clone(),
@@ -218,6 +220,7 @@ pub fn get_repositories_with_skills(db: &Connection) -> Result<Vec<GroupedRepo>,
             updated_at: skill.updated_at.clone(),
             skills: Vec::new(),
             category: None,
+            is_missing: !exists,
         });
 
         if !repo.skills.iter().any(|s| s.id == skill.id) {
@@ -226,6 +229,12 @@ pub fn get_repositories_with_skills(db: &Connection) -> Result<Vec<GroupedRepo>,
         if skill.updated_at > repo.updated_at {
             repo.updated_at = skill.updated_at.clone();
         }
+    }
+    
+    for dir in dir_map.values() {
+        let exists = std::path::Path::new(&dir.path).exists();
+        // Here we do not add empty source directories as repos anymore.
+        // The is_missing status for SourceDirectories is returned via get_source_directories
     }
 
     let mut result: Vec<GroupedRepo> = repo_map.into_values().collect();
@@ -287,15 +296,17 @@ pub fn remove_source_directory(db: &Connection, id: &str) -> Result<(), String> 
 pub fn get_source_directory_by_id(db: &Connection, id: &str) -> Result<Option<crate::models::SourceDirectory>, String> {
     let mut stmt = db.prepare("SELECT id, path, label, source_type, is_default, icon, sort_order, is_protected, added_at FROM source_directories WHERE id = ?1").map_err(|e| e.to_string())?;
     let mut dir_iter = stmt.query_map(rusqlite::params![id], |row| {
+        let path_str: String = row.get(1)?;
         Ok(crate::models::SourceDirectory {
             id: row.get(0)?,
-            path: row.get(1)?,
+            path: path_str.clone(),
             label: row.get(2)?,
             source_type: row.get(3)?,
             is_default: row.get(4)?,
             icon: row.get(5)?,
             sort_order: row.get(6)?,
             is_protected: row.get(7)?,
+            is_missing: !std::path::Path::new(&path_str).exists(),
             added_at: row.get(8)?,
         })
     }).map_err(|e| e.to_string())?;
@@ -309,15 +320,17 @@ pub fn get_source_directory_by_id(db: &Connection, id: &str) -> Result<Option<cr
 pub fn get_source_directories(db: &Connection) -> Result<Vec<SourceDirectory>, String> {
     let mut stmt = db.prepare("SELECT id, path, label, source_type, is_default, icon, sort_order, is_protected, added_at FROM source_directories ORDER BY sort_order ASC, added_at DESC").map_err(|e| e.to_string())?;
     let dir_iter = stmt.query_map([], |row| {
+        let path_str: String = row.get(1)?;
         Ok(SourceDirectory {
             id: row.get(0)?,
-            path: row.get(1)?,
+            path: path_str.clone(),
             label: row.get(2)?,
             source_type: row.get(3)?,
             is_default: row.get(4)?,
             icon: row.get(5)?,
             sort_order: row.get(6)?,
             is_protected: row.get(7)?,
+            is_missing: !std::path::Path::new(&path_str).exists(),
             added_at: row.get(8)?,
         })
     }).map_err(|e| e.to_string())?;

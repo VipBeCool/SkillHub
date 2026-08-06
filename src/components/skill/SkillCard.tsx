@@ -62,9 +62,11 @@ export const SkillCard: React.FC<SkillCardProps> = ({
       </div>
       
       <h3 className="font-semibold text-[15px] text-[var(--foreground)] mb-1 transition-colors line-clamp-1">{skill.name}</h3>
-      <p className="text-[13px] text-[var(--color-muted)] line-clamp-2 leading-relaxed flex-1" title={skill.description}>
-        {skill.description}
-      </p>
+      <Tooltip content={skill.description}>
+        <p className="text-[13px] text-[var(--color-muted)] line-clamp-2 leading-relaxed flex-1 cursor-default">
+          {skill.description}
+        </p>
+      </Tooltip>
       
       <div className="flex items-center justify-between pt-4 mt-auto border-t border-[var(--color-border)] min-h-[40px]">
         <div className="flex items-center space-x-2">
@@ -74,9 +76,11 @@ export const SkillCard: React.FC<SkillCardProps> = ({
           {syncedAgents.length > 0 && (
             <div className="flex -space-x-1.5">
               {syncedAgents.map((agent) => (
-                <div key={agent.id} className="w-6 h-6 rounded-full bg-[var(--color-primary)] border-2 border-[var(--color-card)] flex items-center justify-center text-[10px] font-bold text-white shadow-sm" title={agent.display_name}>
-                  {agent.display_name.charAt(0).toUpperCase()}
-                </div>
+                <Tooltip key={agent.id} content={agent.display_name}>
+                  <div className="w-6 h-6 rounded-full bg-[var(--color-primary)] border-2 border-[var(--color-card)] flex items-center justify-center text-[10px] font-bold text-white shadow-sm cursor-help">
+                    {agent.display_name.charAt(0).toUpperCase()}
+                  </div>
+                </Tooltip>
               ))}
             </div>
           )}

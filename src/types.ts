@@ -19,6 +19,7 @@ export interface SourceDirectory {
   icon?: string | null;
   sort_order?: number;
   is_protected?: boolean;
+  is_missing?: boolean;
   added_at: string;
   updated_at?: string;
 }
@@ -42,4 +43,5 @@ export interface GroupedRepo {
   updated_at: string;
   skills: Skill[];
   category?: string;
+  is_missing?: boolean;
 }

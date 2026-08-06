@@ -1,10 +1,11 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { FolderGit2, HardDrive, Settings, Search, Plus, RefreshCw, ChevronRight, ChevronLeft, X, LayoutGrid, Sparkles, FileQuestion, Globe } from "lucide-react";
+import { listen, UnlistenFn } from "@tauri-apps/api/event";
+import { FolderGit2, HardDrive, Settings, Search, Plus, RefreshCw, ChevronRight, ChevronLeft, X, LayoutGrid, Sparkles, FileQuestion, Globe, FolderX, FolderSearch, Trash2 } from "lucide-react";
 import { confirm } from '@tauri-apps/plugin-dialog';
 import { AddRepositoryDialog } from "./components/library/AddRepositoryDialog";
-import { SkillLibrarySelector } from "./components/library/SkillLibrarySelector";
+import { SkillLibrarySelector, SkillLibrarySelectorRef } from './components/library/SkillLibrarySelector';
 import { CreateSkillLibraryModal, OpenSkillLibraryModal, MergeSkillLibraryModal } from "./components/library/LibraryManagementModals";
 import { SkillDetailsDrawer } from "./components/skill/SkillDetailsDrawer";
 import { AgentSettingsDialog } from "./components/agent/AgentSettingsDialog";
@@ -36,11 +37,18 @@ function App() {
   const [addDialogTab, setAddDialogTab] = useState<"local" | "github" | null>(null);
 
   const [isSyncingAll, setIsSyncingAll] = useState(false);
+  const [isRetryingMissing, setIsRetryingMissing] = useState(false);
   const [syncLogs, setSyncLogs] = useState<{ id: string, label: string, status: 'pending' | 'success' | 'error' | 'skipped', message?: string }[]>([]);
   const [isSyncPopupMinimized, setIsSyncPopupMinimized] = useState(false);
   const [cloningRepos, setCloningRepos] = useState<{ path: string, name: string }[]>([]);
+  const [isAppStarting, setIsAppStarting] = useState(true);
+  const skillLibrarySelectorRef = useRef<SkillLibrarySelectorRef>(null);
 
   const currentSyncRunId = useRef<number>(0);
+
+  const handleWorkspaceSelect = (id: string | null) => {
+    setSelectedWorkspaceId(id);
+  };
 
   const fetchData = async () => {
     try {
@@ -55,6 +63,7 @@ function App() {
 
       setSkills(fetchedSkills);
       setDirectories(fetchedDirs);
+      await invoke("refresh_app_menu").catch(console.error);
       setGroupedRepos(fetchedRepos);
       setAgents(fetchedAgents);
       setSyncRecords(allSyncs.flat());
@@ -71,9 +80,11 @@ function App() {
       if (dirs && dirs.length > 0) {
         handleSyncAll(false, dirs);
         if (!selectedWorkspaceId) {
-          setSelectedWorkspaceId(dirs[0].id);
+          handleWorkspaceSelect(dirs[0].id);
         }
       }
+    }).finally(() => {
+      setIsAppStarting(false);
     });
 
     // 后台定时静默同步 (每小时)
@@ -88,7 +99,32 @@ function App() {
       }
     }, 60 * 60 * 1000);
 
-    return () => clearInterval(interval);
+    let unlisten: UnlistenFn | null = null;
+    listen<string>("menu-action", (event) => {
+      const action = event.payload;
+      getCurrentWindow().unminimize();
+      getCurrentWindow().setFocus();
+      
+      if (action === "create_library") {
+        setIsCreateModalOpen(true);
+      } else if (action === "open_library") {
+        setIsOpenModalOpen(true);
+      } else if (action === "merge_library") {
+        setIsMergeModalOpen(true);
+      } else if (action === "clear_history") {
+        showToast("暂不支持该操作");
+      } else if (action === "reload_cache") {
+        window.location.reload();
+      } else if (action.startsWith("select_")) {
+        const id = action.replace("select_", "");
+        handleWorkspaceSelect(id);
+      }
+    }).then(un => unlisten = un);
+
+    return () => {
+      clearInterval(interval);
+      if (unlisten) unlisten();
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -224,7 +260,7 @@ function App() {
   };
 
   const filteredGroupedRepos = useMemo(() => {
-    let result = groupedRepos;
+    let result = groupedRepos.filter(repo => repo.skills.length > 0);
     if (selectedWorkspaceId !== "all") {
        result = result.filter(repo => repo.source_dir_id === selectedWorkspaceId);
     }
@@ -251,9 +287,21 @@ function App() {
         setIsSearchModalOpen(true);
       }
     };
+    
+    const handleFocus = () => {
+      fetchData();
+    };
+
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('focus', handleFocus);
+    
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('focus', handleFocus);
+    };
   }, []);
+
+  const selectedWorkspaceDir = directories.find(d => d.id === selectedWorkspaceId);
 
   return (
     <div className="flex h-screen w-full bg-transparent text-[var(--foreground)] overflow-hidden font-sans">
@@ -263,9 +311,10 @@ function App() {
 
         {/* Workspace Switcher */}
         <SkillLibrarySelector
+          ref={skillLibrarySelectorRef}
           directories={directories}
           selectedId={selectedWorkspaceId}
-          onSelect={setSelectedWorkspaceId}
+          onSelect={handleWorkspaceSelect}
           onDirectoriesChange={fetchData}
           onCreateLibrary={() => setIsCreateModalOpen(true)}
           onOpenLibrary={() => setIsOpenModalOpen(true)}
@@ -398,16 +447,66 @@ function App() {
         </div>
 
         <div className="flex-1 overflow-y-auto p-8 relative z-0 bg-[var(--color-background)]">
-          {filteredGroupedRepos.length === 0 ? (
+          {selectedWorkspaceDir?.is_missing ? (
             <div className="flex flex-col items-center justify-center h-full text-[var(--color-muted)] animate-in fade-in duration-500">
               <div className="w-32 h-32 mb-6 relative group">
+                <div className="relative bg-white/60 backdrop-blur-xl rounded-3xl p-8 flex items-center justify-center">
+                  <FolderX className="w-12 h-12 text-red-500 drop-shadow-sm relative z-10" />
+                </div>
+              </div>
+              <h2 className="text-xl font-semibold text-[var(--foreground)] mb-2 tracking-tight">无法载入当前资源库</h2>
+              <p className="text-sm text-[var(--color-muted)] mb-4 text-center whitespace-nowrap overflow-hidden text-ellipsis">
+                找不到资源库的路径，可能已被移动、重命名或从磁盘中删除。
+              </p>
+              <div className="text-[13px] text-[var(--color-muted)] font-mono bg-black/5 px-3 py-1.5 rounded mb-8 truncate max-w-[400px] w-full text-center">
+                {selectedWorkspaceDir.path}
+              </div>
+              <div className="flex flex-col items-center gap-3 w-full max-w-[280px]">
+                <button 
+                  onClick={async () => {
+                    setIsRetryingMissing(true);
+                    await fetchData();
+                    setTimeout(() => setIsRetryingMissing(false), 500);
+                  }} 
+                  disabled={isRetryingMissing}
+                  className="flex items-center justify-center gap-2 w-full px-6 py-2.5 bg-white border border-[var(--color-border)] hover:bg-black/5 text-[var(--foreground)] font-medium rounded-lg transition-colors shadow-sm disabled:opacity-70"
+                >
+                  <RefreshCw className={`w-4 h-4 ${isRetryingMissing ? 'animate-spin' : ''}`} />
+                  {isRetryingMissing ? '正在检测...' : '再试一次'}
+                </button>
+                <button 
+                  onClick={() => skillLibrarySelectorRef.current?.openDropdown()}
+                  className="flex items-center justify-center gap-2 px-6 py-2.5 bg-blue-500 text-white rounded-lg font-medium hover:bg-blue-600 transition-colors w-full shadow-sm"
+                >
+                  <FolderSearch className="w-4 h-4" />
+                  切换其他资源库
+                </button>
+                <button 
+                  onClick={async () => {
+                    try {
+                      await invoke('remove_source_directory', { id: selectedWorkspaceDir.id, deleteLocal: false });
+                      const nextDir = directories.find(d => d.id !== selectedWorkspaceDir.id && !d.is_missing) || directories.find(d => d.id !== selectedWorkspaceDir.id);
+                      setSelectedWorkspaceId(nextDir ? nextDir.id : null);
+                      await fetchData();
+                    } catch (e) { console.error(e); }
+                  }}
+                  className="flex items-center justify-center gap-2 w-full px-6 py-2.5 bg-transparent hover:bg-red-50 text-red-500 font-medium rounded-lg transition-colors"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  移除记录
+                </button>
+              </div>
+            </div>
+          ) : filteredGroupedRepos.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-[var(--color-muted)] animate-in fade-in duration-500">
+              <div className="w-32 h-32 mb-6 relative">
                 {/* 玻璃拟物态的背景光晕 */}
-                <div className="absolute inset-0 bg-blue-200/40 blur-2xl rounded-full" />
+                <div className="absolute inset-0 bg-blue-100/40 blur-2xl rounded-full" />
                 {/* 悬浮的玻璃面板 */}
-                <div className="relative bg-white/40 backdrop-blur-xl rounded-3xl border border-white/60 shadow-[0_8px_32px_-8px_rgba(0,0,0,0.1)] p-8 flex items-center justify-center group-hover:-translate-y-2 transition-transform duration-500">
-                  <div className="absolute inset-0 bg-gradient-to-tr from-white/20 to-white/60 rounded-3xl" />
-                  <HardDrive className="w-12 h-12 text-blue-500 drop-shadow-sm relative z-10" />
-                  <Plus className="w-5 h-5 text-blue-400 absolute top-6 right-6" />
+                <div className="relative bg-white/40 backdrop-blur-xl rounded-3xl p-8 flex items-center justify-center">
+                  <div className="absolute inset-0 bg-gradient-to-tr from-white/40 to-white/80 rounded-3xl" />
+                  <HardDrive className="w-12 h-12 text-blue-400 drop-shadow-sm relative z-10" />
+                  <Plus className="w-5 h-5 text-blue-300 absolute top-6 right-6" />
                 </div>
               </div>
               <h2 className="text-xl font-semibold text-[var(--foreground)] mb-2 tracking-tight">空空如也，拖放技能到这里</h2>
@@ -471,7 +570,7 @@ function App() {
                     agents={agents}
                     onClick={(id) => setSelectedRepoId(id)}
                     onUpdateRepo={handleUpdateRepo}
-                    onDeleteRepo={handleDeleteRepo}
+                    onDeleteRepo={(e, repo) => handleDeleteRepo(e, repo)}
                   />
                 );
               })}
@@ -641,13 +740,23 @@ function App() {
       <CreateSkillLibraryModal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
-        onSuccess={fetchData}
+        onSuccess={async (id) => {
+          await fetchData();
+          if (id) {
+            setSelectedWorkspaceId(id);
+          }
+        }}
       />
       
       <OpenSkillLibraryModal
         isOpen={isOpenModalOpen}
         onClose={() => setIsOpenModalOpen(false)}
-        onSuccess={fetchData}
+        onSuccess={async (id) => {
+          await fetchData();
+          if (id) {
+            setSelectedWorkspaceId(id);
+          }
+        }}
       />
 
       <MergeSkillLibraryModal
@@ -656,6 +765,31 @@ function App() {
         onSuccess={fetchData}
         targetLibrary={directories.find(d => d.id === selectedWorkspaceId) || null}
       />
+
+      {/* 真实的初始化加载层 */}
+      {isAppStarting && (
+        <div className="fixed inset-0 z-[200] bg-white/40 backdrop-blur-sm flex items-center justify-center animate-in fade-in duration-200">
+          <div className="w-[320px] rounded-xl border border-black/[0.08] bg-white/95 backdrop-blur-2xl p-8 shadow-[0_20px_40px_rgb(0,0,0,0.08)] flex flex-col items-center">
+            <span className="text-[13px] font-medium text-[var(--foreground)] opacity-70 mb-5 tracking-widest">初始化...</span>
+            <div className="w-full h-1 bg-black/5 rounded-full overflow-hidden relative shadow-inner">
+              <div 
+                className="absolute top-0 left-0 h-full bg-blue-500 rounded-full transition-all duration-300 ease-out"
+                style={{ 
+                  width: '100%',
+                  animation: 'progress-bar 0.4s ease-out forwards'
+                }}
+              />
+            </div>
+            <style>{`
+              @keyframes progress-bar {
+                0% { width: 0%; opacity: 0.8; }
+                50% { width: 70%; opacity: 1; }
+                100% { width: 100%; opacity: 0.9; }
+              }
+            `}</style>
+          </div>
+        </div>
+      )}
 
       <ToastContainer />
     </div>

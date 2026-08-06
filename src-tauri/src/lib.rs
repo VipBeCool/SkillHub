@@ -5,11 +5,12 @@ pub mod scanner;
 pub mod agents;
 pub mod git_engine;
 pub mod agent_sync;
+pub mod menu;
 
 use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
 use tokio::sync::oneshot;
-use tauri::Manager;
+use tauri::{Manager, Emitter};
 
 pub struct AppState {
     pub db: Mutex<rusqlite::Connection>,
@@ -33,9 +34,17 @@ pub fn run() {
                 clone_cancel_tokens: Arc::new(Mutex::new(HashMap::new())),
             });
             
+            // Build the initial app menu
+            let _ = crate::menu::update_app_menu(app.handle());
+            
             Ok(())
         })
+        .on_menu_event(|app, event| {
+            // Emits an event to the frontend when a menu item is clicked
+            let _ = app.emit("menu-action", event.id().0.as_str());
+        })
         .invoke_handler(tauri::generate_handler![
+            crate::menu::refresh_app_menu,
             commands::get_skills,
             commands::get_source_directories,
             commands::get_repositories_with_skills,
@@ -64,6 +73,7 @@ pub fn run() {
             commands::open_local_folder,
             commands::cancel_github_clone,
             commands::update_source_directory_icon,
+            commands::update_source_directory_path,
             commands::update_source_directories_order,
             commands::rename_source_directory,
             commands::remove_source_directory,

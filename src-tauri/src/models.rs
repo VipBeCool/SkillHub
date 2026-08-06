@@ -10,6 +10,8 @@ pub struct SourceDirectory {
     pub icon: Option<String>,
     pub sort_order: i32,
     pub is_protected: bool,
+    #[serde(default)]
+    pub is_missing: bool,
     pub added_at: String,
 }
 
@@ -76,4 +78,6 @@ pub struct GroupedRepo {
     pub updated_at: String,
     pub skills: Vec<Skill>,
     pub category: Option<String>,
+    #[serde(default)]
+    pub is_missing: bool,
 }

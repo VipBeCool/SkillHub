@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import { Globe, X, FolderGit2, HardDrive, ArrowLeft, Link as LinkIcon, Copy, FileOutput } from "lucide-react";
+import { Globe, X, FolderGit2, HardDrive, Link as LinkIcon, Copy, FileOutput } from "lucide-react";
+import { Tooltip } from '../ui/Tooltip';
 import { showToast } from "../ui/Toast";
 
 interface AddRepositoryDialogProps {
@@ -49,14 +50,6 @@ export function AddRepositoryDialog({ isOpen, onClose, onSuccess, onCloningStart
   const handleSelectType = (type: "local" | "github") => {
     setTab(type);
     setStep("form");
-  };
-
-  const handleBack = () => {
-    if (defaultTab) {
-      onClose();
-    } else {
-      setStep("select");
-    }
   };
 
   const handleBrowseLocal = async () => {
@@ -174,15 +167,8 @@ export function AddRepositoryDialog({ isOpen, onClose, onSuccess, onCloningStart
         
         {/* Header */}
         <div className="px-6 py-4 border-b border-[var(--color-border)] flex items-center justify-between relative">
-          {step === "form" && (
-            <button 
-              onClick={handleBack} 
-              className="absolute left-4 p-1.5 rounded-lg text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-colors"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </button>
-          )}
-          <h2 className={`text-lg font-medium text-[var(--foreground)] flex-1 ${step === "form" ? 'text-center' : 'text-left'}`}>
+
+          <h2 className="text-lg font-medium text-[var(--foreground)] flex-1 text-left">
             {step === "select" ? "添加技能" : (tab === "local" ? "导入本地技能" : "克隆 GitHub 技能库")}
           </h2>
           <button onClick={onClose} className={`p-1.5 rounded-lg text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-colors ${step === "form" ? 'absolute right-4' : ''}`}>
@@ -337,9 +323,11 @@ export function AddRepositoryDialog({ isOpen, onClose, onSuccess, onCloningStart
                         <FolderGit2 className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
                         <div className="flex-1 min-w-0">
                           <p className="text-[12px] font-medium text-blue-900 mb-0.5">将克隆至本地：</p>
-                          <p className="text-[11px] font-mono text-blue-700/90 truncate" title={`${githubTargetDir.replace(/\\/g, '/')}/${githubUrl.split('/').filter(Boolean).pop()?.replace('.git', '') || 'repo'}`}>
-                            {githubTargetDir.replace(/\\/g, '/')}/{githubUrl.split('/').filter(Boolean).pop()?.replace('.git', '') || 'repo'}
-                          </p>
+                          <Tooltip content={`${githubTargetDir.replace(/\\/g, '/')}/${githubUrl.split('/').filter(Boolean).pop()?.replace('.git', '') || 'repo'}`}>
+                            <p className="text-[11px] font-mono text-blue-700/90 truncate cursor-default">
+                              {githubTargetDir.replace(/\\/g, '/')}/{githubUrl.split('/').filter(Boolean).pop()?.replace('.git', '') || 'repo'}
+                            </p>
+                          </Tooltip>
                         </div>
                       </div>
                     ) : (

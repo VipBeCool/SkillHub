@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { X, FolderGit2, HardDrive, Link as LinkIcon, Unlink, Edit2, Save, Loader2, Copy, Folder } from "lucide-react";
+import { Tooltip } from '../ui/Tooltip';
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
@@ -160,34 +161,38 @@ export function SkillDetailsDrawer({ skill, isOpen, onClose }: SkillDetailsDrawe
             <div>
               <h2 className="text-xl font-medium text-[var(--foreground)] leading-none mb-1">{skill?.name}</h2>
               <div className="flex items-center space-x-1.5 mb-1.5">
-                <p className="text-[11px] text-[var(--color-muted)] truncate max-w-[380px]" title={skill?.local_path}>{skill?.local_path}</p>
+                <Tooltip content={skill?.local_path || ""}>
+                  <p className="text-[11px] text-[var(--color-muted)] truncate max-w-[380px] cursor-default">{skill?.local_path}</p>
+                </Tooltip>
                 {skill?.local_path && (
                   <div className="flex items-center space-x-1 shrink-0">
-                    <button
-                      onClick={async (e) => {
-                        e.stopPropagation();
-                        try {
-                          await invoke("open_local_folder", { path: skill.local_path });
-                        } catch (err) {
-                          console.error("Failed to open folder:", err);
-                        }
-                      }}
-                      className="p-1 rounded hover:bg-black/5 text-[var(--color-muted)] hover:text-[var(--foreground)] transition-colors"
-                      title="在本地打开"
-                    >
-                      <Folder size={13} />
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        navigator.clipboard.writeText(skill.local_path);
-                        showToast("skill文件路径已复制到剪切板");
-                      }}
-                      className="p-1 rounded hover:bg-black/5 text-[var(--color-muted)] hover:text-[var(--foreground)] transition-colors"
-                      title="复制路径"
-                    >
-                      <Copy size={13} />
-                    </button>
+                    <Tooltip content="在本地打开">
+                      <button
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          try {
+                            await invoke("open_local_folder", { path: skill.local_path });
+                          } catch (err) {
+                            console.error("Failed to open folder:", err);
+                          }
+                        }}
+                        className="p-1 rounded hover:bg-black/5 text-[var(--color-muted)] hover:text-[var(--foreground)] transition-colors"
+                      >
+                        <Folder size={13} />
+                      </button>
+                    </Tooltip>
+                    <Tooltip content="复制路径">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigator.clipboard.writeText(skill.local_path);
+                          showToast("skill文件路径已复制到剪切板");
+                        }}
+                        className="p-1 rounded hover:bg-black/5 text-[var(--color-muted)] hover:text-[var(--foreground)] transition-colors"
+                      >
+                        <Copy size={13} />
+                      </button>
+                    </Tooltip>
                   </div>
                 )}
               </div>
@@ -212,9 +217,11 @@ export function SkillDetailsDrawer({ skill, isOpen, onClose }: SkillDetailsDrawe
           </div>
           <div className="flex items-center space-x-2">
             {!isEditing && (
-              <button onClick={() => setIsEditing(true)} className="p-1.5 rounded-lg text-[var(--color-muted)] hover:bg-[var(--color-primary)]/10 hover:text-[var(--color-primary)] transition-colors" title="编辑文档">
-                <Edit2 className="w-4 h-4" />
-              </button>
+              <Tooltip content="编辑文档">
+                <button onClick={() => setIsEditing(true)} className="p-1.5 rounded-lg text-[var(--color-muted)] hover:bg-[var(--color-primary)]/10 hover:text-[var(--color-primary)] transition-colors">
+                  <Edit2 className="w-4 h-4" />
+                </button>
+              </Tooltip>
             )}
             <button onClick={onClose} className="p-1.5 rounded-lg text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] transition-colors ml-2">
               <X className="w-5 h-5" />
