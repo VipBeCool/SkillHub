@@ -48,6 +48,8 @@ function App() {
 
   const handleWorkspaceSelect = (id: string | null) => {
     setSelectedWorkspaceId(id);
+    setActiveTab("all");
+    setSelectedCategory("all");
   };
 
   const fetchData = async () => {
@@ -486,7 +488,7 @@ function App() {
                     try {
                       await invoke('remove_source_directory', { id: selectedWorkspaceDir.id, deleteLocal: false });
                       const nextDir = directories.find(d => d.id !== selectedWorkspaceDir.id && !d.is_missing) || directories.find(d => d.id !== selectedWorkspaceDir.id);
-                      setSelectedWorkspaceId(nextDir ? nextDir.id : null);
+                      handleWorkspaceSelect(nextDir ? nextDir.id : null);
                       await fetchData();
                     } catch (e) { console.error(e); }
                   }}
