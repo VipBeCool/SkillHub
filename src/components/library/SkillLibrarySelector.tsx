@@ -4,6 +4,9 @@ import { invoke } from '@tauri-apps/api/core';
 import { Folder, Plus, Search, MoreHorizontal, Smile, Trash2, ExternalLink, ArrowRightLeft, Check, Edit2, ChevronsUpDown, MinusCircle, GripVertical, Layers, AlertCircle, X } from 'lucide-react';
 import { SourceDirectory } from '../../types';
 import { Tooltip, TooltipProvider } from '../ui/Tooltip';
+import { IconPicker } from '../ui/IconPicker';
+import { DynamicIcon } from '../ui/DynamicIcon';
+import { parseIconConfig } from '../../lib/iconTypes';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent, DragStartEvent, DragOverlay, Modifier } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -43,11 +46,7 @@ interface SkillLibrarySelectorProps {
   onMergeLibrary: () => void;
 }
 
-const EMOJIS = [
-  '📁', '🎨', '💻', '📝', '✨', '🔥', '📚', '🚀', '💡', '🌟', '🛠️', '📦',
-  '🎯', '✅', '🌈', '💎', '⚙️', '🔍', '📊', '⚡️', '🧠', '👑', '🎵', '🕹️',
-  '🎬', '📸', '🎧', '🍎', '🍉', '☕️', '🏆', '🥇', '🔮', '🎉', '🎁', '🎈'
-];
+// EMOJIS array removed, now handled by IconPicker
 
 export interface SkillLibrarySelectorRef {
   closeMenu: () => void;
@@ -155,7 +154,11 @@ export const SkillLibrarySelector = forwardRef<SkillLibrarySelectorRef, SkillLib
   // Close floating menu on scroll or resize
   useEffect(() => {
     if (!menuOpenId) return;
-    const handleScrollOrResize = () => {
+    const handleScrollOrResize = (e: Event) => {
+      // If the scroll target is inside the menu itself, don't close it!
+      if (e.type === 'scroll' && menuRef.current && menuRef.current.contains(e.target as Node)) {
+        return;
+      }
       setMenuOpenId(null);
       setIconPickerId(null);
       setMenuPos(null);
@@ -279,9 +282,15 @@ export const SkillLibrarySelector = forwardRef<SkillLibrarySelectorRef, SkillLib
             </div>
           </div>
         ) : (
-          <div className={`w-6 h-6 rounded-md flex items-center justify-center shrink-0 mr-2.5 ${!selectedDir?.icon ? 'bg-blue-500' : 'bg-[#f0f3f6]'}`}>
+          <div 
+            className={`w-6 h-6 rounded-md flex items-center justify-center shrink-0 mr-2.5 ${!selectedDir?.icon ? 'bg-blue-500' : 'bg-gray-100'}`}
+            style={selectedDir?.icon ? (() => {
+              const config = parseIconConfig(selectedDir.icon);
+              return config.type === 'icon' && config.color ? { backgroundColor: `${config.color}26` } : {};
+            })() : undefined}
+          >
             {selectedDir?.icon ? (
-              <span className="text-sm">{selectedDir.icon}</span>
+              <DynamicIcon config={parseIconConfig(selectedDir.icon)} size={16} />
             ) : (
               <Layers className="w-3.5 h-3.5 text-white fill-white/20" />
             )}
@@ -346,7 +355,7 @@ export const SkillLibrarySelector = forwardRef<SkillLibrarySelectorRef, SkillLib
                       {(dragHandleProps) => (
                         <div 
                           className={`relative flex items-center justify-between px-1 py-1.5 rounded-lg text-[13px] transition-colors group
-                            ${selectedId === dir.id ? 'text-blue-600 font-medium' : (activeId ? '' : 'text-[var(--foreground)] hover:bg-black/5 font-normal')}
+                            ${selectedId === dir.id ? 'text-[var(--foreground)] font-medium bg-black/5' : (activeId ? '' : 'text-[var(--foreground)] hover:bg-black/5 font-normal')}
                             ${activeId ? 'pointer-events-none' : ''}
                           `}
                         >
@@ -362,10 +371,14 @@ export const SkillLibrarySelector = forwardRef<SkillLibrarySelectorRef, SkillLib
                             {/* Icon */}
                             {dir.icon ? (
                               <div 
-                                className={`relative w-6 h-6 flex items-center justify-center shrink-0 mr-1.5 rounded-md cursor-pointer ${dir.is_missing ? 'border border-dashed border-gray-400 bg-transparent' : 'bg-blue-500 text-white'}`}
+                                className={`relative w-6 h-6 flex items-center justify-center shrink-0 mr-1.5 rounded-md cursor-pointer ${dir.is_missing ? 'border border-dashed border-gray-400 bg-transparent' : 'bg-gray-100'}`}
                                 onClick={() => { onSelect(dir.id); setIsOpen(false); }}
+                                style={dir.icon && !dir.is_missing ? (() => {
+                                  const config = parseIconConfig(dir.icon);
+                                  return config.type === 'icon' && config.color ? { backgroundColor: `${config.color}26` } : {};
+                                })() : undefined}
                               >
-                                <span className={`text-[14px] ${dir.is_missing ? 'opacity-60 grayscale' : ''}`}>{dir.icon}</span>
+                                <DynamicIcon config={parseIconConfig(dir.icon)} size={16} className={dir.is_missing ? 'opacity-60 grayscale' : ''} />
                                 {dir.is_missing && (
                                   <div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-orange-500 rounded-full flex items-center justify-center border-2 border-white shadow-sm z-10">
                                     <AlertCircle className="w-2.5 h-2.5 text-white" strokeWidth={3} />
@@ -483,8 +496,8 @@ export const SkillLibrarySelector = forwardRef<SkillLibrarySelectorRef, SkillLib
                             </div>
                             
                             {dir.icon ? (
-                              <div className={`relative w-6 h-6 flex items-center justify-center shrink-0 mr-1.5 rounded-md ${dir.is_missing ? 'border border-dashed border-gray-400 bg-transparent' : 'bg-blue-500 text-white'}`}>
-                                <span className={`text-[14px] ${dir.is_missing ? 'opacity-60 grayscale' : ''}`}>{dir.icon}</span>
+                              <div className={`relative w-6 h-6 flex items-center justify-center shrink-0 mr-1.5 rounded-md ${dir.is_missing ? 'border border-dashed border-gray-400 bg-transparent' : 'bg-[#f0f3f6]'}`}>
+                                <DynamicIcon config={parseIconConfig(dir.icon)} size={16} className={dir.is_missing ? 'opacity-60 grayscale' : ''} />
                                 {dir.is_missing && (
                                   <div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-orange-500 rounded-full flex items-center justify-center border-2 border-white shadow-sm z-10">
                                     <AlertCircle className="w-2.5 h-2.5 text-white" strokeWidth={3} />
@@ -575,8 +588,8 @@ export const SkillLibrarySelector = forwardRef<SkillLibrarySelectorRef, SkillLib
         if (!dir) return null;
 
         const isIconPicker = iconPickerId === dir.id;
-        const menuWidth = isIconPicker ? 220 : 160;
-        const menuHeight = isIconPicker ? 210 : 180;
+        const menuWidth = isIconPicker ? 320 : 160;
+        const menuHeight = isIconPicker ? 360 : 180;
 
         let left = menuPos.right - menuWidth;
         if (left < 10) left = 10;
@@ -591,38 +604,33 @@ export const SkillLibrarySelector = forwardRef<SkillLibrarySelectorRef, SkillLib
 
         return createPortal(
           <div 
+            key={isIconPicker ? 'icon-picker' : 'action-menu'}
             ref={menuRef}
             style={{ top: `${top}px`, left: `${left}px` }}
-            className="fixed bg-white/95 backdrop-blur-2xl border border-black/[0.08] rounded-xl shadow-[0_12px_36px_rgb(0,0,0,0.16)] py-1 z-[99999] overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+            className={`fixed z-[99999] animate-in fade-in zoom-in-95 duration-150 ${isIconPicker ? '' : 'bg-white/95 backdrop-blur-2xl border border-black/[0.08] rounded-xl shadow-[0_12px_36px_rgb(0,0,0,0.16)] py-1 overflow-hidden'}`}
             onClick={e => e.stopPropagation()}
           >
             {isIconPicker ? (
-              <div className="p-2 w-[220px] grid grid-cols-6 gap-1 max-h-48 overflow-y-auto">
-                {EMOJIS.map(emoji => (
-                  <button
-                    key={emoji}
-                    onClick={() => handleSetIcon(dir.id, emoji)}
-                    className="flex items-center justify-center w-8 h-8 rounded-lg hover:bg-black/5 text-lg transition-colors"
-                  >
-                    {emoji}
-                  </button>
-                ))}
-              </div>
+              <IconPicker
+                currentIconConfig={dir.icon ? parseIconConfig(dir.icon) : null}
+                onSelect={(config) => handleSetIcon(dir.id, config ? JSON.stringify(config) : null)}
+                onClose={() => { setIconPickerId(null); setMenuOpenId(null); setMenuPos(null); }}
+              />
             ) : (
               <div className="w-40">
                 <button 
                   onClick={() => setIconPickerId(dir.id)}
-                  className="w-full flex items-center px-3 py-1.5 text-[12px] text-[var(--foreground)] hover:bg-black/5 transition-colors"
+                  className="w-full flex items-center px-3 py-1.5 text-[13px] text-[var(--foreground)] hover:bg-black/5 transition-colors"
                 >
-                  <Smile className="w-3.5 h-3.5 mr-2 text-[var(--color-muted)]" />
+                  <Smile className="w-4 h-4 mr-2 text-[var(--color-muted)]" />
                   更改图标
                 </button>
                 {dir.icon && (
                   <button 
                     onClick={() => handleSetIcon(dir.id, null)}
-                    className="w-full flex items-center px-3 py-1.5 text-[12px] text-[var(--foreground)] hover:bg-black/5 transition-colors"
+                    className="w-full flex items-center px-3 py-1.5 text-[13px] text-[var(--foreground)] hover:bg-black/5 transition-colors"
                   >
-                    <Trash2 className="w-3.5 h-3.5 mr-2 text-[var(--color-muted)]" />
+                    <Trash2 className="w-4 h-4 mr-2 text-[var(--color-muted)]" />
                     移除图标
                   </button>
                 )}
@@ -633,31 +641,31 @@ export const SkillLibrarySelector = forwardRef<SkillLibrarySelectorRef, SkillLib
                     setRenameValue(dir.label);
                     setMenuOpenId(null);
                   }}
-                  className="w-full flex items-center px-3 py-1.5 text-[12px] text-[var(--foreground)] hover:bg-black/5 transition-colors"
+                  className="w-full flex items-center px-3 py-1.5 text-[13px] text-[var(--foreground)] hover:bg-black/5 transition-colors"
                 >
-                  <Edit2 className="w-3.5 h-3.5 mr-2 text-[var(--color-muted)]" />
+                  <Edit2 className="w-4 h-4 mr-2 text-[var(--color-muted)]" />
                   修改名称
                 </button>
                 <button 
                   onClick={() => handleDelete(dir, false)}
-                  className="w-full flex items-center px-3 py-1.5 text-[12px] text-[var(--foreground)] hover:bg-black/5 transition-colors"
+                  className="w-full flex items-center px-3 py-1.5 text-[13px] text-[var(--foreground)] hover:bg-black/5 transition-colors"
                 >
-                  <MinusCircle className="w-3.5 h-3.5 mr-2 text-[var(--color-muted)]" />
+                  <MinusCircle className="w-4 h-4 mr-2 text-[var(--color-muted)]" />
                   从列表删除
                 </button>
                 <button 
                   onClick={() => handleDelete(dir, true)}
-                  className="w-full flex items-center px-3 py-1.5 text-[12px] text-red-600 hover:bg-red-50 transition-colors"
+                  className="w-full flex items-center px-3 py-1.5 text-[13px] text-red-600 hover:bg-red-50 transition-colors"
                 >
-                  <Trash2 className="w-3.5 h-3.5 mr-2 text-red-500/70" />
+                  <Trash2 className="w-4 h-4 mr-2 text-red-500/70" />
                   彻底删除(本地)
                 </button>
                 <div className="h-px bg-[var(--color-border)]/60 my-1" />
                 <button 
                   onClick={() => handleOpenLocalFolder(dir.path)}
-                  className="w-full flex items-center px-3 py-1.5 text-[12px] text-[var(--foreground)] hover:bg-black/5 transition-colors"
+                  className="w-full flex items-center px-3 py-1.5 text-[13px] text-[var(--foreground)] hover:bg-black/5 transition-colors"
                 >
-                  <ExternalLink className="w-3.5 h-3.5 mr-2 text-[var(--color-muted)]" />
+                  <ExternalLink className="w-4 h-4 mr-2 text-[var(--color-muted)]" />
                   打开本地文件夹
                 </button>
               </div>
