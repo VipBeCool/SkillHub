@@ -11,10 +11,13 @@ use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
 use tokio::sync::oneshot;
 use tauri::{Manager, Emitter};
+use tauri::tray::{TrayIconBuilder, TrayIconEvent, MouseButton};
+use tauri::menu::{Menu, MenuItemBuilder, PredefinedMenuItem};
 
 pub struct AppState {
     pub db: Mutex<rusqlite::Connection>,
     pub clone_cancel_tokens: Arc<Mutex<HashMap<String, oneshot::Sender<()>>>>,
+    pub selected_workspace_id: Mutex<Option<String>>,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -32,10 +35,58 @@ pub fn run() {
             app.manage(AppState {
                 db: Mutex::new(conn),
                 clone_cancel_tokens: Arc::new(Mutex::new(HashMap::new())),
+                selected_workspace_id: Mutex::new(None),
             });
             
             // Build the initial app menu
             let _ = crate::menu::update_app_menu(app.handle());
+            
+            // Build the tray menu
+            let quit_i = MenuItemBuilder::new("退出 SkillHub").id("quit").build(app)?;
+            let show_i = MenuItemBuilder::new("显示 SkillHub").id("show").build(app)?;
+            let prefs_i = MenuItemBuilder::new("偏好设置...").id("prefs").build(app)?;
+            let separator = PredefinedMenuItem::separator(app)?;
+            let tray_menu = Menu::with_items(app, &[&prefs_i, &show_i, &separator, &quit_i])?;
+
+            // Build the tray icon
+            #[cfg(target_os = "macos")]
+            let tray_icon_bytes = include_bytes!("../icons/tray_icon.png");
+            #[cfg(not(target_os = "macos"))]
+            let tray_icon_bytes = include_bytes!("../icons/32x32.png");
+            
+            let img = image::load_from_memory(tray_icon_bytes).expect("Failed to load tray icon");
+            let rgba = img.to_rgba8();
+            let width = img.width();
+            let height = img.height();
+            let tauri_image = tauri::image::Image::new_owned(rgba.into_raw(), width, height);
+
+            let _tray = TrayIconBuilder::new()
+                .icon(tauri_image)
+                .icon_as_template(true)
+                .menu(&tray_menu)
+                .on_menu_event(|app, event| {
+                    match event.id().as_ref() {
+                        "quit" => {
+                            app.exit(0);
+                        }
+                        "show" => {
+                            if let Some(window) = app.get_webview_window("main") {
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                            }
+                        }
+                        "prefs" => {
+                            // For now, just show the window, frontend can handle actual pref routing later
+                            if let Some(window) = app.get_webview_window("main") {
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                                let _ = window.emit("open-preferences", ());
+                            }
+                        }
+                        _ => {}
+                    }
+                })
+                .build(app)?;
             
             Ok(())
         })
@@ -80,6 +131,13 @@ pub fn run() {
             commands::create_local_skill_library,
             commands::merge_skill_libraries
         ])
+        .on_window_event(|window, event| match event {
+            tauri::WindowEvent::CloseRequested { api, .. } => {
+                api.prevent_close();
+                let _ = window.hide();
+            }
+            _ => {}
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

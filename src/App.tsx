@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
-import { FolderGit2, HardDrive, Settings, Search, Plus, RefreshCw, ChevronRight, ChevronLeft, X, LayoutGrid, Sparkles, FileQuestion, Globe, FolderX, FolderSearch, Trash2 } from "lucide-react";
+import { FolderGit2, HardDrive, Settings, Search, Plus, RefreshCw, ChevronRight, ChevronLeft, X, LayoutGrid, Sparkles, FileQuestion, Globe, FolderX, FolderSearch, Trash2, Info } from "lucide-react";
 import { confirm } from '@tauri-apps/plugin-dialog';
 import { AddRepositoryDialog } from "./components/library/AddRepositoryDialog";
 import { SkillLibrarySelector, SkillLibrarySelectorRef } from './components/library/SkillLibrarySelector';
@@ -14,6 +14,7 @@ import { RepoCard } from "./components/skill/RepoCard";
 import { SkillCard } from "./components/skill/SkillCard";
 import { ToastContainer, showToast } from "./components/ui/Toast";
 import { Tooltip } from "./components/ui/Tooltip";
+import { AboutDialog } from "./components/ui/AboutDialog";
 import { Skill, SourceDirectory, AgentConfig, SyncRecord, GroupedRepo } from "./types";
 
 function App() {
@@ -27,10 +28,13 @@ function App() {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isAboutOpen, setIsAboutOpen] = useState(false);
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
   const [selectedSkill, setSelectedSkill] = useState<Skill | null>(null);
   const [selectedRepoId, setSelectedRepoId] = useState<string | null>(null);
-  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null);
+  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(() => {
+    return localStorage.getItem("skillhub_selected_workspace");
+  });
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isOpenModalOpen, setIsOpenModalOpen] = useState(false);
   const [isMergeModalOpen, setIsMergeModalOpen] = useState(false);
@@ -42,12 +46,29 @@ function App() {
   const [isSyncPopupMinimized, setIsSyncPopupMinimized] = useState(false);
   const [cloningRepos, setCloningRepos] = useState<{ path: string, name: string }[]>([]);
   const [isAppStarting, setIsAppStarting] = useState(true);
+  const [loadingText, setLoadingText] = useState("资源加载中...");
   const skillLibrarySelectorRef = useRef<SkillLibrarySelectorRef>(null);
+
+  useEffect(() => {
+    if (isAppStarting) {
+      const timer = setTimeout(() => {
+        setLoadingText("即将完成...");
+      }, 500); // 500ms 后切换文案
+      return () => clearTimeout(timer);
+    }
+  }, [isAppStarting]);
 
   const currentSyncRunId = useRef<number>(0);
 
   const handleWorkspaceSelect = (id: string | null) => {
     setSelectedWorkspaceId(id);
+    if (id) {
+      localStorage.setItem("skillhub_selected_workspace", id);
+      invoke("refresh_app_menu", { selectedId: id }).catch(console.error);
+    } else {
+      localStorage.removeItem("skillhub_selected_workspace");
+      invoke("refresh_app_menu", { selectedId: null }).catch(console.error);
+    }
     setActiveTab("all");
     setSelectedCategory("all");
   };
@@ -65,7 +86,9 @@ function App() {
 
       setSkills(fetchedSkills);
       setDirectories(fetchedDirs);
-      await invoke("refresh_app_menu").catch(console.error);
+      await invoke("refresh_app_menu", { 
+        selectedId: localStorage.getItem("skillhub_selected_workspace") 
+      }).catch(console.error);
       setGroupedRepos(fetchedRepos);
       setAgents(fetchedAgents);
       setSyncRecords(allSyncs.flat());
@@ -81,9 +104,14 @@ function App() {
       // 启动时静默同步一次
       if (dirs && dirs.length > 0) {
         handleSyncAll(false, dirs);
-        if (!selectedWorkspaceId) {
+        const savedId = localStorage.getItem("skillhub_selected_workspace");
+        if (!savedId || !dirs.some(d => d.id === savedId)) {
           handleWorkspaceSelect(dirs[0].id);
+        } else {
+          handleWorkspaceSelect(savedId);
         }
+      } else {
+        handleWorkspaceSelect(null);
       }
     }).finally(() => {
       setIsAppStarting(false);
@@ -407,6 +435,10 @@ function App() {
             <Settings className="w-4 h-4" />
             <span>设置</span>
           </button>
+          <button onClick={() => setIsAboutOpen(true)} className="w-full flex items-center space-x-2 px-2 py-1.5 rounded-md font-medium text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-colors outline-none select-none active:scale-[0.98]">
+            <Info className="w-4 h-4" />
+            <span>关于</span>
+          </button>
         </div>
       </div>
 
@@ -501,14 +533,9 @@ function App() {
             </div>
           ) : filteredGroupedRepos.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-[var(--color-muted)] animate-in fade-in duration-500">
-              <div className="w-32 h-32 mb-6 relative">
-                {/* 玻璃拟物态的背景光晕 */}
-                <div className="absolute inset-0 bg-blue-100/40 blur-2xl rounded-full" />
-                {/* 悬浮的玻璃面板 */}
-                <div className="relative bg-white/40 backdrop-blur-xl rounded-3xl p-8 flex items-center justify-center">
-                  <div className="absolute inset-0 bg-gradient-to-tr from-white/40 to-white/80 rounded-3xl" />
+              <div className="w-32 h-32 mb-6 relative group">
+                <div className="relative bg-white/60 backdrop-blur-xl rounded-3xl p-8 flex items-center justify-center">
                   <HardDrive className="w-12 h-12 text-blue-400 drop-shadow-sm relative z-10" />
-                  <Plus className="w-5 h-5 text-blue-300 absolute top-6 right-6" />
                 </div>
               </div>
               <h2 className="text-xl font-semibold text-[var(--foreground)] mb-2 tracking-tight">空空如也，拖放技能到这里</h2>
@@ -772,7 +799,9 @@ function App() {
       {isAppStarting && (
         <div className="fixed inset-0 z-[200] bg-white/40 backdrop-blur-sm flex items-center justify-center animate-in fade-in duration-200">
           <div className="w-[320px] rounded-xl border border-black/[0.08] bg-white/95 backdrop-blur-2xl p-8 shadow-[0_20px_40px_rgb(0,0,0,0.08)] flex flex-col items-center">
-            <span className="text-[13px] font-medium text-[var(--foreground)] opacity-70 mb-5 tracking-widest">初始化...</span>
+            <span className="text-[13px] font-medium text-[var(--foreground)] opacity-70 mb-5 tracking-widest transition-opacity duration-300">
+              {loadingText}
+            </span>
             <div className="w-full h-1 bg-black/5 rounded-full overflow-hidden relative shadow-inner">
               <div 
                 className="absolute top-0 left-0 h-full bg-blue-500 rounded-full transition-all duration-300 ease-out"
@@ -792,6 +821,11 @@ function App() {
           </div>
         </div>
       )}
+
+      <AboutDialog 
+        isOpen={isAboutOpen}
+        onClose={() => setIsAboutOpen(false)}
+      />
 
       <ToastContainer />
     </div>
