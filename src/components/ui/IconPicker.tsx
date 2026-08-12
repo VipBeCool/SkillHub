@@ -15,6 +15,23 @@ interface IconPickerProps {
 const RECENT_KEY = 'skillhub_recent_icons';
 const MAX_RECENT = 14;
 
+const getIconDetails = (config: IconConfig | null) => {
+  if (!config) return { isValid: false, name: '' };
+  if (config.type === 'emoji') {
+    for (const group of EMOJI_DATA) {
+      const found = group.emojis.find(e => e.char === config.value);
+      if (found) return { isValid: true, name: found.name_zh };
+    }
+    return { isValid: false, name: '表情' };
+  } else {
+    for (const group of ICON_DATA) {
+      const found = group.icons.find(i => i.id === config.value);
+      if (found) return { isValid: true, name: found.name_zh };
+    }
+    return { isValid: false, name: '图标' };
+  }
+};
+
 export const IconPicker: React.FC<IconPickerProps> = ({ onSelect, onClose, currentIconConfig }) => {
   const [activeTab, setActiveTab] = useState<'icon' | 'emoji'>(currentIconConfig?.type === 'emoji' ? 'emoji' : 'icon');
   const [searchTerm, setSearchTerm] = useState('');
@@ -28,7 +45,8 @@ export const IconPicker: React.FC<IconPickerProps> = ({ onSelect, onClose, curre
     try {
       const saved = localStorage.getItem(RECENT_KEY);
       if (saved) {
-        setRecentIcons(JSON.parse(saved));
+        const parsed = JSON.parse(saved) as IconConfig[];
+        setRecentIcons(parsed.filter(item => getIconDetails(item).isValid));
       }
     } catch (e) {
       console.error('Failed to load recent icons', e);
@@ -41,7 +59,7 @@ export const IconPicker: React.FC<IconPickerProps> = ({ onSelect, onClose, curre
       try {
         const newRecents = [config, ...recentIcons.filter(
           item => !(item.type === config.type && item.value === config.value)
-        )].slice(0, MAX_RECENT);
+        )].filter(item => getIconDetails(item).isValid).slice(0, MAX_RECENT);
         setRecentIcons(newRecents);
         localStorage.setItem(RECENT_KEY, JSON.stringify(newRecents));
       } catch (e) {
@@ -180,7 +198,7 @@ export const IconPicker: React.FC<IconPickerProps> = ({ onSelect, onClose, curre
             <h3 className="text-xs font-semibold text-gray-400 mb-2">最近使用</h3>
             <div className="grid grid-cols-9 gap-[2px]">
               {recentIcons.filter(rec => rec.type === activeTab).map((rec, i) => (
-                <Tooltip key={i} content={rec.type === 'emoji' ? '表情' : '图标'}>
+                <Tooltip key={i} content={getIconDetails(rec).name}>
                   <button
                     className="aspect-square w-7 flex items-center justify-center rounded hover:bg-gray-100 transition-colors text-lg"
                     onClick={() => handleSelect(rec.type === 'icon' && activeTab === 'icon' ? { ...rec, color: selectedColor } : rec)}

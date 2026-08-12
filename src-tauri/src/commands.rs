@@ -634,10 +634,25 @@ pub fn sync_skill(state: State<'_, AppState>, skill_id: String, agent_id: String
         |row| row.get(0),
     ).map_err(|e| e.to_string())?;
 
-    // 2. Create Symlink
-    let synced_path = agent_sync::create_symlink(&skill_path, &agent_skills_path, &skill_name)?;
+    // 2. Determine actual source path to symlink
+    let mut actual_source_path = std::path::PathBuf::from(&skill_path);
+    let is_skill_md = actual_source_path.file_name().map_or(false, |n| {
+        let n_lower = n.to_string_lossy().to_lowercase();
+        n_lower == "skill.md" || n_lower == "skill.mdx"
+    });
+    
+    // If it's a folder-based skill (identified by SKILL.md), symlink the entire folder
+    if is_skill_md {
+        if let Some(parent) = actual_source_path.parent() {
+            actual_source_path = parent.to_path_buf();
+        }
+    }
 
-    // 3. Record in DB
+    // 3. Create Symlink
+    let actual_source_str = actual_source_path.to_string_lossy().to_string();
+    let synced_path = agent_sync::create_symlink(&actual_source_str, &agent_skills_path, &skill_name)?;
+
+    // 4. Record in DB
     let record = SyncRecord {
         skill_id: skill_id.clone(),
         agent_id: agent_id.clone(),
