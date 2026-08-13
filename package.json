@@ -19,6 +19,7 @@
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2.7.1",
     "@tauri-apps/plugin-opener": "^2",
+    "@viselect/react": "^3.9.0",
     "clsx": "^2.1.1",
     "lucide-react": "^1.21.0",
     "react": "^19.1.0",

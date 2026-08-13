@@ -14,7 +14,8 @@ pub fn create_symlink(source_path: &str, target_dir: &str, link_name: &str) -> R
         fs::create_dir_all(&target).map_err(|e| format!("Failed to create target directory: {}", e))?;
     }
 
-    let symlink_path = target.join(link_name);
+    let safe_link_name = link_name.replace("/", "-");
+    let symlink_path = target.join(safe_link_name);
     
     // If the symlink already exists, remove it first
     if symlink_path.exists() {

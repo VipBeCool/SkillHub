@@ -6,6 +6,7 @@ pub mod agents;
 pub mod git_engine;
 pub mod agent_sync;
 pub mod menu;
+pub mod export;
 
 use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
@@ -112,6 +113,7 @@ pub fn run() {
             commands::delete_agent,
             commands::sync_skill,
             commands::unsync_skill,
+            commands::sync_repo_to_agent,
             commands::get_sync_records_for_skill,
             commands::get_sync_records_for_agent,
             commands::get_git_repos_in_directory,
@@ -129,7 +131,10 @@ pub fn run() {
             commands::rename_source_directory,
             commands::remove_source_directory,
             commands::create_local_skill_library,
-            commands::merge_skill_libraries
+            commands::merge_skill_libraries,
+            export::export_item,
+            export::export_batch,
+            export::check_exists
         ])
         .on_window_event(|window, event| match event {
             tauri::WindowEvent::CloseRequested { api, .. } => {

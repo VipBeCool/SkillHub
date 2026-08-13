@@ -112,118 +112,132 @@ export function AgentSettingsDialog({ isOpen, onClose }: AgentSettingsDialogProp
 
         <div className="p-6 overflow-y-auto flex-1">
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-medium text-[var(--foreground)]">已配置的 Agent 列表</h3>
-              {!isAdding && (
-                <button
-                  onClick={() => setIsAdding(true)}
-                  className="flex items-center px-2.5 py-1 bg-[var(--color-foreground)] text-white rounded-md text-[13px] font-medium hover:bg-black transition-all"
-                >
-                  <Plus className="w-4 h-4 mr-1" />
-                  新增 Agent
-                </button>
-              )}
-            </div>
-
-            {isAdding && (
-              <form onSubmit={handleAddAgent} className="p-4 bg-[var(--color-muted-bg)]/50 border border-[var(--color-border)] rounded-xl space-y-4">
-                <h4 className="text-sm font-medium text-[var(--foreground)] mb-2">添加新的 Agent</h4>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-[var(--foreground)]">显示名称</label>
-                    <input
-                      type="text"
-                      required
-                      value={newDisplayName}
-                      onChange={(e) => setNewDisplayName(e.target.value)}
-                      placeholder="例如: Cursor"
-                      className="input-field w-full"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-[var(--foreground)]">内部标识名</label>
-                    <input
-                      type="text"
-                      value={newName}
-                      onChange={(e) => setNewName(e.target.value)}
-                      placeholder="选填 (如: cursor)"
-                      className="input-field w-full"
-                    />
-                  </div>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-[var(--foreground)]">Skills 挂载目录</label>
-                  <div className="flex space-x-2">
-                    <input
-                      type="text"
-                      required
-                      readOnly
-                      value={newSkillsPath}
-                      placeholder="该 Agent 读取技能的本地目录..."
-                      className="input-field flex-1"
-                    />
-                    <button type="button" onClick={handleBrowseSkillsPath} className="flex items-center px-2.5 py-0.5 border border-[var(--color-border)] bg-white rounded-md text-[12px] font-medium hover:bg-black/5 transition-colors">
-                      <Folder className="w-4 h-4 mr-1" />
-                      浏览
-                    </button>
-                  </div>
-                  <p className="text-[11px] text-[var(--color-muted)] mt-1">技能将会以符号链接的形式同步到此文件夹中。</p>
-                </div>
-                <div className="pt-2 flex justify-end space-x-2">
+            {isAdding ? (
+              <div className="animate-in fade-in zoom-in-95 duration-200">
+                <div className="flex items-center space-x-2 mb-4 pb-3 border-b border-[var(--color-border)]/50">
                   <button
                     type="button"
                     onClick={() => setIsAdding(false)}
-                    className="px-3 py-1.5 rounded-md text-[13px] font-medium text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-all"
+                    className="p-1.5 rounded-md hover:bg-black/5 text-[var(--color-muted)] hover:text-[var(--foreground)] transition-colors"
                   >
-                    取消
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                    </svg>
                   </button>
-                  <button
-                    type="submit"
-                    disabled={loading || !newDisplayName || !newSkillsPath}
-                    className="flex items-center px-2.5 py-1 bg-[var(--color-foreground)] text-white rounded-md text-[13px] font-medium hover:bg-black transition-all"
-                  >
-                    {loading ? "保存中..." : "保存 Agent"}
-                  </button>
+                  <h3 className="text-sm font-medium text-[var(--foreground)]">添加新的 Agent</h3>
                 </div>
-              </form>
-            )}
-
-            <div className="space-y-2">
-              {agents.length === 0 && !isAdding ? (
-                <div className="text-center py-8 text-[var(--color-muted)] border border-dashed border-[var(--color-border)] rounded-xl">
-                  <p className="text-sm">暂未配置任何 Agent。</p>
-                  <p className="text-xs mt-1">点击右上角“新增 Agent”开始配置。</p>
-                </div>
-              ) : (
-                agents.map((agent) => (
-                  <div key={agent.id} className="flex flex-col p-4 bg-black/5 rounded-xl hover:bg-black/10 transition-colors border border-transparent">
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-center space-x-3">
-                        <div className="w-10 h-10 rounded-lg bg-[var(--color-muted-bg)] border border-[var(--color-border)] flex items-center justify-center shrink-0">
-                          <Bot className="w-5 h-5 text-[var(--color-primary)]" />
-                        </div>
-                        <div>
-                          <h4 className="text-sm font-medium text-[var(--foreground)]">{agent.display_name}</h4>
-                          <div className="text-xs text-[var(--color-muted)] font-mono mt-0.5">ID: {agent.name}</div>
-                        </div>
-                      </div>
-                      <Tooltip content="删除 Agent">
-                        <button 
-                          onClick={() => handleDeleteAgent(agent.id)}
-                          className="p-1.5 rounded-lg text-[var(--color-muted)] hover:bg-red-50 hover:text-red-500 transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </Tooltip>
+                
+                <form onSubmit={handleAddAgent} className="space-y-5 px-1">
+                  <div className="grid grid-cols-2 gap-5">
+                    <div className="space-y-2">
+                      <label className="text-[13px] font-medium text-[var(--foreground)]">显示名称</label>
+                      <input
+                        type="text"
+                        required
+                        value={newDisplayName}
+                        onChange={(e) => setNewDisplayName(e.target.value)}
+                        placeholder="例如: Cursor"
+                        className="input-field w-full py-2"
+                      />
                     </div>
-                    <div className="mt-3 text-xs text-[var(--foreground)] bg-[var(--color-muted-bg)]/50 p-2 rounded border border-[var(--color-border)] break-all flex items-start">
-                      <Folder className="w-3.5 h-3.5 mr-1.5 text-[var(--color-muted)] shrink-0 mt-0.5" />
-                      <span className="opacity-80">{agent.skills_path}</span>
+                    <div className="space-y-2">
+                      <label className="text-[13px] font-medium text-[var(--foreground)]">内部标识名 <span className="text-[var(--color-muted)] font-normal">(可选)</span></label>
+                      <input
+                        type="text"
+                        value={newName}
+                        onChange={(e) => setNewName(e.target.value)}
+                        placeholder="例如: cursor"
+                        className="input-field w-full py-2"
+                      />
                     </div>
                   </div>
-                ))
-              )}
-            </div>
+                  <div className="space-y-2">
+                    <label className="text-[13px] font-medium text-[var(--foreground)]">Skills 挂载目录</label>
+                    <div className="flex space-x-2">
+                      <input
+                        type="text"
+                        required
+                        readOnly
+                        value={newSkillsPath}
+                        placeholder="该 Agent 读取技能的本地目录..."
+                        className="input-field flex-1 py-2"
+                      />
+                      <button type="button" onClick={handleBrowseSkillsPath} className="flex items-center px-4 border border-[var(--color-border)] bg-white rounded-md text-[13px] font-medium hover:bg-black/5 transition-colors">
+                        <Folder className="w-4 h-4 mr-1.5 opacity-70" />
+                        浏览
+                      </button>
+                    </div>
+                    <p className="text-[12px] text-[var(--color-muted)] mt-1">技能将会以符号链接的形式同步到此文件夹中。</p>
+                  </div>
+                  <div className="pt-6 pb-2 flex justify-end space-x-3">
+                    <button
+                      type="button"
+                      onClick={() => setIsAdding(false)}
+                      className="px-4 py-2 rounded-md text-[13px] font-medium text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-all"
+                    >
+                      取消
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={loading || !newDisplayName || !newSkillsPath}
+                      className="flex items-center px-5 py-2 bg-[var(--color-foreground)] text-white rounded-md text-[13px] font-medium hover:bg-black transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                    >
+                      {loading ? "保存中..." : "保存 Agent"}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            ) : (
+              <div className="animate-in fade-in duration-200 space-y-4">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-sm font-medium text-[var(--foreground)]">已配置的 Agent 列表</h3>
+                  <button
+                    onClick={() => setIsAdding(true)}
+                    className="flex items-center px-3 py-1.5 bg-[var(--color-foreground)] text-white rounded-md text-[13px] font-medium hover:bg-black transition-all shadow-sm"
+                  >
+                    <Plus className="w-4 h-4 mr-1.5" />
+                    新增 Agent
+                  </button>
+                </div>
+                
+                <div className="space-y-3">
+                  {agents.length === 0 ? (
+                    <div className="text-center py-10 text-[var(--color-muted)] border border-dashed border-[var(--color-border)] rounded-xl bg-black/[0.02]">
+                      <p className="text-sm font-medium mb-1 text-[var(--foreground)]">暂未配置任何 Agent</p>
+                      <p className="text-[13px]">点击右上角“新增 Agent”开始配置</p>
+                    </div>
+                  ) : (
+                    agents.map((agent) => (
+                      <div key={agent.id} className="flex flex-col p-4 bg-white rounded-xl border border-[var(--color-border)] hover:border-black/20 hover:shadow-sm transition-all">
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-center space-x-3">
+                            <div className="w-10 h-10 rounded-lg bg-[var(--color-primary)]/10 text-[var(--color-primary)] flex items-center justify-center shrink-0">
+                              <Bot className="w-5 h-5" />
+                            </div>
+                            <div>
+                              <h4 className="text-[14px] font-semibold text-[var(--foreground)]">{agent.display_name}</h4>
+                              <div className="text-[12px] text-[var(--color-muted)] font-mono mt-0.5 opacity-80">ID: {agent.name}</div>
+                            </div>
+                          </div>
+                          <Tooltip content="删除 Agent">
+                            <button 
+                              onClick={() => handleDeleteAgent(agent.id)}
+                              className="p-1.5 rounded-lg text-[var(--color-muted)] hover:bg-red-50 hover:text-red-500 transition-colors"
+                            >
+                              <Trash2 className="w-4.5 h-4.5" />
+                            </button>
+                          </Tooltip>
+                        </div>
+                        <div className="mt-3.5 text-[12px] text-[var(--foreground)] bg-black/[0.03] p-2.5 rounded-lg border border-black/5 break-all flex items-start">
+                          <Folder className="w-4 h-4 mr-2 text-[var(--color-muted)] shrink-0 mt-0.5" />
+                          <span className="opacity-80 leading-relaxed">{agent.skills_path}</span>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

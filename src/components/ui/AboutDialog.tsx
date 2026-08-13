@@ -1,4 +1,6 @@
+import { useState, useEffect } from "react";
 import { X } from "lucide-react";
+import { getVersion } from "@tauri-apps/api/app";
 import logo from "../../assets/logo.png";
 
 interface AboutDialogProps {
@@ -7,6 +9,14 @@ interface AboutDialogProps {
 }
 
 export function AboutDialog({ isOpen, onClose }: AboutDialogProps) {
+  const [appVersion, setAppVersion] = useState<string>("...");
+
+  useEffect(() => {
+    if (isOpen) {
+      getVersion().then((version) => setAppVersion(version)).catch(console.error);
+    }
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   return (
@@ -29,7 +39,7 @@ export function AboutDialog({ isOpen, onClose }: AboutDialogProps) {
           <X className="w-4 h-4" />
         </button>
 
-        <div className="mb-5 drop-shadow-2xl">
+        <div className="mb-5">
           <img src={logo} alt="SkillHub Logo" className="w-24 h-24 object-contain" />
         </div>
         
@@ -39,7 +49,7 @@ export function AboutDialog({ isOpen, onClose }: AboutDialogProps) {
         </p>
 
         <div className="text-[12px] text-black/30 mb-8 font-mono tracking-wide">
-          1.0.0 Build01 (20260807)
+          v{appVersion}
         </div>
 
         <button 

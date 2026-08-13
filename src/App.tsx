@@ -1,21 +1,31 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { SelectionArea, SelectionEvent } from '@viselect/react';
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
-import { FolderGit2, HardDrive, Settings, Search, Plus, RefreshCw, ChevronRight, ChevronLeft, X, LayoutGrid, Sparkles, FileQuestion, Globe, FolderX, FolderSearch, Trash2, Info } from "lucide-react";
-import { confirm } from '@tauri-apps/plugin-dialog';
+import { FolderGit2, HardDrive, Settings, Search, Plus, RefreshCw, ChevronRight, ChevronLeft, X, LayoutGrid, Sparkles, FileQuestion, Globe, FolderX, FolderSearch, Trash2, Info, Folder, Copy, Link as LinkIcon, Check, Download, FileArchive } from "lucide-react";
+import { confirm, open } from '@tauri-apps/plugin-dialog';
 import { AddRepositoryDialog } from "./components/library/AddRepositoryDialog";
 import { SkillLibrarySelector, SkillLibrarySelectorRef } from './components/library/SkillLibrarySelector';
 import { CreateSkillLibraryModal, OpenSkillLibraryModal, MergeSkillLibraryModal } from "./components/library/LibraryManagementModals";
 import { SkillDetailsDrawer } from "./components/skill/SkillDetailsDrawer";
 import { AgentSettingsDialog } from "./components/agent/AgentSettingsDialog";
+import { ConfirmDialog } from './components/ui/ConfirmDialog';
 import { SearchModal } from "./components/search/SearchModal";
 import { RepoCard } from "./components/skill/RepoCard";
 import { SkillCard } from "./components/skill/SkillCard";
 import { ToastContainer, showToast } from "./components/ui/Toast";
 import { Tooltip } from "./components/ui/Tooltip";
 import { AboutDialog } from "./components/ui/AboutDialog";
+import { InspectorPanel } from "./components/inspector/InspectorPanel";
+import { ContextMenu, useContextMenu } from "./components/ui/ContextMenu";
+import type { ContextMenuItem } from "./components/ui/ContextMenu";
 import { Skill, SourceDirectory, AgentConfig, SyncRecord, GroupedRepo } from "./types";
+
+const isMac = navigator.userAgent.toLowerCase().includes('mac');
+const fileManagerName = isMac ? '访达' : '文件管理器';
+
+const getExportTimeStr = () => new Date().toISOString().replace(/[:.]/g, '-');
 
 function App() {
   const [activeTab, setActiveTab] = useState("all");
@@ -32,6 +42,17 @@ function App() {
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
   const [selectedSkill, setSelectedSkill] = useState<Skill | null>(null);
   const [selectedRepoId, setSelectedRepoId] = useState<string | null>(null);
+
+  // Eagle 风格交互：选中状态
+  const [inspectorSelectedType, setInspectorSelectedType] = useState<'repo' | 'skill' | null>(null);
+  const [selectedRepoIds, setSelectedRepoIds] = useState<Set<string>>(new Set());
+  const [selectedSkillIds, setSelectedSkillIds] = useState<Set<string>>(new Set());
+  const [lastSelectedRepoId, setLastSelectedRepoId] = useState<string | null>(null);
+  const [lastSelectedSkillId, setLastSelectedSkillId] = useState<string | null>(null);
+  const [isInspectorOpen, setIsInspectorOpen] = useState(true);
+
+  // 右键菜单
+  const { menuPosition, menuTarget, showContextMenu, hideContextMenu } = useContextMenu();
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(() => {
     return localStorage.getItem("skillhub_selected_workspace");
   });
@@ -45,9 +66,22 @@ function App() {
   const [syncLogs, setSyncLogs] = useState<{ id: string, label: string, status: 'pending' | 'success' | 'error' | 'skipped', message?: string }[]>([]);
   const [isSyncPopupMinimized, setIsSyncPopupMinimized] = useState(false);
   const [cloningRepos, setCloningRepos] = useState<{ path: string, name: string }[]>([]);
+  const [deleteConfirmRepos, setDeleteConfirmRepos] = useState<GroupedRepo[] | null>(null);
   const [isAppStarting, setIsAppStarting] = useState(true);
   const [loadingText, setLoadingText] = useState("资源加载中...");
   const skillLibrarySelectorRef = useRef<SkillLibrarySelectorRef>(null);
+  const isDraggingRef = useRef(false);
+  
+  const [confirmData, setConfirmData] = useState<{ title: string, message: string, onConfirm: () => void, onClose: () => void } | null>(null);
+
+  const waitConfirm = (message: string) => new Promise<boolean>(resolve => {
+    setConfirmData({
+      title: '确认操作',
+      message,
+      onConfirm: () => { setConfirmData(null); resolve(true); },
+      onClose: () => { setConfirmData(null); resolve(false); }
+    });
+  });
 
   useEffect(() => {
     if (isAppStarting) {
@@ -168,40 +202,58 @@ function App() {
     }
   };
 
-  const handleUpdateRepo = async (e: React.MouseEvent, repo: GroupedRepo) => {
+  const handleUpdateRepos = async (e: React.MouseEvent, repos: GroupedRepo[]) => {
     e.stopPropagation();
-    if (repo.source_type !== 'github') return;
+    if (repos.length === 0) return;
+    setSyncLogs(repos.map(r => ({ id: r.path, label: r.name, status: 'pending', message: '' })));
+    setIsSyncPopupMinimized(false);
     
-    setIsSyncPopupMinimized(true);
-    setSyncLogs([{ id: repo.path, label: repo.name, status: 'pending' }]);
-    try {
-      const msg = await invoke<string>("pull_single_repo", { path: repo.path });
-      setSyncLogs([{ id: repo.path, label: repo.name, status: msg === '已是最新' ? 'skipped' : 'success', message: msg }]);
-      
-      const dirPath = directories.find(d => d.id === repo.source_dir_id)?.path;
-      if (dirPath) {
-        await invoke("rescan_directory", { path: dirPath });
+    let totalLogs: { id: string, label: string, status: 'pending' | 'success' | 'error' | 'skipped', message?: string }[] = repos.map(r => ({ id: r.path, label: r.name, status: 'pending', message: '' }));
+    
+    for (const repo of repos) {
+      if (repo.source_type !== 'github') {
+        totalLogs = totalLogs.map(l => l.id === repo.path ? { ...l, status: 'skipped', message: '本地跳过' } : l);
+        setSyncLogs([...totalLogs]);
+        continue;
       }
-      await fetchData();
-      setTimeout(() => setSyncLogs([]), 5000);
-    } catch (err) {
-      setSyncLogs([{ id: repo.path, label: repo.name, status: 'error', message: String(err) }]);
-      setTimeout(() => setSyncLogs([]), 5000);
+      try {
+        const msg = await invoke<string>("pull_single_repo", { path: repo.path });
+        if (msg === '已是最新') {
+          totalLogs = totalLogs.map(l => l.id === repo.path ? { ...l, status: 'skipped', message: msg } : l);
+        } else {
+          totalLogs = totalLogs.map(l => l.id === repo.path ? { ...l, status: 'success', message: msg } : l);
+        }
+        setSyncLogs([...totalLogs]);
+        await invoke("rescan_directory", { path: repo.source_dir_id! });
+        await fetchData();
+      } catch (err) {
+        totalLogs = totalLogs.map(l => l.id === repo.path ? { ...l, status: 'error', message: String(err) } : l);
+        setSyncLogs([...totalLogs]);
+      }
     }
+    setTimeout(() => setSyncLogs([]), 5000);
   };
 
-  const handleDeleteRepo = async (e: React.MouseEvent, repo: GroupedRepo) => {
+  const handleDeleteRepos = async (e: React.MouseEvent, repos: GroupedRepo[]) => {
     e.stopPropagation();
-    const yes = await confirm(`确定要彻底删除整个仓库 "${repo.name}" 及其所有 ${repo.skills.length} 个子技能吗？此操作不可恢复。`, { title: '永久删除整个仓库', kind: 'warning' });
-    if (yes) {
-      try {
-        await invoke("delete_skill_by_path", { path: repo.path });
-        await fetchData();
-        if (selectedRepoId === repo.id) setSelectedRepoId(null);
-      } catch (err) {
-        alert(String(err));
+    if (repos.length === 0) return;
+    setDeleteConfirmRepos(repos);
+  };
+
+  const confirmDeleteRepos = async () => {
+    if (!deleteConfirmRepos) return;
+    const repos = deleteConfirmRepos;
+    try {
+      for (const r of repos) {
+        await invoke("delete_skill_by_path", { path: r.path });
       }
+      await fetchData();
+      if (repos.some(r => r.id === selectedRepoId)) setSelectedRepoId(null);
+      setSelectedRepoIds(new Set());
+    } catch (err) {
+      alert(String(err));
     }
+    setDeleteConfirmRepos(null);
   };
 
   const handleAddRepo = () => {
@@ -310,11 +362,367 @@ function App() {
     }
   }, [filteredGroupedRepos, selectedRepoId]);
 
+  // 清除检查器选中（当过滤条件变化时）
+  useEffect(() => {
+    setInspectorSelectedType(null);
+    setSelectedRepoIds(new Set());
+    setSelectedSkillIds(new Set());
+    setLastSelectedRepoId(null);
+    setLastSelectedSkillId(null);
+  }, [selectedWorkspaceId, activeTab, selectedCategory]);
+
+  // 单击选中仓库
+  const handleSelectRepo = useCallback((repo: GroupedRepo, e?: React.MouseEvent) => {
+    setInspectorSelectedType('repo');
+    setSelectedSkillIds(new Set());
+    
+    setSelectedRepoIds(prev => {
+      const newSet = new Set(prev);
+      if (e?.metaKey || e?.ctrlKey) {
+        if (newSet.has(repo.id)) newSet.delete(repo.id);
+        else newSet.add(repo.id);
+      } else if (e?.shiftKey && lastSelectedRepoId) {
+         const allIds = filteredGroupedRepos.map(r => r.id);
+         const startIdx = allIds.indexOf(lastSelectedRepoId);
+         const endIdx = allIds.indexOf(repo.id);
+         if (startIdx !== -1 && endIdx !== -1) {
+            const minIdx = Math.min(startIdx, endIdx);
+            const maxIdx = Math.max(startIdx, endIdx);
+            newSet.clear();
+            for (let i = minIdx; i <= maxIdx; i++) {
+                newSet.add(allIds[i]);
+            }
+         } else {
+             newSet.add(repo.id);
+         }
+      } else {
+        newSet.clear();
+        newSet.add(repo.id);
+      }
+      return newSet;
+    });
+    
+    // 只在单选或追加选时更新 anchor
+    if (!e?.shiftKey) {
+      setLastSelectedRepoId(repo.id);
+    }
+  }, [filteredGroupedRepos, lastSelectedRepoId]);
+
+  // 单击选中技能
+  const handleSelectSkill = useCallback((skill: Skill, e?: React.MouseEvent) => {
+    setInspectorSelectedType('skill');
+    setSelectedRepoIds(new Set());
+    
+    const visibleSkills = filteredGroupedRepos.find(r => r.id === selectedRepoId)?.skills || [];
+
+    setSelectedSkillIds(prev => {
+      const newSet = new Set(prev);
+      if (e?.metaKey || e?.ctrlKey) {
+        if (newSet.has(skill.id)) newSet.delete(skill.id);
+        else newSet.add(skill.id);
+      } else if (e?.shiftKey && lastSelectedSkillId) {
+         const allIds = visibleSkills.map(s => s.id);
+         const startIdx = allIds.indexOf(lastSelectedSkillId);
+         const endIdx = allIds.indexOf(skill.id);
+         if (startIdx !== -1 && endIdx !== -1) {
+            const minIdx = Math.min(startIdx, endIdx);
+            const maxIdx = Math.max(startIdx, endIdx);
+            newSet.clear();
+            for (let i = minIdx; i <= maxIdx; i++) {
+                newSet.add(allIds[i]);
+            }
+         } else {
+             newSet.add(skill.id);
+         }
+      } else {
+        newSet.clear();
+        newSet.add(skill.id);
+      }
+      return newSet;
+    });
+    
+    if (!e?.shiftKey) {
+      setLastSelectedSkillId(skill.id);
+    }
+  }, [filteredGroupedRepos, selectedRepoId, lastSelectedSkillId]);
+
+  // 返回上一级
+  const handleGoBack = useCallback(() => {
+    setSelectedRepoId(null);
+    setInspectorSelectedType(null);
+    setSelectedRepoIds(new Set());
+    setSelectedSkillIds(new Set());
+  }, []);
+
+  // 点击空白取消选中
+  const handleDeselectAll = useCallback(() => {
+    if (selectedRepoId) {
+      setInspectorSelectedType('repo');
+      setSelectedRepoIds(new Set([selectedRepoId]));
+      setSelectedSkillIds(new Set());
+    } else {
+      setInspectorSelectedType(null);
+      setSelectedRepoIds(new Set());
+      setSelectedSkillIds(new Set());
+    }
+  }, [selectedRepoId]);
+
+  // 构建右键菜单项
+  const buildRepoContextMenu = useCallback((repo: GroupedRepo): ContextMenuItem[] => {
+    const isMulti = selectedRepoIds.has(repo.id) && selectedRepoIds.size > 1;
+    const targetRepos = isMulti ? filteredGroupedRepos.filter(r => selectedRepoIds.has(r.id)) : [repo];
+    
+    return [
+    { id: 'open_folder', label: isMulti ? `在${fileManagerName}中打开` : `在${fileManagerName}中打开`, icon: <Folder size={14} />, onClick: () => {
+        targetRepos.forEach(r => invoke('open_local_folder', { path: r.path }).catch(console.error));
+    }},
+    { id: 'copy_path', label: isMulti ? `复制 ${targetRepos.length} 个路径` : '复制路径', icon: <Copy size={14} />, onClick: () => { 
+        navigator.clipboard.writeText(targetRepos.map(r => r.path).join('\n')); 
+        showToast(isMulti ? '多个路径已复制' : '路径已复制'); 
+    }},
+    { id: 'sep1', label: '', separator: true },
+    ...(agents.length > 0 ? [{
+      id: 'sync_to_agent',
+      label: isMulti ? `将 ${targetRepos.length} 个仓库同步至 Agent` : '同步至 AI Agent',
+      icon: <LinkIcon size={14} />,
+      children: agents.map(agent => {
+        const syncedCount = targetRepos.flatMap(r => r.skills).filter(skill => syncRecords.some(sr => sr.skill_id === skill.id && sr.agent_id === agent.id)).length;
+        return {
+          id: `sync_${agent.id}`,
+          label: agent.display_name,
+          icon: syncedCount > 0 ? <Check size={14} className="text-[var(--color-primary)]" /> : undefined,
+          onClick: async () => {
+            try {
+              if (syncedCount > 0) {
+                for (const r of targetRepos) {
+                  for (const skill of r.skills) {
+                    await invoke('unsync_skill', { skillId: skill.id, agentId: agent.id });
+                  }
+                }
+                showToast(isMulti ? `已批量取消同步至 ${agent.display_name}` : `已取消同步 "${repo.name}" 至 ${agent.display_name}`);
+              } else {
+                for (const r of targetRepos) {
+                  for (const skill of r.skills) {
+                    const isAlreadySynced = syncRecords.some(sr => sr.skill_id === skill.id && sr.agent_id === agent.id);
+                    if (!isAlreadySynced) await invoke('sync_skill', { skillId: skill.id, agentId: agent.id });
+                  }
+                }
+                showToast(isMulti ? `已批量同步至 ${agent.display_name}` : `已同步 "${repo.name}" 至 ${agent.display_name}`);
+              }
+              fetchData();
+            } catch (e) { showToast(`操作失败: ${e}`, 'error'); }
+          }
+        };
+      })
+    }] : []),
+    { id: 'sep2', label: '', separator: true },
+    {
+      id: 'export',
+      label: '导出',
+      icon: <Download size={14} />,
+      children: [
+        {
+          id: 'export_folder',
+          label: '直接导出目录',
+          icon: <Download size={14} />,
+          onClick: async () => {
+            try {
+              const destDir = await open({ directory: true, title: isMulti ? '选择批量导出位置' : '选择导出位置', multiple: false });
+              if (!destDir) return;
+              
+              if (isMulti) {
+                let conflictCount = 0;
+                try {
+                  for (const r of targetRepos) {
+                    if (await invoke<boolean>('check_exists', { path: `${destDir}/${r.name}` })) conflictCount++;
+                  }
+                } catch(e) {
+                  showToast(`检测文件冲突失败: ${e}`, 'error'); return;
+                }
+                if (conflictCount > 0) {
+                  if (!(await waitConfirm(`选定的目录中已有 ${conflictCount} 个同名仓库文件夹，确定要覆盖吗？`))) return;
+                }
+                await invoke('export_batch', { sourcePaths: targetRepos.map(r => r.path), destPath: destDir, isZip: false });
+                showToast(`成功导出 ${targetRepos.length} 个仓库`);
+              } else {
+                const r = targetRepos[0];
+                try {
+                  if (await invoke<boolean>('check_exists', { path: `${destDir}/${r.name}` })) {
+                    if (!(await waitConfirm(`导出路径下已有同名文件夹 "${r.name}"，确定要覆盖吗？`))) return;
+                  }
+                } catch(e) {
+                  showToast(`检测文件冲突失败: ${e}`, 'error'); return;
+                }
+                await invoke('export_batch', { sourcePaths: [r.path], destPath: destDir as string, isZip: false });
+                showToast(`仓库已导出`);
+              }
+            } catch (e) {
+              console.error(e);
+              showToast(`导出失败: ${e}`, 'error');
+            }
+          }
+        },
+        {
+          id: 'export_zip',
+          label: '打包为 ZIP',
+          icon: <FileArchive size={14} />,
+          onClick: async () => {
+            try {
+              const destDir = await open({ directory: true, title: isMulti ? '选择批量导出位置' : '选择导出位置', multiple: false });
+              if (!destDir) return;
+              
+              const targetPath = isMulti 
+                ? `${destDir}/SkillHub_Batch_${getExportTimeStr()}.zip` 
+                : `${destDir}/${targetRepos[0].name}_${getExportTimeStr()}.zip`;
+              
+              try {
+                if (await invoke<boolean>('check_exists', { path: targetPath })) {
+                  if (!(await waitConfirm(`导出路径下已有同名压缩包，确定要覆盖吗？`))) return;
+                }
+              } catch(e) {
+                showToast(`检测文件冲突失败: ${e}`, 'error'); return;
+              }
+              await invoke('export_batch', { sourcePaths: targetRepos.map(r => r.path), destPath: targetPath, isZip: true });
+              showToast(isMulti ? `成功打包 ${targetRepos.length} 个仓库` : `仓库 ZIP 已生成`);
+            } catch (e) {
+              console.error(e);
+              showToast(`打包失败: ${e}`, 'error');
+            }
+          }
+        }
+      ]
+    },
+    { id: 'sep3', label: '', separator: true },
+    { id: 'update', label: isMulti ? `批量更新仓库` : '更新仓库', icon: <RefreshCw size={14} />, onClick: (e?: any) => handleUpdateRepos(e || ({stopPropagation: ()=>{}} as any), targetRepos) },
+    { id: 'sep4', label: '', separator: true },
+    { id: 'delete', label: isMulti ? `批量删除` : '删除', icon: <Trash2 size={14} />, danger: true, onClick: (e?: any) => handleDeleteRepos(e || ({stopPropagation: ()=>{}} as any), targetRepos) },
+  ];
+  }, [agents, syncRecords, selectedRepoIds, filteredGroupedRepos, waitConfirm]);
+
+  const buildSkillContextMenu = useCallback((skill: Skill): ContextMenuItem[] => {
+    const isMulti = selectedSkillIds.has(skill.id) && selectedSkillIds.size > 1;
+    
+    // 从所有可见的 skill 中筛选出当前选中的 skills
+    const visibleSkills = filteredGroupedRepos.find(r => r.id === selectedRepoId)?.skills || [];
+    const targetSkills = isMulti ? visibleSkills.filter(s => selectedSkillIds.has(s.id)) : [skill];
+
+    return [
+    { id: 'view_doc', label: isMulti ? `无法批量查看文档` : '查看文档', icon: <Search size={14} />, onClick: () => { if(!isMulti) { setSelectedSkill(skill); setIsDrawerOpen(true); } } },
+    { id: 'open_folder', label: `在${fileManagerName}中打开`, icon: <Folder size={14} />, onClick: () => {
+        targetSkills.forEach(s => invoke('open_local_folder', { path: s.local_path }).catch(console.error));
+    } },
+    { id: 'copy_path', label: isMulti ? `复制 ${targetSkills.length} 个路径` : '复制路径', icon: <Copy size={14} />, onClick: () => { 
+        navigator.clipboard.writeText(targetSkills.map(s => s.local_path).join('\n')); 
+        showToast(isMulti ? '多个路径已复制' : '路径已复制'); 
+    } },
+    ...(agents.length > 0 ? [
+      { id: 'sep1', label: '', separator: true },
+      {
+        id: 'sync_to_agent',
+        label: isMulti ? `将 ${targetSkills.length} 个技能同步至 Agent` : '同步至 AI Agent',
+        icon: <LinkIcon size={14} />,
+        children: agents.map(agent => {
+          const syncedCount = targetSkills.filter(s => syncRecords.some(sr => sr.skill_id === s.id && sr.agent_id === agent.id)).length;
+          return {
+            id: `sync_${agent.id}`,
+            label: agent.display_name,
+            icon: syncedCount > 0 ? <Check size={14} className="text-[var(--color-primary)]" /> : undefined,
+            onClick: async () => {
+              try {
+                if (syncedCount > 0) {
+                  for (const s of targetSkills) {
+                    await invoke('unsync_skill', { skillId: s.id, agentId: agent.id });
+                  }
+                  showToast(isMulti ? `已批量取消同步至 ${agent.display_name}` : `已取消同步至 ${agent.display_name}`);
+                } else {
+                  for (const s of targetSkills) {
+                    const isAlreadySynced = syncRecords.some(sr => sr.skill_id === s.id && sr.agent_id === agent.id);
+                    if (!isAlreadySynced) await invoke('sync_skill', { skillId: s.id, agentId: agent.id });
+                  }
+                  showToast(isMulti ? `已批量同步至 ${agent.display_name}` : `已同步至 ${agent.display_name}`);
+                }
+                fetchData();
+              } catch (e) { showToast(`操作失败: ${e}`, 'error'); }
+            }
+          };
+        })
+      }
+    ] : []),
+  ];
+  }, [agents, selectedSkillIds, filteredGroupedRepos, selectedRepoId, syncRecords]);
+
+  const selectedWorkspaceDir = directories.find(d => d.id === selectedWorkspaceId);
+
+  const buildEmptyContextMenu = useCallback((): ContextMenuItem[] => {
+    return [
+      {
+        id: 'sync-all',
+        label: '同步当前技能库',
+        icon: <RefreshCw size={14} />,
+        onClick: () => handleSyncAll(true, directories.filter(d => d.id === selectedWorkspaceId))
+      },
+      {
+        id: 'add-skill',
+        label: '添加技能',
+        icon: <Plus size={14} />,
+        children: [
+          {
+            id: 'add-local',
+            label: '导入本地技能',
+            icon: <HardDrive size={14} />,
+            onClick: () => { setAddDialogTab("local"); setIsAddDialogOpen(true); }
+          },
+          {
+            id: 'add-github',
+            label: '克隆 GitHub 库',
+            icon: <Globe size={14} />,
+            onClick: () => { setAddDialogTab("github"); setIsAddDialogOpen(true); }
+          }
+        ]
+      },
+      { separator: true, id: 's1', label: '' },
+      {
+        id: 'select-all',
+        label: '全选',
+        onClick: () => {
+          if (selectedRepoId) {
+            // Select all skills
+            const repo = filteredGroupedRepos.find(r => r.id === selectedRepoId);
+            if (repo) setSelectedSkillIds(new Set(repo.skills.map(s => s.id)));
+          } else {
+            // Select all repos
+            setSelectedRepoIds(new Set(filteredGroupedRepos.map(r => r.id)));
+          }
+        }
+      },
+      { separator: true, id: 's2', label: '' },
+      {
+        id: 'reveal-workspace',
+        label: '在访达中显示技能库',
+        icon: <Folder size={14} />,
+        disabled: !selectedWorkspaceDir || selectedWorkspaceDir.is_missing,
+        onClick: () => {
+          if (selectedWorkspaceDir && !selectedWorkspaceDir.is_missing) {
+            open({ defaultPath: selectedWorkspaceDir.path });
+          }
+        }
+      }
+    ];
+  }, [directories, selectedWorkspaceId, filteredGroupedRepos, selectedRepoId, selectedWorkspaceDir]);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
         setIsSearchModalOpen(true);
+      }
+      // Esc 取消选中
+      if (e.key === 'Escape' && !isDrawerOpen && !isAddDialogOpen && !isSettingsOpen && !isSearchModalOpen) {
+        if (inspectorSelectedType) {
+          handleDeselectAll();
+        } else if (selectedRepoId) {
+          setSelectedRepoId(null);
+        }
       }
     };
     
@@ -329,9 +737,7 @@ function App() {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('focus', handleFocus);
     };
-  }, []);
-
-  const selectedWorkspaceDir = directories.find(d => d.id === selectedWorkspaceId);
+  }, [inspectorSelectedType, selectedRepoId, isDrawerOpen, isAddDialogOpen, isSettingsOpen, isSearchModalOpen, handleDeselectAll]);
 
   return (
     <div className="flex h-screen w-full bg-transparent text-[var(--foreground)] overflow-hidden font-sans">
@@ -442,6 +848,7 @@ function App() {
         </div>
       </div>
 
+      <div className="flex-1 flex h-full min-w-0 bg-transparent relative">
       <div className="flex-1 flex flex-col h-full min-w-0 bg-transparent relative">
         <div data-tauri-drag-region onPointerDown={(e) => {
           if (e.target === e.currentTarget) {
@@ -450,14 +857,14 @@ function App() {
         }} className="h-16 border-b border-[var(--color-border)] bg-white/70 backdrop-blur-xl flex items-center justify-between px-8 shrink-0 relative z-0">
           <div className="flex items-center space-x-3">
             {selectedRepoId && (
-              <button onClick={() => setSelectedRepoId(null)} className="p-1.5 rounded-lg text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] transition-colors mr-1">
+              <button onClick={handleGoBack} className="p-1.5 rounded-lg text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] transition-colors mr-1">
                 <ChevronLeft className="w-5 h-5 text-[var(--color-muted)]" />
               </button>
             )}
             <h1 className="text-xl font-medium tracking-tight text-[var(--foreground)] flex items-center">
               {selectedRepoId ? (
                 <>
-                  <span className="text-[var(--color-muted)] cursor-pointer hover:text-[var(--foreground)] transition-colors" onClick={() => setSelectedRepoId(null)}>
+                  <span className="text-[var(--color-muted)] cursor-pointer hover:text-[var(--foreground)] transition-colors" onClick={handleGoBack}>
                     {directories.find(d => d.id === selectedWorkspaceId)?.label || "未知技能库"}
                   </span>
                   <ChevronRight className="w-4 h-4 mx-2 text-[var(--color-muted)] opacity-50" />
@@ -480,7 +887,14 @@ function App() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-8 relative z-0 bg-[var(--color-background)]">
+        <div 
+          className="flex-1 overflow-y-auto p-6 relative z-0 bg-[var(--color-background)]" 
+          onClick={(e) => { if (e.target === e.currentTarget) handleDeselectAll(); }}
+          onContextMenu={(e) => {
+            // Because cards call stopPropagation(), this only fires for blank space
+            showContextMenu(e, { type: 'empty', data: null });
+          }}
+        >
           {selectedWorkspaceDir?.is_missing ? (
             <div className="flex flex-col items-center justify-center h-full text-[var(--color-muted)] animate-in fade-in duration-500">
               <div className="w-32 h-32 mb-6 relative group">
@@ -558,67 +972,131 @@ function App() {
               </div>
             </div>
           ) : !selectedRepoId ? (
-            <div className="grid gap-6 content-start pb-20" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
+            <SelectionArea
+              onBeforeStart={({ event }: SelectionEvent) => {
+                if ((event?.target as Element)?.closest?.('[data-id]')) return false;
+                return true;
+              }}
+              onStart={({ event, selection }: SelectionEvent) => {
+                if (!event?.ctrlKey && !event?.metaKey && !event?.shiftKey) {
+                  selection.clearSelection();
+                  setSelectedRepoIds(new Set());
+                }
+              }}
+              onMove={({ store: { changed: { added, removed } } }: SelectionEvent) => {
+                isDraggingRef.current = true;
+                setSelectedRepoIds(prev => {
+                  const next = new Set(prev);
+                  added.forEach((el: Element) => {
+                    const id = el.getAttribute('data-id');
+                    if (id) next.add(id);
+                  });
+                  removed.forEach((el: Element) => {
+                    const id = el.getAttribute('data-id');
+                    if (id) next.delete(id);
+                  });
+                  return next;
+                });
+                setInspectorSelectedType('repo');
+              }}
+              onStop={() => { setTimeout(() => { isDraggingRef.current = false; }, 0); }}
+              selectables="[data-id]"
+              className="w-full"
+            >
+              <div className="grid gap-3 content-start pb-20" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }} onClick={(e) => { if (e.target === e.currentTarget && !isDraggingRef.current) handleDeselectAll(); }}>
               {cloningRepos.map((repo, idx) => (
-                <div key={`cloning-${idx}`} className="group bg-[var(--color-muted-bg)]/30 backdrop-blur-md rounded-2xl p-6 border border-dashed border-[var(--color-border)] shadow-sm flex flex-col h-56 animate-pulse">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="w-10 h-10 rounded-xl bg-[var(--color-muted-bg)] flex items-center justify-center shrink-0">
-                      <div className="w-5 h-5 border-2 border-[var(--color-muted)] border-t-transparent rounded-full animate-spin"></div>
+                <div key={`cloning-${idx}`} className="group bg-[var(--color-muted-bg)]/30 backdrop-blur-md rounded-xl p-4 border border-dashed border-[var(--color-border)] shadow-sm flex flex-col h-24 animate-pulse">
+                  <div className="flex items-center space-x-2">
+                    <div className="w-8 h-8 rounded-lg bg-[var(--color-muted-bg)] flex items-center justify-center shrink-0">
+                      <div className="w-4 h-4 border-2 border-[var(--color-muted)] border-t-transparent rounded-full animate-spin"></div>
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <h3 className="text-[13px] font-semibold text-[var(--foreground)] truncate" title={repo.name}>{repo.name}</h3>
+                      <span className="text-[10px] text-[var(--color-muted)]">正在拉取...</span>
                     </div>
                     <Tooltip content="取消拉取">
-                      <button 
-                        onClick={(e) => handleCancelClone(e, repo.path)}
-                        className="p-1.5 rounded-lg text-[var(--color-muted)] hover:text-red-500 hover:bg-red-50 transition-colors z-10 relative"
-                      >
-                        <X className="w-4 h-4" />
+                      <button onClick={(e) => handleCancelClone(e, repo.path)} className="p-1 rounded text-[var(--color-muted)] hover:text-red-500 hover:bg-red-50 transition-colors shrink-0">
+                        <X className="w-3.5 h-3.5" />
                       </button>
                     </Tooltip>
                   </div>
-                  <h3 className="text-lg font-semibold text-[var(--foreground)] truncate pr-2 mt-2" title={repo.name}>
-                    {repo.name}
-                  </h3>
-                  <div className="mt-3">
-                    <span className="inline-flex items-center px-2 py-1 rounded-md bg-[var(--color-muted-bg)] text-xs font-medium text-[var(--color-muted)]">
-                      正在从 Git 拉取...
-                    </span>
-                  </div>
-                  <div className="mt-auto flex items-center justify-between pt-4 border-t border-[var(--color-border)]/50">
-                    <div className="flex items-center space-x-1.5 text-xs font-medium text-[var(--color-primary)]">
-                      <div className="w-1.5 h-1.5 rounded-full bg-[var(--color-primary)] animate-ping" />
-                      <span>GITHUB</span>
-                    </div>
-                  </div>
                 </div>
               ))}
-              {filteredGroupedRepos.map((repo) => {
-                return (
+              {filteredGroupedRepos.map((repo) => (
                   <RepoCard
                     key={repo.id}
                     repo={repo}
                     syncRecords={syncRecords}
                     agents={agents}
-                    onClick={(id) => setSelectedRepoId(id)}
-                    onUpdateRepo={handleUpdateRepo}
-                    onDeleteRepo={(e, repo) => handleDeleteRepo(e, repo)}
+                    isSelected={inspectorSelectedType === 'repo' && selectedRepoIds.has(repo.id)}
+                    onClick={(e) => handleSelectRepo(repo, e)}
+                    onDoubleClick={() => {
+                      setSelectedRepoId(repo.id);
+                      setInspectorSelectedType('repo');
+                      setSelectedRepoIds(new Set([repo.id]));
+                      setSelectedSkillIds(new Set());
+                    }}
+                    onContextMenu={(e) => {
+                      if (!selectedRepoIds.has(repo.id)) handleSelectRepo(repo, e);
+                      showContextMenu(e, { type: 'repo', data: repo });
+                    }}
+                    onUpdateRepo={(e, r) => handleUpdateRepos(e, [r])}
+                    onDeleteRepo={(e, r) => handleDeleteRepos(e, [r])}
                   />
-                );
-              })}
+                ))}
             </div>
+            </SelectionArea>
           ) : (
-            <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
-              {filteredGroupedRepos.find(r => r.id === selectedRepoId)?.skills.map((skill) => {
-                return (
+            <SelectionArea
+              onBeforeStart={({ event }: SelectionEvent) => {
+                if ((event?.target as Element)?.closest?.('[data-id]')) return false;
+                return true;
+              }}
+              onStart={({ event, selection }: SelectionEvent) => {
+                if (!event?.ctrlKey && !event?.metaKey && !event?.shiftKey) {
+                  selection.clearSelection();
+                  setSelectedSkillIds(new Set());
+                }
+              }}
+              onMove={({ store: { changed: { added, removed } } }: SelectionEvent) => {
+                isDraggingRef.current = true;
+                setSelectedSkillIds(prev => {
+                  const next = new Set(prev);
+                  added.forEach((el: Element) => {
+                    const id = el.getAttribute('data-id');
+                    if (id) next.add(id);
+                  });
+                  removed.forEach((el: Element) => {
+                    const id = el.getAttribute('data-id');
+                    if (id) next.delete(id);
+                  });
+                  return next;
+                });
+                setInspectorSelectedType('skill');
+              }}
+              onStop={() => { setTimeout(() => { isDraggingRef.current = false; }, 0); }}
+              selectables="[data-id]"
+              className="w-full"
+            >
+              <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))' }} onClick={(e) => { if (e.target === e.currentTarget && !isDraggingRef.current) handleDeselectAll(); }}>
+              {filteredGroupedRepos.find(r => r.id === selectedRepoId)?.skills.map((skill) => (
                   <SkillCard
                     key={skill.id}
                     skill={skill}
                     syncRecords={syncRecords}
                     agents={agents}
-                    onClick={(s) => { setSelectedSkill(s); setIsDrawerOpen(true); }}
+                    isSelected={inspectorSelectedType === 'skill' && selectedSkillIds.has(skill.id)}
+                    onClick={(e) => handleSelectSkill(skill, e)}
+                    onDoubleClick={() => { setSelectedSkill(skill); setIsDrawerOpen(true); }}
+                    onContextMenu={(e) => {
+                      if (!selectedSkillIds.has(skill.id)) handleSelectSkill(skill, e);
+                      showContextMenu(e, { type: 'skill', data: skill });
+                    }}
                     onCopyPath={handleCopyPath}
                   />
-                );
-              })}
+                ))}
             </div>
+            </SelectionArea>
           )}
         </div>
         
@@ -694,22 +1172,36 @@ function App() {
           </div>
         )}
       </div>
+
+      <InspectorPanel
+        selectedItemType={inspectorSelectedType}
+        selectedRepos={filteredGroupedRepos.filter(r => selectedRepoIds.has(r.id))}
+        selectedSkills={(filteredGroupedRepos.find(r => r.id === selectedRepoId)?.skills || []).filter(s => selectedSkillIds.has(s.id))}
+        agents={agents}
+        syncRecords={syncRecords}
+        currentLibrary={selectedWorkspaceDir || null}
+        allRepos={filteredGroupedRepos}
+        onOpenDrawer={(skill) => { setSelectedSkill(skill); setIsDrawerOpen(true); }}
+        onSelectRepo={(repoId) => setSelectedRepoId(repoId)}
+        onRefreshData={fetchData}
+        isOpen={isInspectorOpen}
+        onToggle={() => setIsInspectorOpen(!isInspectorOpen)}
+      />
+      </div>
+
+      <ContextMenu
+        items={menuTarget?.type === 'repo' ? buildRepoContextMenu(menuTarget.data) : menuTarget?.type === 'skill' ? buildSkillContextMenu(menuTarget.data) : menuTarget?.type === 'empty' ? buildEmptyContextMenu() : []}
+        position={menuPosition}
+        onClose={hideContextMenu}
+      />
       
       <AddRepositoryDialog 
         isOpen={isAddDialogOpen} 
         onClose={() => { setIsAddDialogOpen(false); setAddDialogTab(null); }} 
         onSuccess={fetchData} 
         onCloningStart={(path, name) => setCloningRepos(prev => [...prev, { path, name }])}
-        onCloningSuccess={(path) => {
-          setCloningRepos(prev => prev.filter(r => r.path !== path));
-          // 可选：克隆成功后提示
-        }}
-        onCloningError={(path, err) => {
-           setCloningRepos(prev => prev.filter(r => r.path !== path));
-           if (err) {
-             showToast(`克隆失败: ${err}`, 'error');
-           }
-        }}
+        onCloningSuccess={(path) => { setCloningRepos(prev => prev.filter(r => r.path !== path)); }}
+        onCloningError={(path, err) => { setCloningRepos(prev => prev.filter(r => r.path !== path)); if (err) showToast(`克隆失败: ${err}`, 'error'); }}
         defaultTab={addDialogTab}
         defaultTargetDir={selectedWorkspaceId !== "all" ? directories.find(d => d.id === selectedWorkspaceId)?.path : undefined}
       />
@@ -717,49 +1209,31 @@ function App() {
       <SkillDetailsDrawer 
         isOpen={isDrawerOpen} 
         skill={selectedSkill} 
-        onClose={() => {
-          setIsDrawerOpen(false);
-          fetchData(); // 重新加载数据以刷新徽标
-        }} 
+        onClose={() => { setIsDrawerOpen(false); fetchData(); }} 
       />
 
       <AgentSettingsDialog
         isOpen={isSettingsOpen}
-        onClose={() => {
-          setIsSettingsOpen(false);
-          fetchData();
-        }}
+        onClose={() => { setIsSettingsOpen(false); fetchData(); }}
       />
       
       <SearchModal 
         isOpen={isSearchModalOpen}
         onClose={() => setIsSearchModalOpen(false)}
         repos={groupedRepos}
-        syncRecords={syncRecords}
-        agents={agents}
-        onUpdateRepo={handleUpdateRepo}
-        onDeleteRepo={handleDeleteRepo}
+        onDeleteRepo={(e, r) => handleDeleteRepos(e as any, [r])}
         onCopyPath={handleCopyPath}
         onSelectRepo={(repoId) => {
-          // If the selected repo is hidden by current filters, we should clear the filters so it's visible
           const repo = groupedRepos.find(r => r.id === repoId);
           if (repo) {
-            if (activeTab !== "all" && repo.source_type !== activeTab) {
-              setActiveTab("all");
-            }
-            if (selectedCategory !== "all" && repo.category !== selectedCategory) {
-              setSelectedCategory("all");
-            }
+            if (activeTab !== "all" && repo.source_type !== activeTab) setActiveTab("all");
+            if (selectedCategory !== "all" && repo.category !== selectedCategory) setSelectedCategory("all");
           }
           setSelectedRepoId(repoId);
         }}
         onSelectSkill={(skill, repo) => {
-          if (activeTab !== "all" && repo.source_type !== activeTab) {
-            setActiveTab("all");
-          }
-          if (selectedCategory !== "all" && repo.category !== selectedCategory) {
-            setSelectedCategory("all");
-          }
+          if (activeTab !== "all" && repo.source_type !== activeTab) setActiveTab("all");
+          if (selectedCategory !== "all" && repo.category !== selectedCategory) setSelectedCategory("all");
           setSelectedRepoId(repo.id);
           setSelectedSkill(skill);
           setIsDrawerOpen(true);
@@ -769,23 +1243,13 @@ function App() {
       <CreateSkillLibraryModal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
-        onSuccess={async (id) => {
-          await fetchData();
-          if (id) {
-            setSelectedWorkspaceId(id);
-          }
-        }}
+        onSuccess={async (id) => { await fetchData(); if (id) setSelectedWorkspaceId(id); }}
       />
       
       <OpenSkillLibraryModal
         isOpen={isOpenModalOpen}
         onClose={() => setIsOpenModalOpen(false)}
-        onSuccess={async (id) => {
-          await fetchData();
-          if (id) {
-            setSelectedWorkspaceId(id);
-          }
-        }}
+        onSuccess={async (id) => { await fetchData(); if (id) setSelectedWorkspaceId(id); }}
       />
 
       <MergeSkillLibraryModal
@@ -827,7 +1291,47 @@ function App() {
         onClose={() => setIsAboutOpen(false)}
       />
 
+      {deleteConfirmRepos && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/10 backdrop-blur-sm p-4">
+          <div className="bg-white/95 backdrop-blur-xl border border-[var(--color-border)] rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden flex flex-col relative transition-all duration-300">
+            <div className="flex items-center justify-between p-4 border-b border-[var(--color-border)]/60 bg-[#fafbfc]">
+              <h2 className="text-[15px] font-semibold text-[var(--foreground)] flex items-center">
+                <Trash2 className="w-4 h-4 mr-2 text-red-500" />
+                永久删除仓库
+              </h2>
+              <button onClick={() => setDeleteConfirmRepos(null)} className="p-1.5 rounded-lg text-[var(--color-muted)] hover:bg-black/5 transition-colors">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            
+            <div className="p-5 text-[13px] text-[var(--foreground)] leading-relaxed">
+              {deleteConfirmRepos.length === 1 
+                ? `确定要彻底删除整个仓库 "${deleteConfirmRepos[0].name}" 及其所有 ${deleteConfirmRepos[0].skills.length} 个子技能吗？此操作不可恢复。`
+                : `确定要彻底删除选中的 ${deleteConfirmRepos.length} 个仓库及其子技能吗？此操作不可恢复。`
+              }
+            </div>
+
+            <div className="flex items-center justify-end p-4 border-t border-[var(--color-border)]/60 bg-[#fafbfc] space-x-3">
+              <button
+                type="button"
+                onClick={() => setDeleteConfirmRepos(null)}
+                className="px-4 py-2 text-[13px] font-medium text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 rounded-lg transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={confirmDeleteRepos}
+                className="px-4 py-2 text-[13px] font-medium text-white bg-red-500 hover:bg-red-600 rounded-lg shadow-sm transition-colors"
+              >
+                确认删除
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <ToastContainer />
+      {confirmData && <ConfirmDialog {...(confirmData as any)} />}
     </div>
   );
 }

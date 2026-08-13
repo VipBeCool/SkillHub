@@ -286,7 +286,7 @@ export const SkillLibrarySelector = forwardRef<SkillLibrarySelectorRef, SkillLib
             className={`w-6 h-6 rounded-md flex items-center justify-center shrink-0 mr-2.5 ${!selectedDir?.icon ? 'bg-blue-500' : 'bg-gray-100'}`}
             style={selectedDir?.icon ? (() => {
               const config = parseIconConfig(selectedDir.icon);
-              return config.type === 'icon' && config.color ? { backgroundColor: `${config.color}26` } : {};
+              return config?.type === 'icon' && config.color ? { backgroundColor: `${config.color}26` } : {};
             })() : undefined}
           >
             {selectedDir?.icon ? (
@@ -375,7 +375,7 @@ export const SkillLibrarySelector = forwardRef<SkillLibrarySelectorRef, SkillLib
                                 onClick={() => { onSelect(dir.id); setIsOpen(false); }}
                                 style={dir.icon && !dir.is_missing ? (() => {
                                   const config = parseIconConfig(dir.icon);
-                                  return config.type === 'icon' && config.color ? { backgroundColor: `${config.color}26` } : {};
+                                  return config?.type === 'icon' && config.color ? { backgroundColor: `${config.color}26` } : {};
                                 })() : undefined}
                               >
                                 <DynamicIcon config={parseIconConfig(dir.icon)} size={16} className={dir.is_missing ? 'opacity-60 grayscale' : ''} />

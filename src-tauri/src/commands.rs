@@ -666,6 +666,51 @@ pub fn sync_skill(state: State<'_, AppState>, skill_id: String, agent_id: String
     Ok(())
 }
 
+/// 从给定路径向上遍历，找到最近的 .git 目录所在的仓库根路径
+fn find_git_root(path: &std::path::Path) -> Option<std::path::PathBuf> {
+    let mut current = path.to_path_buf();
+    if current.is_file() {
+        if let Some(parent) = current.parent() {
+            current = parent.to_path_buf();
+        }
+    }
+    loop {
+        if current.join(".git").exists() {
+            return Some(current);
+        }
+        if !current.pop() {
+            return None;
+        }
+    }
+}
+
+/// 将整个 Git 仓库（或目录）作为一个软链接单元同步到指定 Agent 的 skills 目录
+#[tauri::command]
+pub fn sync_repo_to_agent(
+    state: State<'_, AppState>,
+    repo_path: String,
+    agent_id: String,
+    repo_name: String,
+) -> Result<String, String> {
+    let db = state.db.lock().unwrap();
+
+    let agent_skills_path: String = db.query_row(
+        "SELECT skills_path FROM agent_configs WHERE id = ?1",
+        rusqlite::params![agent_id],
+        |row| row.get(0),
+    ).map_err(|e| e.to_string())?;
+
+    // 优先找 Git 根目录，否则直接使用 repo_path
+    let source_path = std::path::Path::new(&repo_path);
+    let link_target = find_git_root(source_path)
+        .unwrap_or_else(|| source_path.to_path_buf());
+
+    let link_target_str = link_target.to_string_lossy().to_string();
+    let synced_path = agent_sync::create_symlink(&link_target_str, &agent_skills_path, &repo_name)?;
+
+    Ok(synced_path)
+}
+
 #[tauri::command]
 pub fn unsync_skill(state: State<'_, AppState>, skill_id: String, agent_id: String) -> Result<(), String> {
     let db = state.db.lock().unwrap();

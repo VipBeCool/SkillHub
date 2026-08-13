@@ -483,9 +483,22 @@ pub fn get_sync_records_for_skill(db: &Connection, skill_id: &str) -> Result<Vec
     }).map_err(|e| e.to_string())?;
     
     let mut records = Vec::new();
+    let mut invalid_records = Vec::new();
+
     for r in iter {
-        records.push(r.map_err(|e| e.to_string())?);
+        let record = r.map_err(|e| e.to_string())?;
+        if std::path::Path::new(&record.synced_path).exists() {
+            records.push(record);
+        } else {
+            invalid_records.push((record.skill_id, record.agent_id));
+        }
     }
+
+    // 自动清理已经失效的同步记录（用户在文件系统上手动删除了软链接）
+    for (s_id, a_id) in invalid_records {
+        let _ = remove_sync_record(db, &s_id, &a_id);
+    }
+
     Ok(records)
 }
 
@@ -503,9 +516,22 @@ pub fn get_sync_records_for_agent(db: &Connection, agent_id: &str) -> Result<Vec
     }).map_err(|e| e.to_string())?;
     
     let mut records = Vec::new();
+    let mut invalid_records = Vec::new();
+
     for r in iter {
-        records.push(r.map_err(|e| e.to_string())?);
+        let record = r.map_err(|e| e.to_string())?;
+        if std::path::Path::new(&record.synced_path).exists() {
+            records.push(record);
+        } else {
+            invalid_records.push((record.skill_id, record.agent_id));
+        }
     }
+
+    // 自动清理已经失效的同步记录（用户在文件系统上手动删除了软链接）
+    for (s_id, a_id) in invalid_records {
+        let _ = remove_sync_record(db, &s_id, &a_id);
+    }
+
     Ok(records)
 }
 

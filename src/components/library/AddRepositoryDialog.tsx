@@ -261,7 +261,7 @@ export function AddRepositoryDialog({ isOpen, onClose, onSuccess, onCloningStart
                         className={`flex flex-col items-center justify-center py-2 px-2 rounded-md border transition-all ${strategy === "move" ? "bg-blue-50 border-blue-200 text-blue-600" : "bg-transparent border-[var(--color-border)] text-[var(--color-muted)] hover:bg-black/5"}`}
                       >
                         <FileOutput className="w-4 h-4 mb-1.5" />
-                        <span className="text-[11px] font-semibold">移动导入</span>
+                        <span className="text-[11px] font-semibold">剪切导入</span>
                       </button>
                     </div>
                     <div className="text-[11px] mt-2 leading-relaxed bg-blue-50/50 text-blue-800 p-2.5 rounded-md border border-blue-100">
