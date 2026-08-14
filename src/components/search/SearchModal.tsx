@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Search, FolderGit2, HardDrive, X, Command, Sparkles, PanelRight, Filter, Type, Globe, Plus, Copy, FolderOpen, Trash2, RefreshCw, Clock, ArrowDownAZ, Check } from 'lucide-react';
+import { Search, FolderGit2, HardDrive, X, Command, PanelRight, Filter, Type, Globe, Plus, Copy, FolderOpen, Trash2, RefreshCw, Clock, ArrowDownAZ, Check } from 'lucide-react';
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { showToast } from "../ui/Toast";

@@ -3,8 +3,8 @@ import { SelectionArea, SelectionEvent } from '@viselect/react';
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
-import { FolderGit2, HardDrive, Settings, Search, Plus, RefreshCw, ChevronRight, ChevronLeft, X, LayoutGrid, Sparkles, FileQuestion, Globe, FolderX, FolderSearch, Trash2, Info, Folder, Copy, Link as LinkIcon, Check, Download, FileArchive } from "lucide-react";
-import { confirm, open } from '@tauri-apps/plugin-dialog';
+import { FolderGit2, HardDrive, Settings, Search, Plus, RefreshCw, ChevronRight, ChevronLeft, X, LayoutGrid, Sparkles, FileQuestion, Globe, FolderX, FolderSearch, Trash2, Info, Folder, Copy, Link as LinkIcon, Check, Download, FileArchive, MessageSquareText, Store, Blocks } from "lucide-react";
+import { open } from '@tauri-apps/plugin-dialog';
 import { AddRepositoryDialog } from "./components/library/AddRepositoryDialog";
 import { SkillLibrarySelector, SkillLibrarySelectorRef } from './components/library/SkillLibrarySelector';
 import { CreateSkillLibraryModal, OpenSkillLibraryModal, MergeSkillLibraryModal } from "./components/library/LibraryManagementModals";
@@ -20,14 +20,18 @@ import { AboutDialog } from "./components/ui/AboutDialog";
 import { InspectorPanel } from "./components/inspector/InspectorPanel";
 import { ContextMenu, useContextMenu } from "./components/ui/ContextMenu";
 import type { ContextMenuItem } from "./components/ui/ContextMenu";
-import { Skill, SourceDirectory, AgentConfig, SyncRecord, GroupedRepo } from "./types";
+import { Skill, SourceDirectory, AgentConfig, SyncRecord, GroupedRepo, PromptGroup } from "./types";
+import { PromptModule, PromptSidebarNav, PromptFilter } from "./PromptModule";
 
 const isMac = navigator.userAgent.toLowerCase().includes('mac');
 const fileManagerName = isMac ? '访达' : '文件管理器';
 
 const getExportTimeStr = () => new Date().toISOString().replace(/[:.]/g, '-');
 
+type AppModule = 'skills' | 'prompts' | 'resources';
+
 function App() {
+  const [activeModule, setActiveModule] = useState<AppModule>('skills');
   const [activeTab, setActiveTab] = useState("all");
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [, setSkills] = useState<Skill[]>([]);
@@ -51,6 +55,12 @@ function App() {
   const [lastSelectedSkillId, setLastSelectedSkillId] = useState<string | null>(null);
   const [isInspectorOpen, setIsInspectorOpen] = useState(true);
 
+  // Prompt 模块状态（提升，供 App 侧边栏和 PromptModule 共享）
+  const [promptFilter, setPromptFilter] = useState<PromptFilter>("all");
+  const [promptGroups, setPromptGroups] = useState<PromptGroup[]>([]);
+  const [isCreateGroupOpen, setIsCreateGroupOpen] = useState(false);
+  const [promptRefreshKey, setPromptRefreshKey] = useState(0);
+
   // 右键菜单
   const { menuPosition, menuTarget, showContextMenu, hideContextMenu } = useContextMenu();
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(() => {
@@ -68,10 +78,10 @@ function App() {
   const [cloningRepos, setCloningRepos] = useState<{ path: string, name: string }[]>([]);
   const [deleteConfirmRepos, setDeleteConfirmRepos] = useState<GroupedRepo[] | null>(null);
   const [isAppStarting, setIsAppStarting] = useState(true);
-  const [loadingText, setLoadingText] = useState("资源加载中...");
+  const [loadingText, setLoadingText] = useState("SkillHub载入中…");
   const skillLibrarySelectorRef = useRef<SkillLibrarySelectorRef>(null);
   const isDraggingRef = useRef(false);
-  
+
   const [confirmData, setConfirmData] = useState<{ title: string, message: string, onConfirm: () => void, onClose: () => void } | null>(null);
 
   const waitConfirm = (message: string) => new Promise<boolean>(resolve => {
@@ -112,7 +122,7 @@ function App() {
       const fetchedSkills = await invoke<Skill[]>("get_skills");
       const fetchedDirs = await invoke<SourceDirectory[]>("get_source_directories");
       const fetchedRepos = await invoke<GroupedRepo[]>("get_repositories_with_skills");
-      
+
       const fetchedAgents = await invoke<AgentConfig[]>("get_agents");
       const allSyncs = await Promise.all(
         fetchedSkills.map(s => invoke<SyncRecord[]>("get_sync_records_for_skill", { skillId: s.id }))
@@ -120,8 +130,8 @@ function App() {
 
       setSkills(fetchedSkills);
       setDirectories(fetchedDirs);
-      await invoke("refresh_app_menu", { 
-        selectedId: localStorage.getItem("skillhub_selected_workspace") 
+      await invoke("refresh_app_menu", {
+        selectedId: localStorage.getItem("skillhub_selected_workspace")
       }).catch(console.error);
       setGroupedRepos(fetchedRepos);
       setAgents(fetchedAgents);
@@ -134,6 +144,7 @@ function App() {
   };
 
   useEffect(() => {
+    invoke("cleanup_expired_trash").catch(console.error);
     fetchData().then((dirs) => {
       // 启动时静默同步一次
       if (dirs && dirs.length > 0) {
@@ -164,17 +175,21 @@ function App() {
     }, 60 * 60 * 1000);
 
     let unlisten: UnlistenFn | null = null;
+    let unlistenPrefs: UnlistenFn | null = null;
+
     listen<string>("menu-action", (event) => {
       const action = event.payload;
       getCurrentWindow().unminimize();
       getCurrentWindow().setFocus();
-      
+
       if (action === "create_library") {
         setIsCreateModalOpen(true);
       } else if (action === "open_library") {
         setIsOpenModalOpen(true);
       } else if (action === "merge_library") {
         setIsMergeModalOpen(true);
+      } else if (action === "prefs") {
+        setIsSettingsOpen(true);
       } else if (action === "clear_history") {
         showToast("暂不支持该操作");
       } else if (action === "reload_cache") {
@@ -185,11 +200,18 @@ function App() {
       }
     }).then(un => unlisten = un);
 
+    listen("open-preferences", () => {
+      getCurrentWindow().unminimize();
+      getCurrentWindow().setFocus();
+      setIsSettingsOpen(true);
+    }).then(un => unlistenPrefs = un);
+
     return () => {
       clearInterval(interval);
       if (unlisten) unlisten();
+      if (unlistenPrefs) unlistenPrefs();
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleCopyPath = async (e: React.MouseEvent, skill: Skill) => {
@@ -207,9 +229,9 @@ function App() {
     if (repos.length === 0) return;
     setSyncLogs(repos.map(r => ({ id: r.path, label: r.name, status: 'pending', message: '' })));
     setIsSyncPopupMinimized(false);
-    
+
     let totalLogs: { id: string, label: string, status: 'pending' | 'success' | 'error' | 'skipped', message?: string }[] = repos.map(r => ({ id: r.path, label: r.name, status: 'pending', message: '' }));
-    
+
     for (const repo of repos) {
       if (repo.source_type !== 'github') {
         totalLogs = totalLogs.map(l => l.id === repo.path ? { ...l, status: 'skipped', message: '本地跳过' } : l);
@@ -273,26 +295,26 @@ function App() {
 
   const handleSyncAll = async (isManual = true, dirsToSync = directories) => {
     if (isSyncingAll) return;
-    
+
     const runId = Date.now();
     currentSyncRunId.current = runId;
     setIsSyncingAll(true);
-    
+
     if (isManual) {
       setSyncLogs([]);
       setIsSyncPopupMinimized(true); // 手动同步时默认最小化
     }
-    
+
     let totalLogs: { id: string, label: string, status: 'pending' | 'success' | 'error' | 'skipped', message?: string }[] = [];
 
     for (const dir of dirsToSync) {
       try {
         if (currentSyncRunId.current !== runId) break;
-        const repos = await invoke<{name: string, path: string}[]>("get_git_repos_in_directory", { path: dir.path });
-        
+        const repos = await invoke<{ name: string, path: string }[]>("get_git_repos_in_directory", { path: dir.path });
+
         if (repos.length === 0) {
-           await invoke("rescan_directory", { path: dir.path });
-           continue;
+          await invoke("rescan_directory", { path: dir.path });
+          continue;
         }
 
         if (isManual) {
@@ -302,35 +324,35 @@ function App() {
         }
 
         for (const repo of repos) {
-           if (currentSyncRunId.current !== runId) break;
-           try {
-             const msg = await invoke<string>("pull_single_repo", { path: repo.path });
-             if (currentSyncRunId.current !== runId) break; // Check again after await
-             
-             if (msg === '已是最新') {
-               totalLogs = totalLogs.map(l => l.id === repo.path ? { ...l, status: 'skipped', message: msg } : l);
-             } else {
-               totalLogs = totalLogs.map(l => l.id === repo.path ? { ...l, status: 'success', message: msg } : l);
-             }
-             if (isManual) setSyncLogs([...totalLogs]);
-           } catch (e) {
-             totalLogs = totalLogs.map(l => l.id === repo.path ? { ...l, status: 'error', message: String(e) } : l);
-             if (isManual) setSyncLogs([...totalLogs]);
-           }
+          if (currentSyncRunId.current !== runId) break;
+          try {
+            const msg = await invoke<string>("pull_single_repo", { path: repo.path });
+            if (currentSyncRunId.current !== runId) break; // Check again after await
+
+            if (msg === '已是最新') {
+              totalLogs = totalLogs.map(l => l.id === repo.path ? { ...l, status: 'skipped', message: msg } : l);
+            } else {
+              totalLogs = totalLogs.map(l => l.id === repo.path ? { ...l, status: 'success', message: msg } : l);
+            }
+            if (isManual) setSyncLogs([...totalLogs]);
+          } catch (e) {
+            totalLogs = totalLogs.map(l => l.id === repo.path ? { ...l, status: 'error', message: String(e) } : l);
+            if (isManual) setSyncLogs([...totalLogs]);
+          }
         }
-        
+
         await invoke("rescan_directory", { path: dir.path });
       } catch (e) {
         try {
           await invoke("rescan_directory", { path: dir.path });
-        } catch (err) {}
+        } catch (err) { }
       }
     }
-    
+
     if (currentSyncRunId.current === runId) {
       await fetchData();
       setIsSyncingAll(false);
-      
+
       if (isManual) {
         setTimeout(() => {
           if (currentSyncRunId.current === runId) {
@@ -344,7 +366,7 @@ function App() {
   const filteredGroupedRepos = useMemo(() => {
     let result = groupedRepos.filter(repo => repo.skills.length > 0);
     if (selectedWorkspaceId !== "all") {
-       result = result.filter(repo => repo.source_dir_id === selectedWorkspaceId);
+      result = result.filter(repo => repo.source_dir_id === selectedWorkspaceId);
     }
     if (activeTab !== "all") {
       result = result.filter(r => r.source_type === activeTab);
@@ -375,33 +397,33 @@ function App() {
   const handleSelectRepo = useCallback((repo: GroupedRepo, e?: React.MouseEvent) => {
     setInspectorSelectedType('repo');
     setSelectedSkillIds(new Set());
-    
+
     setSelectedRepoIds(prev => {
       const newSet = new Set(prev);
       if (e?.metaKey || e?.ctrlKey) {
         if (newSet.has(repo.id)) newSet.delete(repo.id);
         else newSet.add(repo.id);
       } else if (e?.shiftKey && lastSelectedRepoId) {
-         const allIds = filteredGroupedRepos.map(r => r.id);
-         const startIdx = allIds.indexOf(lastSelectedRepoId);
-         const endIdx = allIds.indexOf(repo.id);
-         if (startIdx !== -1 && endIdx !== -1) {
-            const minIdx = Math.min(startIdx, endIdx);
-            const maxIdx = Math.max(startIdx, endIdx);
-            newSet.clear();
-            for (let i = minIdx; i <= maxIdx; i++) {
-                newSet.add(allIds[i]);
-            }
-         } else {
-             newSet.add(repo.id);
-         }
+        const allIds = filteredGroupedRepos.map(r => r.id);
+        const startIdx = allIds.indexOf(lastSelectedRepoId);
+        const endIdx = allIds.indexOf(repo.id);
+        if (startIdx !== -1 && endIdx !== -1) {
+          const minIdx = Math.min(startIdx, endIdx);
+          const maxIdx = Math.max(startIdx, endIdx);
+          newSet.clear();
+          for (let i = minIdx; i <= maxIdx; i++) {
+            newSet.add(allIds[i]);
+          }
+        } else {
+          newSet.add(repo.id);
+        }
       } else {
         newSet.clear();
         newSet.add(repo.id);
       }
       return newSet;
     });
-    
+
     // 只在单选或追加选时更新 anchor
     if (!e?.shiftKey) {
       setLastSelectedRepoId(repo.id);
@@ -412,7 +434,7 @@ function App() {
   const handleSelectSkill = useCallback((skill: Skill, e?: React.MouseEvent) => {
     setInspectorSelectedType('skill');
     setSelectedRepoIds(new Set());
-    
+
     const visibleSkills = filteredGroupedRepos.find(r => r.id === selectedRepoId)?.skills || [];
 
     setSelectedSkillIds(prev => {
@@ -421,26 +443,26 @@ function App() {
         if (newSet.has(skill.id)) newSet.delete(skill.id);
         else newSet.add(skill.id);
       } else if (e?.shiftKey && lastSelectedSkillId) {
-         const allIds = visibleSkills.map(s => s.id);
-         const startIdx = allIds.indexOf(lastSelectedSkillId);
-         const endIdx = allIds.indexOf(skill.id);
-         if (startIdx !== -1 && endIdx !== -1) {
-            const minIdx = Math.min(startIdx, endIdx);
-            const maxIdx = Math.max(startIdx, endIdx);
-            newSet.clear();
-            for (let i = minIdx; i <= maxIdx; i++) {
-                newSet.add(allIds[i]);
-            }
-         } else {
-             newSet.add(skill.id);
-         }
+        const allIds = visibleSkills.map(s => s.id);
+        const startIdx = allIds.indexOf(lastSelectedSkillId);
+        const endIdx = allIds.indexOf(skill.id);
+        if (startIdx !== -1 && endIdx !== -1) {
+          const minIdx = Math.min(startIdx, endIdx);
+          const maxIdx = Math.max(startIdx, endIdx);
+          newSet.clear();
+          for (let i = minIdx; i <= maxIdx; i++) {
+            newSet.add(allIds[i]);
+          }
+        } else {
+          newSet.add(skill.id);
+        }
       } else {
         newSet.clear();
         newSet.add(skill.id);
       }
       return newSet;
     });
-    
+
     if (!e?.shiftKey) {
       setLastSelectedSkillId(skill.id);
     }
@@ -471,158 +493,26 @@ function App() {
   const buildRepoContextMenu = useCallback((repo: GroupedRepo): ContextMenuItem[] => {
     const isMulti = selectedRepoIds.has(repo.id) && selectedRepoIds.size > 1;
     const targetRepos = isMulti ? filteredGroupedRepos.filter(r => selectedRepoIds.has(r.id)) : [repo];
-    
-    return [
-    { id: 'open_folder', label: isMulti ? `在${fileManagerName}中打开` : `在${fileManagerName}中打开`, icon: <Folder size={14} />, onClick: () => {
-        targetRepos.forEach(r => invoke('open_local_folder', { path: r.path }).catch(console.error));
-    }},
-    { id: 'copy_path', label: isMulti ? `复制 ${targetRepos.length} 个路径` : '复制路径', icon: <Copy size={14} />, onClick: () => { 
-        navigator.clipboard.writeText(targetRepos.map(r => r.path).join('\n')); 
-        showToast(isMulti ? '多个路径已复制' : '路径已复制'); 
-    }},
-    { id: 'sep1', label: '', separator: true },
-    ...(agents.length > 0 ? [{
-      id: 'sync_to_agent',
-      label: isMulti ? `将 ${targetRepos.length} 个仓库同步至 Agent` : '同步至 AI Agent',
-      icon: <LinkIcon size={14} />,
-      children: agents.map(agent => {
-        const syncedCount = targetRepos.flatMap(r => r.skills).filter(skill => syncRecords.some(sr => sr.skill_id === skill.id && sr.agent_id === agent.id)).length;
-        return {
-          id: `sync_${agent.id}`,
-          label: agent.display_name,
-          icon: syncedCount > 0 ? <Check size={14} className="text-[var(--color-primary)]" /> : undefined,
-          onClick: async () => {
-            try {
-              if (syncedCount > 0) {
-                for (const r of targetRepos) {
-                  for (const skill of r.skills) {
-                    await invoke('unsync_skill', { skillId: skill.id, agentId: agent.id });
-                  }
-                }
-                showToast(isMulti ? `已批量取消同步至 ${agent.display_name}` : `已取消同步 "${repo.name}" 至 ${agent.display_name}`);
-              } else {
-                for (const r of targetRepos) {
-                  for (const skill of r.skills) {
-                    const isAlreadySynced = syncRecords.some(sr => sr.skill_id === skill.id && sr.agent_id === agent.id);
-                    if (!isAlreadySynced) await invoke('sync_skill', { skillId: skill.id, agentId: agent.id });
-                  }
-                }
-                showToast(isMulti ? `已批量同步至 ${agent.display_name}` : `已同步 "${repo.name}" 至 ${agent.display_name}`);
-              }
-              fetchData();
-            } catch (e) { showToast(`操作失败: ${e}`, 'error'); }
-          }
-        };
-      })
-    }] : []),
-    { id: 'sep2', label: '', separator: true },
-    {
-      id: 'export',
-      label: '导出',
-      icon: <Download size={14} />,
-      children: [
-        {
-          id: 'export_folder',
-          label: '直接导出目录',
-          icon: <Download size={14} />,
-          onClick: async () => {
-            try {
-              const destDir = await open({ directory: true, title: isMulti ? '选择批量导出位置' : '选择导出位置', multiple: false });
-              if (!destDir) return;
-              
-              if (isMulti) {
-                let conflictCount = 0;
-                try {
-                  for (const r of targetRepos) {
-                    if (await invoke<boolean>('check_exists', { path: `${destDir}/${r.name}` })) conflictCount++;
-                  }
-                } catch(e) {
-                  showToast(`检测文件冲突失败: ${e}`, 'error'); return;
-                }
-                if (conflictCount > 0) {
-                  if (!(await waitConfirm(`选定的目录中已有 ${conflictCount} 个同名仓库文件夹，确定要覆盖吗？`))) return;
-                }
-                await invoke('export_batch', { sourcePaths: targetRepos.map(r => r.path), destPath: destDir, isZip: false });
-                showToast(`成功导出 ${targetRepos.length} 个仓库`);
-              } else {
-                const r = targetRepos[0];
-                try {
-                  if (await invoke<boolean>('check_exists', { path: `${destDir}/${r.name}` })) {
-                    if (!(await waitConfirm(`导出路径下已有同名文件夹 "${r.name}"，确定要覆盖吗？`))) return;
-                  }
-                } catch(e) {
-                  showToast(`检测文件冲突失败: ${e}`, 'error'); return;
-                }
-                await invoke('export_batch', { sourcePaths: [r.path], destPath: destDir as string, isZip: false });
-                showToast(`仓库已导出`);
-              }
-            } catch (e) {
-              console.error(e);
-              showToast(`导出失败: ${e}`, 'error');
-            }
-          }
-        },
-        {
-          id: 'export_zip',
-          label: '打包为 ZIP',
-          icon: <FileArchive size={14} />,
-          onClick: async () => {
-            try {
-              const destDir = await open({ directory: true, title: isMulti ? '选择批量导出位置' : '选择导出位置', multiple: false });
-              if (!destDir) return;
-              
-              const targetPath = isMulti 
-                ? `${destDir}/SkillHub_Batch_${getExportTimeStr()}.zip` 
-                : `${destDir}/${targetRepos[0].name}_${getExportTimeStr()}.zip`;
-              
-              try {
-                if (await invoke<boolean>('check_exists', { path: targetPath })) {
-                  if (!(await waitConfirm(`导出路径下已有同名压缩包，确定要覆盖吗？`))) return;
-                }
-              } catch(e) {
-                showToast(`检测文件冲突失败: ${e}`, 'error'); return;
-              }
-              await invoke('export_batch', { sourcePaths: targetRepos.map(r => r.path), destPath: targetPath, isZip: true });
-              showToast(isMulti ? `成功打包 ${targetRepos.length} 个仓库` : `仓库 ZIP 已生成`);
-            } catch (e) {
-              console.error(e);
-              showToast(`打包失败: ${e}`, 'error');
-            }
-          }
-        }
-      ]
-    },
-    { id: 'sep3', label: '', separator: true },
-    { id: 'update', label: isMulti ? `批量更新仓库` : '更新仓库', icon: <RefreshCw size={14} />, onClick: (e?: any) => handleUpdateRepos(e || ({stopPropagation: ()=>{}} as any), targetRepos) },
-    { id: 'sep4', label: '', separator: true },
-    { id: 'delete', label: isMulti ? `批量删除` : '删除', icon: <Trash2 size={14} />, danger: true, onClick: (e?: any) => handleDeleteRepos(e || ({stopPropagation: ()=>{}} as any), targetRepos) },
-  ];
-  }, [agents, syncRecords, selectedRepoIds, filteredGroupedRepos, waitConfirm]);
-
-  const buildSkillContextMenu = useCallback((skill: Skill): ContextMenuItem[] => {
-    const isMulti = selectedSkillIds.has(skill.id) && selectedSkillIds.size > 1;
-    
-    // 从所有可见的 skill 中筛选出当前选中的 skills
-    const visibleSkills = filteredGroupedRepos.find(r => r.id === selectedRepoId)?.skills || [];
-    const targetSkills = isMulti ? visibleSkills.filter(s => selectedSkillIds.has(s.id)) : [skill];
 
     return [
-    { id: 'view_doc', label: isMulti ? `无法批量查看文档` : '查看文档', icon: <Search size={14} />, onClick: () => { if(!isMulti) { setSelectedSkill(skill); setIsDrawerOpen(true); } } },
-    { id: 'open_folder', label: `在${fileManagerName}中打开`, icon: <Folder size={14} />, onClick: () => {
-        targetSkills.forEach(s => invoke('open_local_folder', { path: s.local_path }).catch(console.error));
-    } },
-    { id: 'copy_path', label: isMulti ? `复制 ${targetSkills.length} 个路径` : '复制路径', icon: <Copy size={14} />, onClick: () => { 
-        navigator.clipboard.writeText(targetSkills.map(s => s.local_path).join('\n')); 
-        showToast(isMulti ? '多个路径已复制' : '路径已复制'); 
-    } },
-    ...(agents.length > 0 ? [
-      { id: 'sep1', label: '', separator: true },
       {
+        id: 'open_folder', label: isMulti ? `在${fileManagerName}中打开` : `在${fileManagerName}中打开`, icon: <Folder size={14} />, onClick: () => {
+          targetRepos.forEach(r => invoke('open_local_folder', { path: r.path }).catch(console.error));
+        }
+      },
+      {
+        id: 'copy_path', label: isMulti ? `复制 ${targetRepos.length} 个路径` : '复制路径', icon: <Copy size={14} />, onClick: () => {
+          navigator.clipboard.writeText(targetRepos.map(r => r.path).join('\n'));
+          showToast(isMulti ? '多个路径已复制' : '路径已复制');
+        }
+      },
+      { id: 'sep1', label: '', separator: true },
+      ...(agents.length > 0 ? [{
         id: 'sync_to_agent',
-        label: isMulti ? `将 ${targetSkills.length} 个技能同步至 Agent` : '同步至 AI Agent',
+        label: isMulti ? `将 ${targetRepos.length} 个仓库同步至 Agent` : '同步至 AI Agent',
         icon: <LinkIcon size={14} />,
         children: agents.map(agent => {
-          const syncedCount = targetSkills.filter(s => syncRecords.some(sr => sr.skill_id === s.id && sr.agent_id === agent.id)).length;
+          const syncedCount = targetRepos.flatMap(r => r.skills).filter(skill => syncRecords.some(sr => sr.skill_id === skill.id && sr.agent_id === agent.id)).length;
           return {
             id: `sync_${agent.id}`,
             label: agent.display_name,
@@ -630,25 +520,165 @@ function App() {
             onClick: async () => {
               try {
                 if (syncedCount > 0) {
-                  for (const s of targetSkills) {
-                    await invoke('unsync_skill', { skillId: s.id, agentId: agent.id });
+                  for (const r of targetRepos) {
+                    for (const skill of r.skills) {
+                      await invoke('unsync_skill', { skillId: skill.id, agentId: agent.id });
+                    }
                   }
-                  showToast(isMulti ? `已批量取消同步至 ${agent.display_name}` : `已取消同步至 ${agent.display_name}`);
+                  showToast(isMulti ? `已批量取消同步至 ${agent.display_name}` : `已取消同步 "${repo.name}" 至 ${agent.display_name}`);
                 } else {
-                  for (const s of targetSkills) {
-                    const isAlreadySynced = syncRecords.some(sr => sr.skill_id === s.id && sr.agent_id === agent.id);
-                    if (!isAlreadySynced) await invoke('sync_skill', { skillId: s.id, agentId: agent.id });
+                  for (const r of targetRepos) {
+                    for (const skill of r.skills) {
+                      const isAlreadySynced = syncRecords.some(sr => sr.skill_id === skill.id && sr.agent_id === agent.id);
+                      if (!isAlreadySynced) await invoke('sync_skill', { skillId: skill.id, agentId: agent.id });
+                    }
                   }
-                  showToast(isMulti ? `已批量同步至 ${agent.display_name}` : `已同步至 ${agent.display_name}`);
+                  showToast(isMulti ? `已批量同步至 ${agent.display_name}` : `已同步 "${repo.name}" 至 ${agent.display_name}`);
                 }
                 fetchData();
               } catch (e) { showToast(`操作失败: ${e}`, 'error'); }
             }
           };
         })
-      }
-    ] : []),
-  ];
+      }] : []),
+      { id: 'sep2', label: '', separator: true },
+      {
+        id: 'export',
+        label: '导出',
+        icon: <Download size={14} />,
+        children: [
+          {
+            id: 'export_folder',
+            label: '直接导出目录',
+            icon: <Download size={14} />,
+            onClick: async () => {
+              try {
+                const destDir = await open({ directory: true, title: isMulti ? '选择批量导出位置' : '选择导出位置', multiple: false });
+                if (!destDir) return;
+
+                if (isMulti) {
+                  let conflictCount = 0;
+                  try {
+                    for (const r of targetRepos) {
+                      if (await invoke<boolean>('check_exists', { path: `${destDir}/${r.name}` })) conflictCount++;
+                    }
+                  } catch (e) {
+                    showToast(`检测文件冲突失败: ${e}`, 'error'); return;
+                  }
+                  if (conflictCount > 0) {
+                    if (!(await waitConfirm(`选定的目录中已有 ${conflictCount} 个同名仓库文件夹，确定要覆盖吗？`))) return;
+                  }
+                  await invoke('export_batch', { sourcePaths: targetRepos.map(r => r.path), destPath: destDir, isZip: false });
+                  showToast(`成功导出 ${targetRepos.length} 个仓库`);
+                } else {
+                  const r = targetRepos[0];
+                  try {
+                    if (await invoke<boolean>('check_exists', { path: `${destDir}/${r.name}` })) {
+                      if (!(await waitConfirm(`导出路径下已有同名文件夹 "${r.name}"，确定要覆盖吗？`))) return;
+                    }
+                  } catch (e) {
+                    showToast(`检测文件冲突失败: ${e}`, 'error'); return;
+                  }
+                  await invoke('export_batch', { sourcePaths: [r.path], destPath: destDir as string, isZip: false });
+                  showToast(`仓库已导出`);
+                }
+              } catch (e) {
+                console.error(e);
+                showToast(`导出失败: ${e}`, 'error');
+              }
+            }
+          },
+          {
+            id: 'export_zip',
+            label: '打包为 ZIP',
+            icon: <FileArchive size={14} />,
+            onClick: async () => {
+              try {
+                const destDir = await open({ directory: true, title: isMulti ? '选择批量导出位置' : '选择导出位置', multiple: false });
+                if (!destDir) return;
+
+                const targetPath = isMulti
+                  ? `${destDir}/SkillHub_Batch_${getExportTimeStr()}.zip`
+                  : `${destDir}/${targetRepos[0].name}_${getExportTimeStr()}.zip`;
+
+                try {
+                  if (await invoke<boolean>('check_exists', { path: targetPath })) {
+                    if (!(await waitConfirm(`导出路径下已有同名压缩包，确定要覆盖吗？`))) return;
+                  }
+                } catch (e) {
+                  showToast(`检测文件冲突失败: ${e}`, 'error'); return;
+                }
+                await invoke('export_batch', { sourcePaths: targetRepos.map(r => r.path), destPath: targetPath, isZip: true });
+                showToast(isMulti ? `成功打包 ${targetRepos.length} 个仓库` : `仓库 ZIP 已生成`);
+              } catch (e) {
+                console.error(e);
+                showToast(`打包失败: ${e}`, 'error');
+              }
+            }
+          }
+        ]
+      },
+      { id: 'sep3', label: '', separator: true },
+      { id: 'update', label: isMulti ? `批量更新仓库` : '更新仓库', icon: <RefreshCw size={14} />, onClick: (e?: any) => handleUpdateRepos(e || ({ stopPropagation: () => { } } as any), targetRepos) },
+      { id: 'sep4', label: '', separator: true },
+      { id: 'delete', label: isMulti ? `批量删除` : '删除', icon: <Trash2 size={14} />, danger: true, onClick: (e?: any) => handleDeleteRepos(e || ({ stopPropagation: () => { } } as any), targetRepos) },
+    ];
+  }, [agents, syncRecords, selectedRepoIds, filteredGroupedRepos, waitConfirm]);
+
+  const buildSkillContextMenu = useCallback((skill: Skill): ContextMenuItem[] => {
+    const isMulti = selectedSkillIds.has(skill.id) && selectedSkillIds.size > 1;
+
+    // 从所有可见的 skill 中筛选出当前选中的 skills
+    const visibleSkills = filteredGroupedRepos.find(r => r.id === selectedRepoId)?.skills || [];
+    const targetSkills = isMulti ? visibleSkills.filter(s => selectedSkillIds.has(s.id)) : [skill];
+
+    return [
+      { id: 'view_doc', label: isMulti ? `无法批量查看文档` : '查看文档', icon: <Search size={14} />, onClick: () => { if (!isMulti) { setSelectedSkill(skill); setIsDrawerOpen(true); } } },
+      {
+        id: 'open_folder', label: `在${fileManagerName}中打开`, icon: <Folder size={14} />, onClick: () => {
+          targetSkills.forEach(s => invoke('open_local_folder', { path: s.local_path }).catch(console.error));
+        }
+      },
+      {
+        id: 'copy_path', label: isMulti ? `复制 ${targetSkills.length} 个路径` : '复制路径', icon: <Copy size={14} />, onClick: () => {
+          navigator.clipboard.writeText(targetSkills.map(s => s.local_path).join('\n'));
+          showToast(isMulti ? '多个路径已复制' : '路径已复制');
+        }
+      },
+      ...(agents.length > 0 ? [
+        { id: 'sep1', label: '', separator: true },
+        {
+          id: 'sync_to_agent',
+          label: isMulti ? `将 ${targetSkills.length} 个技能同步至 Agent` : '同步至 AI Agent',
+          icon: <LinkIcon size={14} />,
+          children: agents.map(agent => {
+            const syncedCount = targetSkills.filter(s => syncRecords.some(sr => sr.skill_id === s.id && sr.agent_id === agent.id)).length;
+            return {
+              id: `sync_${agent.id}`,
+              label: agent.display_name,
+              icon: syncedCount > 0 ? <Check size={14} className="text-[var(--color-primary)]" /> : undefined,
+              onClick: async () => {
+                try {
+                  if (syncedCount > 0) {
+                    for (const s of targetSkills) {
+                      await invoke('unsync_skill', { skillId: s.id, agentId: agent.id });
+                    }
+                    showToast(isMulti ? `已批量取消同步至 ${agent.display_name}` : `已取消同步至 ${agent.display_name}`);
+                  } else {
+                    for (const s of targetSkills) {
+                      const isAlreadySynced = syncRecords.some(sr => sr.skill_id === s.id && sr.agent_id === agent.id);
+                      if (!isAlreadySynced) await invoke('sync_skill', { skillId: s.id, agentId: agent.id });
+                    }
+                    showToast(isMulti ? `已批量同步至 ${agent.display_name}` : `已同步至 ${agent.display_name}`);
+                  }
+                  fetchData();
+                } catch (e) { showToast(`操作失败: ${e}`, 'error'); }
+              }
+            };
+          })
+        }
+      ] : []),
+    ];
   }, [agents, selectedSkillIds, filteredGroupedRepos, selectedRepoId, syncRecords]);
 
   const selectedWorkspaceDir = directories.find(d => d.id === selectedWorkspaceId);
@@ -725,14 +755,14 @@ function App() {
         }
       }
     };
-    
+
     const handleFocus = () => {
       fetchData();
     };
 
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('focus', handleFocus);
-    
+
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('focus', handleFocus);
@@ -741,100 +771,135 @@ function App() {
 
   return (
     <div className="flex h-screen w-full bg-transparent text-[var(--foreground)] overflow-hidden font-sans">
-      
+
       <div className="w-64 bg-[var(--color-sidebar)] flex flex-col h-full shrink-0 relative z-20 text-[13px] border-r border-black/[0.05]">
         <div data-tauri-drag-region onPointerDown={() => getCurrentWindow().startDragging()} className="h-10 w-full shrink-0"></div>
 
-        {/* Workspace Switcher */}
-        <SkillLibrarySelector
-          ref={skillLibrarySelectorRef}
-          directories={directories}
-          selectedId={selectedWorkspaceId}
-          onSelect={handleWorkspaceSelect}
-          onDirectoriesChange={fetchData}
-          onCreateLibrary={() => setIsCreateModalOpen(true)}
-          onOpenLibrary={() => setIsOpenModalOpen(true)}
-          onMergeLibrary={() => setIsMergeModalOpen(true)}
-        />
-
-        <div className="px-3 pb-3">
-          <button 
-            onClick={() => setIsSearchModalOpen(true)}
-            className="w-full relative group flex items-center px-2 py-1 rounded-md bg-black/5 hover:bg-black/10 transition-all text-left outline-none select-none"
-          >
-            <Search className="w-4 h-4 text-[var(--color-muted)] mr-2 shrink-0 group-hover:text-[var(--color-primary)] transition-colors" />
-            <span className="text-[13px] text-[var(--color-muted)]/70 font-medium flex-1">搜索技能...</span>
-            <div className="flex items-center space-x-0.5 text-[10px] text-[var(--color-muted)] font-sans border border-black/5 rounded bg-black/[0.02] px-1.5 py-0.5">
-              <span>⌘</span><span>K</span>
-            </div>
-          </button>
+        {/* 模块 Tab 导航与全局搜索 */}
+        <div className="px-3 pb-3 flex items-center gap-2">
+          <div className="flex-1 flex items-center gap-1 p-1 rounded-lg bg-black/[0.04]">
+            {([
+              { id: 'skills' as AppModule, label: '技能', icon: Blocks },
+              { id: 'prompts' as AppModule, label: '提示词', icon: MessageSquareText },
+              { id: 'resources' as AppModule, label: '资源', icon: Store },
+            ]).map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveModule(tab.id)}
+                className={`flex items-center justify-center gap-2 px-3 py-1.5 rounded-md transition-all duration-200 outline-none select-none ${
+                  activeModule === tab.id
+                    ? 'bg-white text-[var(--foreground)] font-semibold shadow-sm flex-1'
+                    : 'text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/[0.04]'
+                }`}
+              >
+                <tab.icon className="w-4 h-4 shrink-0" />
+                {activeModule === tab.id && (
+                  <span className="text-[14px] truncate animate-in fade-in slide-in-from-left-1 duration-200">{tab.label}</span>
+                )}
+              </button>
+            ))}
+          </div>
+          <Tooltip content="全局搜索 (⌘K)">
+            <button
+              onClick={() => setIsSearchModalOpen(true)}
+              className="p-2 rounded-lg text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/[0.06] transition-colors shrink-0"
+            >
+              <Search className="w-4 h-4" />
+            </button>
+          </Tooltip>
         </div>
 
-        <div className="flex-1 overflow-y-auto">
-          <div className="px-3 mb-5">
-            <h3 className="text-[11px] font-semibold text-[var(--color-muted)]/60 mb-1 px-2">
-              分类视图
-            </h3>
-            <div className="space-y-0.5">
-              {[
-                { id: "all", label: "全部分类", icon: LayoutGrid },
-                { id: "正式技能", label: "正式技能", icon: Sparkles },
-                { id: "其他", label: "其他", icon: FileQuestion }
-              ].map(cat => (
-                <button
-                  key={cat.id}
-                  onClick={() => setSelectedCategory(cat.id)}
-                  className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none ${
-                    selectedCategory === cat.id
-                      ? "bg-black/5 text-[var(--foreground)] font-semibold"
-                      : "text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] font-medium"
-                  }`}
-                >
-                  <cat.icon className="w-4 h-4" />
-                  <span>{cat.label}</span>
-                </button>
-              ))}
-            </div>
-          </div>
+        {activeModule === 'skills' ? (
+          <>
+            {/* Workspace Switcher */}
+            <SkillLibrarySelector
+              ref={skillLibrarySelectorRef}
+              directories={directories}
+              selectedId={selectedWorkspaceId}
+              onSelect={handleWorkspaceSelect}
+              onDirectoriesChange={fetchData}
+              onCreateLibrary={() => setIsCreateModalOpen(true)}
+              onOpenLibrary={() => setIsOpenModalOpen(true)}
+              onMergeLibrary={() => setIsMergeModalOpen(true)}
+            />
 
-          <div className="px-3 mb-5">
-            <h3 className="text-[11px] font-semibold text-[var(--color-muted)]/60 mb-1 px-2">
-              数据源
-            </h3>
-            <div className="space-y-0.5">
-              <button
-                className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none ${
-                  activeTab === "all" ? "bg-black/5 text-[var(--foreground)] font-semibold" : "text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 font-medium"
-                }`}
-                onClick={() => setActiveTab("all")}
-              >
-                <FolderGit2 className="w-4 h-4" />
-                <span>所有技能</span>
-              </button>
-              <button
-                className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none ${
-                  activeTab === "local" ? "bg-black/5 text-[var(--foreground)] font-semibold" : "text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 font-medium"
-                }`}
-                onClick={() => setActiveTab("local")}
-              >
-                <HardDrive className="w-4 h-4" />
-                <span>本地技能</span>
-              </button>
-              <button
-                className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none ${
-                  activeTab === "github" ? "bg-black/5 text-[var(--foreground)] font-semibold" : "text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 font-medium"
-                }`}
-                onClick={() => setActiveTab("github")}
-              >
-                <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M15 22v-4a4.8 4.8 0 0 0-1-3.24c3-.3 6-1.5 6-6.76a5.5 5.5 0 0 0-1.5-3.8 5.1 5.1 0 0 0-.1-3.8s-1.2-.4-3.9 1.4a13.4 13.4 0 0 0-7 0C6.3 2.4 5.1 2.8 5.1 2.8a5.1 5.1 0 0 0-.1 3.8 5.5 5.5 0 0 0-1.5 3.8c0 5.2 3 6.4 6 6.76a4.8 4.8 0 0 0-1 3.24v4" />
-                </svg>
-                <span>Github技能</span>
-              </button>
-            </div>
-          </div>
 
-        </div>
+            <div className="flex-1 overflow-y-auto">
+              <div className="px-3 mb-5">
+                <h3 className="text-[11px] font-semibold text-[var(--color-muted)]/60 mb-1 px-2">
+                  分类视图
+                </h3>
+                <div className="space-y-0.5">
+                  {[
+                    { id: "all", label: "全部分类", icon: LayoutGrid },
+                    { id: "正式技能", label: "正式技能", icon: Sparkles },
+                    { id: "其他", label: "其他", icon: FileQuestion }
+                  ].map(cat => (
+                    <button
+                      key={cat.id}
+                      onClick={() => setSelectedCategory(cat.id)}
+                      className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none ${selectedCategory === cat.id
+                          ? "bg-black/5 text-[var(--foreground)] font-semibold"
+                          : "text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] font-medium"
+                        }`}
+                    >
+                      <cat.icon className="w-4 h-4" />
+                      <span>{cat.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="px-3 mb-5">
+                <h3 className="text-[11px] font-semibold text-[var(--color-muted)]/60 mb-1 px-2">
+                  数据源
+                </h3>
+                <div className="space-y-0.5">
+                  <button
+                    className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none ${activeTab === "all" ? "bg-black/5 text-[var(--foreground)] font-semibold" : "text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 font-medium"
+                      }`}
+                    onClick={() => setActiveTab("all")}
+                  >
+                    <FolderGit2 className="w-4 h-4" />
+                    <span>所有技能</span>
+                  </button>
+                  <button
+                    className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none ${activeTab === "local" ? "bg-black/5 text-[var(--foreground)] font-semibold" : "text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 font-medium"
+                      }`}
+                    onClick={() => setActiveTab("local")}
+                  >
+                    <HardDrive className="w-4 h-4" />
+                    <span>本地技能</span>
+                  </button>
+                  <button
+                    className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none ${activeTab === "github" ? "bg-black/5 text-[var(--foreground)] font-semibold" : "text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 font-medium"
+                      }`}
+                    onClick={() => setActiveTab("github")}
+                  >
+                    <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M15 22v-4a4.8 4.8 0 0 0-1-3.24c3-.3 6-1.5 6-6.76a5.5 5.5 0 0 0-1.5-3.8 5.1 5.1 0 0 0-.1-3.8s-1.2-.4-3.9 1.4a13.4 13.4 0 0 0-7 0C6.3 2.4 5.1 2.8 5.1 2.8a5.1 5.1 0 0 0-.1 3.8 5.5 5.5 0 0 0-1.5 3.8c0 5.2 3 6.4 6 6.76a4.8 4.8 0 0 0-1 3.24v4" />
+                    </svg>
+                    <span>Github技能</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="flex-1 overflow-y-auto px-0">
+            {activeModule === 'prompts' && (
+              <PromptSidebarNav
+                filter={promptFilter}
+                groups={promptGroups}
+                onFilterChange={setPromptFilter}
+                onCreateGroup={() => setIsCreateGroupOpen(true)}
+                isCreateGroupOpen={isCreateGroupOpen}
+                onCreateGroupClose={() => setIsCreateGroupOpen(false)}
+                onGroupSaved={() => setPromptRefreshKey(k => k + 1)}
+              />
+            )}
+          </div>
+        )}
 
         <div className="p-3 mt-auto">
           <button onClick={() => setIsSettingsOpen(true)} className="w-full flex items-center space-x-2 px-2 py-1.5 rounded-md font-medium text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-colors outline-none select-none active:scale-[0.98]">
@@ -849,344 +914,382 @@ function App() {
       </div>
 
       <div className="flex-1 flex h-full min-w-0 bg-transparent relative">
-      <div className="flex-1 flex flex-col h-full min-w-0 bg-transparent relative">
-        <div data-tauri-drag-region onPointerDown={(e) => {
-          if (e.target === e.currentTarget) {
-            getCurrentWindow().startDragging();
-          }
-        }} className="h-16 border-b border-[var(--color-border)] bg-white/70 backdrop-blur-xl flex items-center justify-between px-8 shrink-0 relative z-0">
-          <div className="flex items-center space-x-3">
-            {selectedRepoId && (
-              <button onClick={handleGoBack} className="p-1.5 rounded-lg text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] transition-colors mr-1">
-                <ChevronLeft className="w-5 h-5 text-[var(--color-muted)]" />
-              </button>
-            )}
-            <h1 className="text-xl font-medium tracking-tight text-[var(--foreground)] flex items-center">
-              {selectedRepoId ? (
-                <>
-                  <span className="text-[var(--color-muted)] cursor-pointer hover:text-[var(--foreground)] transition-colors" onClick={handleGoBack}>
-                    {directories.find(d => d.id === selectedWorkspaceId)?.label || "未知技能库"}
-                  </span>
-                  <ChevronRight className="w-4 h-4 mx-2 text-[var(--color-muted)] opacity-50" />
-                  <span>{filteredGroupedRepos.find(r => r.id === selectedRepoId)?.name}</span>
-                </>
-              ) : (
-                directories.find(d => d.id === selectedWorkspaceId)?.label || "未知技能库"
+        {activeModule === 'skills' ? (
+          <>
+            <div className="flex-1 flex flex-col h-full min-w-0 bg-transparent relative">
+          <div data-tauri-drag-region onPointerDown={(e) => {
+            if (e.target === e.currentTarget) {
+              getCurrentWindow().startDragging();
+            }
+          }} className="h-16 border-b border-[var(--color-border)] bg-white/70 backdrop-blur-xl flex items-center justify-between px-8 shrink-0 relative z-0">
+            <div className="flex items-center space-x-3">
+              {selectedRepoId && (
+                <button onClick={handleGoBack} className="p-1.5 rounded-lg text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] transition-colors mr-1">
+                  <ChevronLeft className="w-5 h-5 text-[var(--color-muted)]" />
+                </button>
               )}
-            </h1>
+              <h1 className="text-xl font-medium tracking-tight text-[var(--foreground)] flex items-center">
+                {selectedRepoId ? (
+                  <>
+                    <span className="text-[var(--color-muted)] cursor-pointer hover:text-[var(--foreground)] transition-colors" onClick={handleGoBack}>
+                      {directories.find(d => d.id === selectedWorkspaceId)?.label || "未知技能库"}
+                    </span>
+                    <ChevronRight className="w-4 h-4 mx-2 text-[var(--color-muted)] opacity-50" />
+                    <span>{filteredGroupedRepos.find(r => r.id === selectedRepoId)?.name}</span>
+                  </>
+                ) : (
+                  directories.find(d => d.id === selectedWorkspaceId)?.label || "未知技能库"
+                )}
+              </h1>
+            </div>
+            <div className="flex items-center space-x-3">
+              <button onClick={() => handleSyncAll(true, directories.filter(d => d.id === selectedWorkspaceId))} disabled={isSyncingAll} className="flex items-center space-x-1.5 px-2.5 py-1 rounded-md font-medium text-[13px] text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-all disabled:opacity-50">
+                <RefreshCw className={`w-4 h-4 ${isSyncingAll ? 'animate-spin text-[var(--color-primary)]' : ''}`} />
+                <span>{isSyncingAll ? '正在同步...' : '同步当前库'}</span>
+              </button>
+              <button onClick={handleAddRepo} className="flex items-center space-x-1.5 bg-blue-500 text-white px-3 py-1.5 rounded-md text-[13px] font-medium hover:bg-blue-600 shadow-sm shadow-blue-500/20 transition-all ml-2">
+                <Plus className="w-4 h-4" />
+                <span>添加技能</span>
+              </button>
+            </div>
           </div>
-          <div className="flex items-center space-x-3">
-            <button onClick={() => handleSyncAll(true, directories.filter(d => d.id === selectedWorkspaceId))} disabled={isSyncingAll} className="flex items-center space-x-1.5 px-2.5 py-1 rounded-md font-medium text-[13px] text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-all disabled:opacity-50">
-              <RefreshCw className={`w-4 h-4 ${isSyncingAll ? 'animate-spin text-[var(--color-primary)]' : ''}`} />
-              <span>{isSyncingAll ? '正在同步...' : '同步当前库'}</span>
-            </button>
-            <button onClick={handleAddRepo} className="flex items-center space-x-1.5 bg-blue-500 text-white px-3 py-1.5 rounded-md text-[13px] font-medium hover:bg-blue-600 shadow-sm shadow-blue-500/20 transition-all ml-2">
-              <Plus className="w-4 h-4" />
-              <span>添加技能</span>
-            </button>
-          </div>
-        </div>
 
-        <div 
-          className="flex-1 overflow-y-auto p-6 relative z-0 bg-[var(--color-background)]" 
-          onClick={(e) => { if (e.target === e.currentTarget) handleDeselectAll(); }}
-          onContextMenu={(e) => {
-            // Because cards call stopPropagation(), this only fires for blank space
-            showContextMenu(e, { type: 'empty', data: null });
-          }}
-        >
-          {selectedWorkspaceDir?.is_missing ? (
-            <div className="flex flex-col items-center justify-center h-full text-[var(--color-muted)] animate-in fade-in duration-500">
-              <div className="w-32 h-32 mb-6 relative group">
-                <div className="relative bg-white/60 backdrop-blur-xl rounded-3xl p-8 flex items-center justify-center">
-                  <FolderX className="w-12 h-12 text-red-500 drop-shadow-sm relative z-10" />
-                </div>
-              </div>
-              <h2 className="text-xl font-semibold text-[var(--foreground)] mb-2 tracking-tight">无法载入当前资源库</h2>
-              <p className="text-sm text-[var(--color-muted)] mb-4 text-center whitespace-nowrap overflow-hidden text-ellipsis">
-                找不到资源库的路径，可能已被移动、重命名或从磁盘中删除。
-              </p>
-              <div className="text-[13px] text-[var(--color-muted)] font-mono bg-black/5 px-3 py-1.5 rounded mb-8 truncate max-w-[400px] w-full text-center">
-                {selectedWorkspaceDir.path}
-              </div>
-              <div className="flex flex-col items-center gap-3 w-full max-w-[280px]">
-                <button 
-                  onClick={async () => {
-                    setIsRetryingMissing(true);
-                    await fetchData();
-                    setTimeout(() => setIsRetryingMissing(false), 500);
-                  }} 
-                  disabled={isRetryingMissing}
-                  className="flex items-center justify-center gap-2 w-full px-6 py-2.5 bg-white border border-[var(--color-border)] hover:bg-black/5 text-[var(--foreground)] font-medium rounded-lg transition-colors shadow-sm disabled:opacity-70"
-                >
-                  <RefreshCw className={`w-4 h-4 ${isRetryingMissing ? 'animate-spin' : ''}`} />
-                  {isRetryingMissing ? '正在检测...' : '再试一次'}
-                </button>
-                <button 
-                  onClick={() => skillLibrarySelectorRef.current?.openDropdown()}
-                  className="flex items-center justify-center gap-2 px-6 py-2.5 bg-blue-500 text-white rounded-lg font-medium hover:bg-blue-600 transition-colors w-full shadow-sm"
-                >
-                  <FolderSearch className="w-4 h-4" />
-                  切换其他资源库
-                </button>
-                <button 
-                  onClick={async () => {
-                    try {
-                      await invoke('remove_source_directory', { id: selectedWorkspaceDir.id, deleteLocal: false });
-                      const nextDir = directories.find(d => d.id !== selectedWorkspaceDir.id && !d.is_missing) || directories.find(d => d.id !== selectedWorkspaceDir.id);
-                      handleWorkspaceSelect(nextDir ? nextDir.id : null);
-                      await fetchData();
-                    } catch (e) { console.error(e); }
-                  }}
-                  className="flex items-center justify-center gap-2 w-full px-6 py-2.5 bg-transparent hover:bg-red-50 text-red-500 font-medium rounded-lg transition-colors"
-                >
-                  <Trash2 className="w-4 h-4" />
-                  移除记录
-                </button>
-              </div>
-            </div>
-          ) : filteredGroupedRepos.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-[var(--color-muted)] animate-in fade-in duration-500">
-              <div className="w-32 h-32 mb-6 relative group">
-                <div className="relative bg-white/60 backdrop-blur-xl rounded-3xl p-8 flex items-center justify-center">
-                  <HardDrive className="w-12 h-12 text-blue-400 drop-shadow-sm relative z-10" />
-                </div>
-              </div>
-              <h2 className="text-xl font-semibold text-[var(--foreground)] mb-2 tracking-tight">空空如也，拖放技能到这里</h2>
-              <p className="text-sm text-[var(--color-muted)] mb-8 text-center max-w-sm leading-relaxed">
-                你可以一次拖拽多个文件到这里添加，也可以通过下方按钮导入本地或云端技能库
-              </p>
-              <div className="flex items-center space-x-3">
-                <button onClick={() => { setAddDialogTab("local"); setIsAddDialogOpen(true); }} className="flex flex-col items-center justify-center p-3 bg-black/5 rounded-md hover:bg-black/10 transition-all group">
-                  <div className="p-1.5 rounded-md bg-white shadow-sm transition-colors mr-2">
-                    <HardDrive className="w-3.5 h-3.5 text-[var(--color-muted)] group-hover:text-[var(--foreground)]" />
-                  </div>
-                  <span className="text-[12px] font-medium text-[var(--foreground)] mt-2">导入本地技能</span>
-                </button>
-                <button onClick={() => { setAddDialogTab("github"); setIsAddDialogOpen(true); }} className="flex flex-col items-center justify-center p-3 bg-black/5 rounded-md hover:bg-black/10 transition-all group">
-                  <div className="p-1.5 rounded-md bg-white shadow-sm transition-colors mr-2">
-                    <Globe className="w-3.5 h-3.5 text-[var(--color-muted)] group-hover:text-[var(--foreground)]" />
-                  </div>
-                  <span className="text-[12px] font-medium text-[var(--foreground)] mt-2">克隆 GitHub 库</span>
-                </button>
-              </div>
-            </div>
-          ) : !selectedRepoId ? (
-            <SelectionArea
-              onBeforeStart={({ event }: SelectionEvent) => {
-                if ((event?.target as Element)?.closest?.('[data-id]')) return false;
-                return true;
-              }}
-              onStart={({ event, selection }: SelectionEvent) => {
-                if (!event?.ctrlKey && !event?.metaKey && !event?.shiftKey) {
-                  selection.clearSelection();
-                  setSelectedRepoIds(new Set());
-                }
-              }}
-              onMove={({ store: { changed: { added, removed } } }: SelectionEvent) => {
-                isDraggingRef.current = true;
-                setSelectedRepoIds(prev => {
-                  const next = new Set(prev);
-                  added.forEach((el: Element) => {
-                    const id = el.getAttribute('data-id');
-                    if (id) next.add(id);
-                  });
-                  removed.forEach((el: Element) => {
-                    const id = el.getAttribute('data-id');
-                    if (id) next.delete(id);
-                  });
-                  return next;
-                });
-                setInspectorSelectedType('repo');
-              }}
-              onStop={() => { setTimeout(() => { isDraggingRef.current = false; }, 0); }}
-              selectables="[data-id]"
-              className="w-full"
-            >
-              <div className="grid gap-3 content-start pb-20" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }} onClick={(e) => { if (e.target === e.currentTarget && !isDraggingRef.current) handleDeselectAll(); }}>
-              {cloningRepos.map((repo, idx) => (
-                <div key={`cloning-${idx}`} className="group bg-[var(--color-muted-bg)]/30 backdrop-blur-md rounded-xl p-4 border border-dashed border-[var(--color-border)] shadow-sm flex flex-col h-24 animate-pulse">
-                  <div className="flex items-center space-x-2">
-                    <div className="w-8 h-8 rounded-lg bg-[var(--color-muted-bg)] flex items-center justify-center shrink-0">
-                      <div className="w-4 h-4 border-2 border-[var(--color-muted)] border-t-transparent rounded-full animate-spin"></div>
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <h3 className="text-[13px] font-semibold text-[var(--foreground)] truncate" title={repo.name}>{repo.name}</h3>
-                      <span className="text-[10px] text-[var(--color-muted)]">正在拉取...</span>
-                    </div>
-                    <Tooltip content="取消拉取">
-                      <button onClick={(e) => handleCancelClone(e, repo.path)} className="p-1 rounded text-[var(--color-muted)] hover:text-red-500 hover:bg-red-50 transition-colors shrink-0">
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    </Tooltip>
-                  </div>
-                </div>
-              ))}
-              {filteredGroupedRepos.map((repo) => (
-                  <RepoCard
-                    key={repo.id}
-                    repo={repo}
-                    syncRecords={syncRecords}
-                    agents={agents}
-                    isSelected={inspectorSelectedType === 'repo' && selectedRepoIds.has(repo.id)}
-                    onClick={(e) => handleSelectRepo(repo, e)}
-                    onDoubleClick={() => {
-                      setSelectedRepoId(repo.id);
-                      setInspectorSelectedType('repo');
-                      setSelectedRepoIds(new Set([repo.id]));
-                      setSelectedSkillIds(new Set());
-                    }}
-                    onContextMenu={(e) => {
-                      if (!selectedRepoIds.has(repo.id)) handleSelectRepo(repo, e);
-                      showContextMenu(e, { type: 'repo', data: repo });
-                    }}
-                    onUpdateRepo={(e, r) => handleUpdateRepos(e, [r])}
-                    onDeleteRepo={(e, r) => handleDeleteRepos(e, [r])}
-                  />
-                ))}
-            </div>
-            </SelectionArea>
-          ) : (
-            <SelectionArea
-              onBeforeStart={({ event }: SelectionEvent) => {
-                if ((event?.target as Element)?.closest?.('[data-id]')) return false;
-                return true;
-              }}
-              onStart={({ event, selection }: SelectionEvent) => {
-                if (!event?.ctrlKey && !event?.metaKey && !event?.shiftKey) {
-                  selection.clearSelection();
-                  setSelectedSkillIds(new Set());
-                }
-              }}
-              onMove={({ store: { changed: { added, removed } } }: SelectionEvent) => {
-                isDraggingRef.current = true;
-                setSelectedSkillIds(prev => {
-                  const next = new Set(prev);
-                  added.forEach((el: Element) => {
-                    const id = el.getAttribute('data-id');
-                    if (id) next.add(id);
-                  });
-                  removed.forEach((el: Element) => {
-                    const id = el.getAttribute('data-id');
-                    if (id) next.delete(id);
-                  });
-                  return next;
-                });
-                setInspectorSelectedType('skill');
-              }}
-              onStop={() => { setTimeout(() => { isDraggingRef.current = false; }, 0); }}
-              selectables="[data-id]"
-              className="w-full"
-            >
-              <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))' }} onClick={(e) => { if (e.target === e.currentTarget && !isDraggingRef.current) handleDeselectAll(); }}>
-              {filteredGroupedRepos.find(r => r.id === selectedRepoId)?.skills.map((skill) => (
-                  <SkillCard
-                    key={skill.id}
-                    skill={skill}
-                    syncRecords={syncRecords}
-                    agents={agents}
-                    isSelected={inspectorSelectedType === 'skill' && selectedSkillIds.has(skill.id)}
-                    onClick={(e) => handleSelectSkill(skill, e)}
-                    onDoubleClick={() => { setSelectedSkill(skill); setIsDrawerOpen(true); }}
-                    onContextMenu={(e) => {
-                      if (!selectedSkillIds.has(skill.id)) handleSelectSkill(skill, e);
-                      showContextMenu(e, { type: 'skill', data: skill });
-                    }}
-                    onCopyPath={handleCopyPath}
-                  />
-                ))}
-            </div>
-            </SelectionArea>
-          )}
-        </div>
-        
-        {/* Sync Progress Panel */}
-        {syncLogs.length > 0 && (
-          <div 
-            className={`absolute bottom-8 right-8 bg-white/90 backdrop-blur-xl border border-[var(--color-border)] rounded-2xl shadow-2xl transition-all duration-300 z-50 ${isSyncPopupMinimized ? 'w-auto p-3 flex items-center space-x-3 cursor-pointer hover:bg-white hover:scale-105' : 'w-80 p-4'}`} 
-            onClick={() => { if(isSyncPopupMinimized) setIsSyncPopupMinimized(false); }}
+          <div
+            className="flex-1 overflow-y-auto p-6 relative z-0 bg-[var(--color-background)]"
+            onClick={(e) => { if (e.target === e.currentTarget) handleDeselectAll(); }}
+            onContextMenu={(e) => {
+              // Because cards call stopPropagation(), this only fires for blank space
+              showContextMenu(e, { type: 'empty', data: null });
+            }}
           >
-            {isSyncPopupMinimized ? (
-              <>
-                <RefreshCw className={`w-5 h-5 ${isSyncingAll ? 'animate-spin text-[var(--color-primary)]' : 'text-green-500'}`} />
-                <div className="flex flex-col pr-2">
-                  <span className="text-sm font-medium text-[var(--foreground)]">{isSyncingAll ? "正在同步更新..." : "同步完成"}</span>
-                  <span className="text-[10px] text-[var(--color-muted)]">{syncLogs.length} 仓库 ({syncLogs.filter(l => l.status === 'success').length} 同步, {syncLogs.filter(l => l.status === 'error').length} 失败)</span>
-                </div>
-                <button onClick={(e) => { 
-                  e.stopPropagation(); 
-                  if (isSyncingAll) {
-                    currentSyncRunId.current = 0;
-                    setIsSyncingAll(false);
-                  }
-                  setSyncLogs([]); 
-                }} className="p-1.5 rounded-lg text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-colors ml-2 border-l border-[var(--color-border)] rounded-none pl-2">
-                  <X className="w-4 h-4" />
-                </button>
-              </>
-            ) : (
-              <>
-                <div className="flex justify-between items-center mb-3 text-sm">
-                  <span className="font-medium text-[var(--foreground)] flex items-center">
-                    <RefreshCw className={`w-4 h-4 mr-2 ${isSyncingAll ? 'animate-spin text-[var(--color-primary)]' : 'text-green-500'}`} />
-                    {isSyncingAll ? "正在同步更新..." : "同步完成"}
-                  </span>
-                  <div className="flex items-center">
-                    <Tooltip content="最小化">
-                      <button onClick={(e) => { e.stopPropagation(); setIsSyncPopupMinimized(true); }} className="p-1.5 rounded-lg text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-colors mr-1">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                      </button>
-                    </Tooltip>
-                    <Tooltip content="停止/关闭">
-                      <button onClick={(e) => { 
-                        e.stopPropagation(); 
-                        if (isSyncingAll) {
-                          currentSyncRunId.current = 0;
-                          setIsSyncingAll(false);
-                        }
-                        setSyncLogs([]); 
-                      }} className="p-1.5 rounded-lg text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-colors">
-                        <X className="w-4 h-4" />
-                      </button>
-                    </Tooltip>
+            {selectedWorkspaceDir?.is_missing ? (
+              <div className="flex flex-col items-center justify-center h-full text-[var(--color-muted)] animate-in fade-in duration-500">
+                <div className="w-32 h-32 mb-6 relative group">
+                  <div className="relative bg-white/60 backdrop-blur-xl rounded-3xl p-8 flex items-center justify-center">
+                    <FolderX className="w-12 h-12 text-red-500 drop-shadow-sm relative z-10" />
                   </div>
                 </div>
-                
-                <div className="text-[10px] text-[var(--color-muted)] mb-3 pb-2 border-b border-[var(--color-border)]">
-                  共 {syncLogs.length} 个仓库 <span className="text-green-500 font-semibold ml-1">同步 {syncLogs.filter(l => l.status === 'success').length}</span> <span className="text-gray-500 font-semibold ml-1">跳过 {syncLogs.filter(l => l.status === 'skipped').length}</span> <span className="text-red-500 font-semibold ml-1">失败 {syncLogs.filter(l => l.status === 'error').length}</span>
+                <h2 className="text-xl font-semibold text-[var(--foreground)] mb-2 tracking-tight">无法载入当前资源库</h2>
+                <p className="text-sm text-[var(--color-muted)] mb-4 text-center whitespace-nowrap overflow-hidden text-ellipsis">
+                  找不到资源库的路径，可能已被移动、重命名或从磁盘中删除。
+                </p>
+                <div className="text-[13px] text-[var(--color-muted)] font-mono bg-black/5 px-3 py-1.5 rounded mb-8 truncate max-w-[400px] w-full text-center">
+                  {selectedWorkspaceDir.path}
                 </div>
-                
-                <div className="space-y-2 max-h-[300px] overflow-y-auto pr-5 custom-scrollbar">
-                  {syncLogs.map(log => (
-                    <div key={log.id} className="flex items-center justify-between text-xs py-0.5 pr-2">
-                      <span className="text-[var(--color-muted)] truncate flex-1 mr-3" title={log.label}>{log.label}</span>
-                      {log.status === 'pending' && <span className="text-blue-500 font-medium shrink-0 animate-pulse">正在扫描...</span>}
-                      {log.status === 'success' && <span className="text-green-500 font-medium shrink-0 text-right w-16 truncate">{log.message || '更新成功'}</span>}
-                      {log.status === 'skipped' && <span className="text-gray-500 font-medium shrink-0 text-right w-16 truncate">{log.message || '已跳过'}</span>}
-                      {log.status === 'error' && <span className="text-red-500 font-medium shrink-0 truncate max-w-[80px] text-right" title={log.message}>更新失败</span>}
+                <div className="flex flex-col items-center gap-3 w-full max-w-[280px]">
+                  <button
+                    onClick={async () => {
+                      setIsRetryingMissing(true);
+                      await fetchData();
+                      setTimeout(() => setIsRetryingMissing(false), 500);
+                    }}
+                    disabled={isRetryingMissing}
+                    className="flex items-center justify-center gap-2 w-full px-6 py-2.5 bg-white border border-[var(--color-border)] hover:bg-black/5 text-[var(--foreground)] font-medium rounded-lg transition-colors shadow-sm disabled:opacity-70"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${isRetryingMissing ? 'animate-spin' : ''}`} />
+                    {isRetryingMissing ? '正在检测...' : '再试一次'}
+                  </button>
+                  <button
+                    onClick={() => skillLibrarySelectorRef.current?.openDropdown()}
+                    className="flex items-center justify-center gap-2 px-6 py-2.5 bg-blue-500 text-white rounded-lg font-medium hover:bg-blue-600 transition-colors w-full shadow-sm"
+                  >
+                    <FolderSearch className="w-4 h-4" />
+                    切换其他资源库
+                  </button>
+                  <button
+                    onClick={async () => {
+                      try {
+                        await invoke('remove_source_directory', { id: selectedWorkspaceDir.id, deleteLocal: false });
+                        const nextDir = directories.find(d => d.id !== selectedWorkspaceDir.id && !d.is_missing) || directories.find(d => d.id !== selectedWorkspaceDir.id);
+                        handleWorkspaceSelect(nextDir ? nextDir.id : null);
+                        await fetchData();
+                      } catch (e) { console.error(e); }
+                    }}
+                    className="flex items-center justify-center gap-2 w-full px-6 py-2.5 bg-transparent hover:bg-red-50 text-red-500 font-medium rounded-lg transition-colors"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    移除记录
+                  </button>
+                </div>
+              </div>
+            ) : filteredGroupedRepos.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-[var(--color-muted)] animate-in fade-in duration-500">
+                <div className="w-32 h-32 mb-6 relative group">
+                  <div className="relative bg-white/60 backdrop-blur-xl rounded-3xl p-8 flex items-center justify-center">
+                    <HardDrive className="w-12 h-12 text-blue-400 drop-shadow-sm relative z-10" />
+                  </div>
+                </div>
+                <h2 className="text-xl font-semibold text-[var(--foreground)] mb-2 tracking-tight">空空如也，拖放技能到这里</h2>
+                <p className="text-sm text-[var(--color-muted)] mb-8 text-center max-w-sm leading-relaxed">
+                  你可以一次拖拽多个文件到这里添加，也可以通过下方按钮导入本地或云端技能库
+                </p>
+                <div className="flex items-center space-x-3">
+                  <button onClick={() => { setAddDialogTab("local"); setIsAddDialogOpen(true); }} className="flex flex-col items-center justify-center p-3 bg-black/5 rounded-md hover:bg-black/10 transition-all group">
+                    <div className="p-1.5 rounded-md bg-white shadow-sm transition-colors mr-2">
+                      <HardDrive className="w-3.5 h-3.5 text-[var(--color-muted)] group-hover:text-[var(--foreground)]" />
+                    </div>
+                    <span className="text-[12px] font-medium text-[var(--foreground)] mt-2">导入本地技能</span>
+                  </button>
+                  <button onClick={() => { setAddDialogTab("github"); setIsAddDialogOpen(true); }} className="flex flex-col items-center justify-center p-3 bg-black/5 rounded-md hover:bg-black/10 transition-all group">
+                    <div className="p-1.5 rounded-md bg-white shadow-sm transition-colors mr-2">
+                      <Globe className="w-3.5 h-3.5 text-[var(--color-muted)] group-hover:text-[var(--foreground)]" />
+                    </div>
+                    <span className="text-[12px] font-medium text-[var(--foreground)] mt-2">克隆 GitHub 库</span>
+                  </button>
+                </div>
+              </div>
+            ) : !selectedRepoId ? (
+              <SelectionArea
+                onBeforeStart={({ event }: SelectionEvent) => {
+                  if ((event?.target as Element)?.closest?.('[data-id]')) return false;
+                  return true;
+                }}
+                onStart={({ event, selection }: SelectionEvent) => {
+                  if (!event?.ctrlKey && !event?.metaKey && !event?.shiftKey) {
+                    selection.clearSelection();
+                    setSelectedRepoIds(new Set());
+                  }
+                }}
+                onMove={({ store: { changed: { added, removed } } }: SelectionEvent) => {
+                  isDraggingRef.current = true;
+                  setSelectedRepoIds(prev => {
+                    const next = new Set(prev);
+                    added.forEach((el: Element) => {
+                      const id = el.getAttribute('data-id');
+                      if (id) next.add(id);
+                    });
+                    removed.forEach((el: Element) => {
+                      const id = el.getAttribute('data-id');
+                      if (id) next.delete(id);
+                    });
+                    return next;
+                  });
+                  setInspectorSelectedType('repo');
+                }}
+                onStop={() => { setTimeout(() => { isDraggingRef.current = false; }, 0); }}
+                selectables="[data-id]"
+                className="w-full"
+              >
+                <div className="grid gap-3 content-start pb-20" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }} onClick={(e) => { if (e.target === e.currentTarget && !isDraggingRef.current) handleDeselectAll(); }}>
+                  {cloningRepos.map((repo, idx) => (
+                    <div key={`cloning-${idx}`} className="group bg-[var(--color-muted-bg)]/30 backdrop-blur-md rounded-xl p-4 border border-dashed border-[var(--color-border)] shadow-sm flex flex-col h-24 animate-pulse">
+                      <div className="flex items-center space-x-2">
+                        <div className="w-8 h-8 rounded-lg bg-[var(--color-muted-bg)] flex items-center justify-center shrink-0">
+                          <div className="w-4 h-4 border-2 border-[var(--color-muted)] border-t-transparent rounded-full animate-spin"></div>
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <h3 className="text-[13px] font-semibold text-[var(--foreground)] truncate" title={repo.name}>{repo.name}</h3>
+                          <span className="text-[10px] text-[var(--color-muted)]">正在拉取...</span>
+                        </div>
+                        <Tooltip content="取消拉取">
+                          <button onClick={(e) => handleCancelClone(e, repo.path)} className="p-1 rounded text-[var(--color-muted)] hover:text-red-500 hover:bg-red-50 transition-colors shrink-0">
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </Tooltip>
+                      </div>
                     </div>
                   ))}
+                  {filteredGroupedRepos.map((repo) => (
+                    <RepoCard
+                      key={repo.id}
+                      repo={repo}
+                      syncRecords={syncRecords}
+                      agents={agents}
+                      isSelected={inspectorSelectedType === 'repo' && selectedRepoIds.has(repo.id)}
+                      onClick={(e) => handleSelectRepo(repo, e)}
+                      onDoubleClick={() => {
+                        setSelectedRepoId(repo.id);
+                        setInspectorSelectedType('repo');
+                        setSelectedRepoIds(new Set([repo.id]));
+                        setSelectedSkillIds(new Set());
+                      }}
+                      onContextMenu={(e) => {
+                        if (!selectedRepoIds.has(repo.id)) handleSelectRepo(repo, e);
+                        showContextMenu(e, { type: 'repo', data: repo });
+                      }}
+                      onUpdateRepo={(e, r) => handleUpdateRepos(e, [r])}
+                      onDeleteRepo={(e, r) => handleDeleteRepos(e, [r])}
+                    />
+                  ))}
                 </div>
-              </>
+              </SelectionArea>
+            ) : (
+              <SelectionArea
+                onBeforeStart={({ event }: SelectionEvent) => {
+                  if ((event?.target as Element)?.closest?.('[data-id]')) return false;
+                  return true;
+                }}
+                onStart={({ event, selection }: SelectionEvent) => {
+                  if (!event?.ctrlKey && !event?.metaKey && !event?.shiftKey) {
+                    selection.clearSelection();
+                    setSelectedSkillIds(new Set());
+                  }
+                }}
+                onMove={({ store: { changed: { added, removed } } }: SelectionEvent) => {
+                  isDraggingRef.current = true;
+                  setSelectedSkillIds(prev => {
+                    const next = new Set(prev);
+                    added.forEach((el: Element) => {
+                      const id = el.getAttribute('data-id');
+                      if (id) next.add(id);
+                    });
+                    removed.forEach((el: Element) => {
+                      const id = el.getAttribute('data-id');
+                      if (id) next.delete(id);
+                    });
+                    return next;
+                  });
+                  setInspectorSelectedType('skill');
+                }}
+                onStop={() => { setTimeout(() => { isDraggingRef.current = false; }, 0); }}
+                selectables="[data-id]"
+                className="w-full"
+              >
+                <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))' }} onClick={(e) => { if (e.target === e.currentTarget && !isDraggingRef.current) handleDeselectAll(); }}>
+                  {filteredGroupedRepos.find(r => r.id === selectedRepoId)?.skills.map((skill) => (
+                    <SkillCard
+                      key={skill.id}
+                      skill={skill}
+                      syncRecords={syncRecords}
+                      agents={agents}
+                      isSelected={inspectorSelectedType === 'skill' && selectedSkillIds.has(skill.id)}
+                      onClick={(e) => handleSelectSkill(skill, e)}
+                      onDoubleClick={() => { setSelectedSkill(skill); setIsDrawerOpen(true); }}
+                      onContextMenu={(e) => {
+                        if (!selectedSkillIds.has(skill.id)) handleSelectSkill(skill, e);
+                        showContextMenu(e, { type: 'skill', data: skill });
+                      }}
+                      onCopyPath={handleCopyPath}
+                    />
+                  ))}
+                </div>
+              </SelectionArea>
             )}
           </div>
-        )}
-      </div>
 
-      <InspectorPanel
-        selectedItemType={inspectorSelectedType}
-        selectedRepos={filteredGroupedRepos.filter(r => selectedRepoIds.has(r.id))}
-        selectedSkills={(filteredGroupedRepos.find(r => r.id === selectedRepoId)?.skills || []).filter(s => selectedSkillIds.has(s.id))}
-        agents={agents}
-        syncRecords={syncRecords}
-        currentLibrary={selectedWorkspaceDir || null}
-        allRepos={filteredGroupedRepos}
-        onOpenDrawer={(skill) => { setSelectedSkill(skill); setIsDrawerOpen(true); }}
-        onSelectRepo={(repoId) => setSelectedRepoId(repoId)}
-        onRefreshData={fetchData}
-        isOpen={isInspectorOpen}
-        onToggle={() => setIsInspectorOpen(!isInspectorOpen)}
-      />
+          {/* Sync Progress Panel */}
+          {syncLogs.length > 0 && (
+            <div
+              className={`absolute bottom-8 right-8 bg-white/90 backdrop-blur-xl border border-[var(--color-border)] rounded-2xl shadow-2xl transition-all duration-300 z-50 ${isSyncPopupMinimized ? 'w-auto p-3 flex items-center space-x-3 cursor-pointer hover:bg-white hover:scale-105' : 'w-80 p-4'}`}
+              onClick={() => { if (isSyncPopupMinimized) setIsSyncPopupMinimized(false); }}
+            >
+              {isSyncPopupMinimized ? (
+                <>
+                  <RefreshCw className={`w-5 h-5 ${isSyncingAll ? 'animate-spin text-[var(--color-primary)]' : 'text-green-500'}`} />
+                  <div className="flex flex-col pr-2">
+                    <span className="text-sm font-medium text-[var(--foreground)]">{isSyncingAll ? "正在同步更新..." : "同步完成"}</span>
+                    <span className="text-[10px] text-[var(--color-muted)]">{syncLogs.length} 仓库 ({syncLogs.filter(l => l.status === 'success').length} 同步, {syncLogs.filter(l => l.status === 'error').length} 失败)</span>
+                  </div>
+                  <button onClick={(e) => {
+                    e.stopPropagation();
+                    if (isSyncingAll) {
+                      currentSyncRunId.current = 0;
+                      setIsSyncingAll(false);
+                    }
+                    setSyncLogs([]);
+                  }} className="p-1.5 rounded-lg text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-colors ml-2 border-l border-[var(--color-border)] rounded-none pl-2">
+                    <X className="w-4 h-4" />
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div className="flex justify-between items-center mb-3 text-sm">
+                    <span className="font-medium text-[var(--foreground)] flex items-center">
+                      <RefreshCw className={`w-4 h-4 mr-2 ${isSyncingAll ? 'animate-spin text-[var(--color-primary)]' : 'text-green-500'}`} />
+                      {isSyncingAll ? "正在同步更新..." : "同步完成"}
+                    </span>
+                    <div className="flex items-center">
+                      <Tooltip content="最小化">
+                        <button onClick={(e) => { e.stopPropagation(); setIsSyncPopupMinimized(true); }} className="p-1.5 rounded-lg text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-colors mr-1">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                        </button>
+                      </Tooltip>
+                      <Tooltip content="停止/关闭">
+                        <button onClick={(e) => {
+                          e.stopPropagation();
+                          if (isSyncingAll) {
+                            currentSyncRunId.current = 0;
+                            setIsSyncingAll(false);
+                          }
+                          setSyncLogs([]);
+                        }} className="p-1.5 rounded-lg text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-colors">
+                          <X className="w-4 h-4" />
+                        </button>
+                      </Tooltip>
+                    </div>
+                  </div>
+
+                  <div className="text-[10px] text-[var(--color-muted)] mb-3 pb-2 border-b border-[var(--color-border)]">
+                    共 {syncLogs.length} 个仓库 <span className="text-green-500 font-semibold ml-1">同步 {syncLogs.filter(l => l.status === 'success').length}</span> <span className="text-gray-500 font-semibold ml-1">跳过 {syncLogs.filter(l => l.status === 'skipped').length}</span> <span className="text-red-500 font-semibold ml-1">失败 {syncLogs.filter(l => l.status === 'error').length}</span>
+                  </div>
+
+                  <div className="space-y-2 max-h-[300px] overflow-y-auto pr-5 custom-scrollbar">
+                    {syncLogs.map(log => (
+                      <div key={log.id} className="flex items-center justify-between text-xs py-0.5 pr-2">
+                        <span className="text-[var(--color-muted)] truncate flex-1 mr-3" title={log.label}>{log.label}</span>
+                        {log.status === 'pending' && <span className="text-blue-500 font-medium shrink-0 animate-pulse">正在扫描...</span>}
+                        {log.status === 'success' && <span className="text-green-500 font-medium shrink-0 text-right w-16 truncate">{log.message || '更新成功'}</span>}
+                        {log.status === 'skipped' && <span className="text-gray-500 font-medium shrink-0 text-right w-16 truncate">{log.message || '已跳过'}</span>}
+                        {log.status === 'error' && <span className="text-red-500 font-medium shrink-0 truncate max-w-[80px] text-right" title={log.message}>更新失败</span>}
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+
+        <InspectorPanel
+          selectedItemType={inspectorSelectedType}
+          selectedRepos={filteredGroupedRepos.filter(r => selectedRepoIds.has(r.id))}
+          selectedSkills={(filteredGroupedRepos.find(r => r.id === selectedRepoId)?.skills || []).filter(s => selectedSkillIds.has(s.id))}
+          agents={agents}
+          syncRecords={syncRecords}
+          currentLibrary={selectedWorkspaceDir || null}
+          allRepos={filteredGroupedRepos}
+          onOpenDrawer={(skill) => { setSelectedSkill(skill); setIsDrawerOpen(true); }}
+          onSelectRepo={(repoId) => setSelectedRepoId(repoId)}
+          onRefreshData={fetchData}
+          isOpen={isInspectorOpen}
+          onToggle={() => setIsInspectorOpen(!isInspectorOpen)}
+        />
+          </>
+        ) : activeModule === 'prompts' ? (
+          /* 提示词管理模块 */
+          <div className="flex-1 flex h-full min-w-0 overflow-hidden">
+            <PromptModule
+              refreshKey={promptRefreshKey}
+              filter={promptFilter}
+              onGroupsChange={setPromptGroups}
+              onFilterChange={setPromptFilter}
+            />
+          </div>
+        ) : (
+          /* 资源社区占位页面 */
+          <div className="flex-1 flex flex-col h-full min-w-0 bg-transparent relative">
+            <div data-tauri-drag-region onPointerDown={(e) => {
+              if (e.target === e.currentTarget) getCurrentWindow().startDragging();
+            }} className="h-16 border-b border-[var(--color-border)] bg-white/70 backdrop-blur-xl flex items-center px-8 shrink-0 relative z-0">
+              <h1 className="text-xl font-medium tracking-tight text-[var(--foreground)]">资源社区</h1>
+            </div>
+            <div className="flex-1 flex flex-col items-center justify-center p-6 bg-[var(--color-background)]">
+              <div className="w-28 h-28 mb-6 relative">
+                <div className="relative bg-white/60 backdrop-blur-xl rounded-3xl p-7 flex items-center justify-center shadow-sm">
+                  <Store className="w-12 h-12 text-amber-400 drop-shadow-sm" />
+                </div>
+              </div>
+              <h2 className="text-xl font-semibold text-[var(--foreground)] mb-2 tracking-tight">资源社区</h2>
+              <p className="text-sm text-[var(--color-muted)] mb-2 text-center max-w-sm leading-relaxed">
+                发现优质 Skill 和 Prompt 资源，一键导入使用，与社区共享你的创作
+              </p>
+              <div className="mt-4 flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-blue-50 to-violet-50 border border-blue-100">
+                <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse"></div>
+                <span className="text-[13px] font-medium text-blue-600">功能建设中，敬请期待</span>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       <ContextMenu
@@ -1194,11 +1297,11 @@ function App() {
         position={menuPosition}
         onClose={hideContextMenu}
       />
-      
-      <AddRepositoryDialog 
-        isOpen={isAddDialogOpen} 
-        onClose={() => { setIsAddDialogOpen(false); setAddDialogTab(null); }} 
-        onSuccess={fetchData} 
+
+      <AddRepositoryDialog
+        isOpen={isAddDialogOpen}
+        onClose={() => { setIsAddDialogOpen(false); setAddDialogTab(null); }}
+        onSuccess={fetchData}
         onCloningStart={(path, name) => setCloningRepos(prev => [...prev, { path, name }])}
         onCloningSuccess={(path) => { setCloningRepos(prev => prev.filter(r => r.path !== path)); }}
         onCloningError={(path, err) => { setCloningRepos(prev => prev.filter(r => r.path !== path)); if (err) showToast(`克隆失败: ${err}`, 'error'); }}
@@ -1206,18 +1309,18 @@ function App() {
         defaultTargetDir={selectedWorkspaceId !== "all" ? directories.find(d => d.id === selectedWorkspaceId)?.path : undefined}
       />
 
-      <SkillDetailsDrawer 
-        isOpen={isDrawerOpen} 
-        skill={selectedSkill} 
-        onClose={() => { setIsDrawerOpen(false); fetchData(); }} 
+      <SkillDetailsDrawer
+        isOpen={isDrawerOpen}
+        skill={selectedSkill}
+        onClose={() => { setIsDrawerOpen(false); fetchData(); }}
       />
 
       <AgentSettingsDialog
         isOpen={isSettingsOpen}
         onClose={() => { setIsSettingsOpen(false); fetchData(); }}
       />
-      
-      <SearchModal 
+
+      <SearchModal
         isOpen={isSearchModalOpen}
         onClose={() => setIsSearchModalOpen(false)}
         repos={groupedRepos}
@@ -1245,7 +1348,7 @@ function App() {
         onClose={() => setIsCreateModalOpen(false)}
         onSuccess={async (id) => { await fetchData(); if (id) setSelectedWorkspaceId(id); }}
       />
-      
+
       <OpenSkillLibraryModal
         isOpen={isOpenModalOpen}
         onClose={() => setIsOpenModalOpen(false)}
@@ -1267,9 +1370,9 @@ function App() {
               {loadingText}
             </span>
             <div className="w-full h-1 bg-black/5 rounded-full overflow-hidden relative shadow-inner">
-              <div 
+              <div
                 className="absolute top-0 left-0 h-full bg-blue-500 rounded-full transition-all duration-300 ease-out"
-                style={{ 
+                style={{
                   width: '100%',
                   animation: 'progress-bar 0.4s ease-out forwards'
                 }}
@@ -1286,7 +1389,7 @@ function App() {
         </div>
       )}
 
-      <AboutDialog 
+      <AboutDialog
         isOpen={isAboutOpen}
         onClose={() => setIsAboutOpen(false)}
       />
@@ -1303,9 +1406,9 @@ function App() {
                 <X className="w-4 h-4" />
               </button>
             </div>
-            
+
             <div className="p-5 text-[13px] text-[var(--foreground)] leading-relaxed">
-              {deleteConfirmRepos.length === 1 
+              {deleteConfirmRepos.length === 1
                 ? `确定要彻底删除整个仓库 "${deleteConfirmRepos[0].name}" 及其所有 ${deleteConfirmRepos[0].skills.length} 个子技能吗？此操作不可恢复。`
                 : `确定要彻底删除选中的 ${deleteConfirmRepos.length} 个仓库及其子技能吗？此操作不可恢复。`
               }

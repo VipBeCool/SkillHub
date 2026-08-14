@@ -60,8 +60,12 @@ pub fn update_app_menu(app: &AppHandle) -> tauri::Result<()> {
     // App Submenu (macOS only)
     #[cfg(target_os = "macos")]
     {
+        let prefs_item = MenuItemBuilder::new("偏好设置...").accelerator("CmdOrCtrl+,").id("prefs").build(app)?;
+        
         let app_submenu = SubmenuBuilder::new(app, "SkillHub")
             .item(&PredefinedMenuItem::about(app, None, None)?)
+            .separator()
+            .item(&prefs_item)
             .separator()
             .item(&PredefinedMenuItem::services(app, None)?)
             .separator()

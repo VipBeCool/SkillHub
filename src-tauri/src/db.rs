@@ -136,6 +136,56 @@ pub fn init_db(db_path: &PathBuf) -> Result<Connection> {
         )",
         [],
     )?;
+    // Prompt 分组表
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS prompt_groups (
+            id         TEXT PRIMARY KEY,
+            name       TEXT NOT NULL,
+            icon       TEXT,
+            color      TEXT,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            created_at DATETIME NOT NULL
+        )",
+        [],
+    )?;
+
+    // 提示词主表
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS prompts (
+            id          TEXT PRIMARY KEY,
+            title       TEXT NOT NULL,
+            content     TEXT NOT NULL,
+            description TEXT,
+            group_id    TEXT,
+            tags        TEXT,
+            is_favorite BOOLEAN NOT NULL DEFAULT 0,
+            use_count   INTEGER NOT NULL DEFAULT 0,
+            variables   TEXT,
+            version     INTEGER NOT NULL DEFAULT 1,
+            created_at  DATETIME NOT NULL,
+            updated_at  DATETIME NOT NULL,
+            deleted_at  DATETIME,
+            FOREIGN KEY (group_id) REFERENCES prompt_groups(id) ON DELETE SET NULL
+        )",
+        [],
+    )?;
+
+    // 提示词版本历史表
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS prompt_versions (
+            id          TEXT PRIMARY KEY,
+            prompt_id   TEXT NOT NULL,
+            content     TEXT NOT NULL,
+            version     INTEGER NOT NULL,
+            change_note TEXT,
+            created_at  DATETIME NOT NULL,
+            FOREIGN KEY (prompt_id) REFERENCES prompts(id) ON DELETE CASCADE
+        )",
+        [],
+    )?;
+
+    // 忽略可能的已存在错误
+    let _ = conn.execute("ALTER TABLE prompts ADD COLUMN deleted_at DATETIME", []);
 
     Ok(conn)
 }

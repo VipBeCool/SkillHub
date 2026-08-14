@@ -81,3 +81,45 @@ pub struct GroupedRepo {
     #[serde(default)]
     pub is_missing: bool,
 }
+
+// ===== Prompt 管理相关模型 =====
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PromptGroup {
+    pub id: String,
+    pub name: String,
+    pub icon: Option<String>,
+    pub color: Option<String>,
+    pub sort_order: i32,
+    pub created_at: String,
+    #[serde(default)]
+    pub prompt_count: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Prompt {
+    pub id: String,
+    pub title: String,
+    pub content: String,
+    pub description: Option<String>,
+    pub group_id: Option<String>,
+    pub group_name: Option<String>,
+    pub tags: Option<String>,
+    pub is_favorite: bool,
+    pub use_count: i64,
+    pub variables: Option<String>,
+    pub version: i64,
+    pub created_at: String,
+    pub updated_at: String,
+    pub deleted_at: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PromptVersion {
+    pub id: String,
+    pub prompt_id: String,
+    pub content: String,
+    pub version: i64,
+    pub change_note: Option<String>,
+    pub created_at: String,
+}

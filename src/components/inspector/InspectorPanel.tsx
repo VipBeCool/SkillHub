@@ -89,7 +89,6 @@ export function InspectorPanel({
       const syncedCount = repo.skills.filter(s => 
         syncRecords.some(r => r.skill_id === s.id && r.agent_id === agentId)
       ).length;
-      const allSynced = syncedCount === repo.skills.length && repo.skills.length > 0;
 
       if (syncedCount > 0) {
         // 只要有任何同步记录，就全取消

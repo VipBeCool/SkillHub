@@ -7,6 +7,7 @@ pub mod git_engine;
 pub mod agent_sync;
 pub mod menu;
 pub mod export;
+pub mod prompt_commands;
 
 use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
@@ -134,7 +135,26 @@ pub fn run() {
             commands::merge_skill_libraries,
             export::export_item,
             export::export_batch,
-            export::check_exists
+            export::check_exists,
+            prompt_commands::get_prompt_groups,
+            prompt_commands::create_prompt_group,
+            prompt_commands::update_prompt_group,
+            prompt_commands::delete_prompt_group,
+            prompt_commands::reorder_prompt_groups,
+            prompt_commands::get_prompts,
+            prompt_commands::create_prompt,
+            prompt_commands::update_prompt,
+            prompt_commands::delete_prompts,
+            prompt_commands::toggle_prompt_favorite,
+            prompt_commands::increment_prompt_use_count,
+            prompt_commands::move_prompts_to_group,
+            prompt_commands::get_prompt_versions,
+            prompt_commands::rollback_prompt_version,
+            prompt_commands::export_prompts,
+            prompt_commands::restore_prompts,
+            prompt_commands::hard_delete_prompts,
+            prompt_commands::empty_trash,
+            prompt_commands::cleanup_expired_trash
         ])
         .on_window_event(|window, event| match event {
             tauri::WindowEvent::CloseRequested { api, .. } => {
