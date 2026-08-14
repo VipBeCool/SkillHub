@@ -125,6 +125,9 @@ pub fn run() {
             commands::save_skill_file,
             commands::save_skill_file_by_path,
             commands::open_local_folder,
+            commands::reveal_in_finder,
+            commands::get_open_with_apps,
+            commands::open_with_app,
             commands::cancel_github_clone,
             commands::update_source_directory_icon,
             commands::update_source_directory_path,
@@ -154,7 +157,8 @@ pub fn run() {
             prompt_commands::restore_prompts,
             prompt_commands::hard_delete_prompts,
             prompt_commands::empty_trash,
-            prompt_commands::cleanup_expired_trash
+            prompt_commands::cleanup_expired_trash,
+            commands::generate_skill_reference_prompt
         ])
         .on_window_event(|window, event| match event {
             tauri::WindowEvent::CloseRequested { api, .. } => {

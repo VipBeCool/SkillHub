@@ -1,5 +1,5 @@
 import React from 'react';
-import { FolderGit2 } from 'lucide-react';
+import { Puzzle } from 'lucide-react';
 import { GroupedRepo, SyncRecord, AgentConfig } from '../../types';
 import { Tooltip } from '../ui/Tooltip';
 
@@ -42,7 +42,7 @@ export const RepoCard: React.FC<RepoCardProps> = ({
       {/* 顶部：图标 + 名称 + 技能数 */}
       <div className="flex items-center space-x-2.5">
         <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 relative ${repo.source_type === 'github' ? 'bg-[#0066FF]/10 text-[#0066FF]' : 'bg-[#86868B]/10 text-[#86868B]'}`}>
-          <FolderGit2 className="w-4 h-4" />
+          <Puzzle className="w-4 h-4" />
           {repo.is_missing && (
             <div className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-red-500 rounded-full flex items-center justify-center text-white text-[8px] font-bold border border-white">!</div>
           )}

@@ -588,6 +588,116 @@ pub fn open_local_folder(path: String) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+pub fn reveal_in_finder(path: String) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg("-R")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .arg("/select,")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(target_os = "linux")]
+    {
+        // Linux 下通常只能打开父目录
+        if let Some(parent) = std::path::Path::new(&path).parent() {
+            std::process::Command::new("xdg-open")
+                .arg(parent)
+                .spawn()
+                .map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
+}
+
+#[derive(serde::Serialize, Clone)]
+pub struct AppInfo {
+    pub name: String,
+    pub path: String,
+    pub icon_base64: Option<String>,
+}
+
+#[tauri::command]
+pub fn get_open_with_apps(path: String) -> Result<Vec<AppInfo>, String> {
+    #[cfg(target_os = "macos")]
+    {
+        let script = format!(r#"
+import Cocoa
+let fileURL = URL(fileURLWithPath: "{}")
+if let appURLs = LSCopyApplicationURLsForURL(fileURL as CFURL, [.viewer, .editor])?.takeRetainedValue() as? [URL] {{
+    var seen = Set<String>()
+    for url in appURLs {{
+        let path = url.path
+        if seen.contains(path) {{ continue }}
+        seen.insert(path)
+        let name = url.deletingPathExtension().lastPathComponent
+        var base64Str = ""
+        if let icon = NSWorkspace.shared.icon(forFile: path) as NSImage? {{
+            let size = NSSize(width: 32, height: 32)
+            let newImage = NSImage(size: size)
+            newImage.lockFocus()
+            icon.draw(in: NSRect(origin: .zero, size: size), from: NSRect(origin: .zero, size: icon.size), operation: .copy, fraction: 1.0)
+            newImage.unlockFocus()
+            if let tiffData = newImage.tiffRepresentation, 
+               let bitmap = NSBitmapImageRep(data: tiffData), 
+               let pngData = bitmap.representation(using: .png, properties: [:]) {{
+                base64Str = pngData.base64EncodedString()
+            }}
+        }}
+        print("\(name)||\(path)||\(base64Str)")
+    }}
+}}
+"#, path.replace("\"", "\\\""));
+
+        let output = std::process::Command::new("swift")
+            .arg("-e")
+            .arg(&script)
+            .output()
+            .map_err(|e| e.to_string())?;
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let mut apps = Vec::new();
+        for line in stdout.lines() {
+            let parts: Vec<&str> = line.split("||").collect();
+            if parts.len() >= 2 {
+                apps.push(AppInfo {
+                    name: parts[0].to_string(),
+                    path: parts[1].to_string(),
+                    icon_base64: if parts.len() > 2 && !parts[2].is_empty() { Some(parts[2].to_string()) } else { None },
+                });
+            }
+        }
+        Ok(apps)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Ok(vec![])
+    }
+}
+
+#[tauri::command]
+pub fn open_with_app(file_path: String, app_path: String) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg("-a")
+            .arg(&app_path)
+            .arg(&file_path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 use crate::models::{AgentConfig, SyncRecord};
 use crate::agent_sync;
 
@@ -664,24 +774,6 @@ pub fn sync_skill(state: State<'_, AppState>, skill_id: String, agent_id: String
     crate::db::insert_sync_record(&db, &record)?;
 
     Ok(())
-}
-
-/// 从给定路径向上遍历，找到最近的 .git 目录所在的仓库根路径
-fn find_git_root(path: &std::path::Path) -> Option<std::path::PathBuf> {
-    let mut current = path.to_path_buf();
-    if current.is_file() {
-        if let Some(parent) = current.parent() {
-            current = parent.to_path_buf();
-        }
-    }
-    loop {
-        if current.join(".git").exists() {
-            return Some(current);
-        }
-        if !current.pop() {
-            return None;
-        }
-    }
 }
 
 /// 将整个 Git 仓库（或目录）作为一个软链接单元同步到指定 Agent 的 skills 目录
@@ -853,4 +945,306 @@ pub fn merge_skill_libraries(state: State<'_, AppState>, target_id: String, sour
     }
     
     Ok(format!("Copied {} skills to the target library.", merged_count))
+}
+
+// ========================= 智能引用提示词 =========================
+
+/// 从路径向上找 .git 目录，返回仓库根路径
+fn find_git_root(path: &Path) -> Option<std::path::PathBuf> {
+    let mut current = path;
+    loop {
+        if current.join(".git").exists() {
+            return Some(current.to_path_buf());
+        }
+        match current.parent() {
+            Some(p) => current = p,
+            None => return None,
+        }
+    }
+}
+
+/// 生成目录树字符串（最多 2 层深，过滤噪音目录）
+fn generate_file_tree(dir: &Path, entry_file: &Path, max_depth: usize) -> String {
+    let excluded = [
+        // 构建与依赖
+        "node_modules", "target", "dist", "build", "out", ".git",
+        // Python 噪音
+        "tests", "test", "__pycache__", "venv", ".venv",
+        ".pytest_cache", ".mypy_cache", "coverage", ".coverage",
+        // 系统元数据
+        "__MACOSX", "__tests__",
+    ];
+    let mut lines = Vec::new();
+    collect_tree(entry_file, dir, 0, max_depth, &excluded, &mut lines);
+    lines.join("\n")
+}
+
+/// 每个目录超过此数量时触发折叠
+const FOLD_THRESHOLD: usize = 6;
+/// 折叠时展示的条目数
+const FOLD_SHOW: usize = 4;
+
+fn collect_tree(
+    entry_file: &Path,
+    current: &Path,
+    depth: usize,
+    max_depth: usize,
+    excluded: &[&str],
+    lines: &mut Vec<String>,
+) {
+    if depth > max_depth {
+        return;
+    }
+    let Ok(all_entries) = std::fs::read_dir(current) else { return };
+    let mut all_items: Vec<_> = all_entries.flatten().collect();
+    // 目录在前，文件在后，同类按名排序
+    all_items.sort_by_key(|e| {
+        let is_file = e.path().is_file();
+        (if is_file { 1u8 } else { 0u8 }, e.file_name())
+    });
+
+    // 过滤隐藏条目和黑名单目录
+    let visible: Vec<_> = all_items.into_iter().filter(|e| {
+        let name = e.file_name().to_string_lossy().to_string();
+        !name.starts_with('.') && !excluded.contains(&name.as_str())
+    }).collect();
+
+    let total = visible.len();
+    let show_count = if total > FOLD_THRESHOLD { FOLD_SHOW } else { total };
+    let remaining = total.saturating_sub(show_count);
+
+    for (i, entry) in visible.iter().take(show_count).enumerate() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        // 当无省略行时，最后一项用 └── ；否则省略行才是最后一项
+        let is_last = i == show_count - 1 && remaining == 0;
+        let prefix = if depth == 0 {
+            "".to_string()
+        } else {
+            "│   ".repeat(depth - 1) + if is_last { "└── " } else { "├── " }
+        };
+        let path = entry.path();
+        let is_entry = path == entry_file;
+        let suffix = if is_entry { "     ← 主文件（请先阅读）" } else { "" };
+
+        if path.is_dir() {
+            lines.push(format!("{}{}/{}", prefix, name, suffix));
+            if depth < max_depth {
+                collect_tree(entry_file, &path, depth + 1, max_depth, excluded, lines);
+            }
+        } else {
+            lines.push(format!("{}{}{}", prefix, name, suffix));
+        }
+    }
+
+    // 折叠省略行（始终是最后一条）
+    if remaining > 0 {
+        let prefix = if depth == 0 {
+            "".to_string()
+        } else {
+            "│   ".repeat(depth - 1) + "└── "
+        };
+        lines.push(format!("{}... 及其他 {} 个文件/目录", prefix, remaining));
+    }
+}
+
+/// 生成仓库一级目录概览（用于 scope=repo 场景）
+fn generate_top_level_overview(repo_root: &Path, entry_file: &Path) -> String {
+    let Ok(mut entries) = std::fs::read_dir(repo_root) else { return String::new() };
+    let mut items: Vec<_> = entries.flatten().collect();
+    items.sort_by_key(|e| e.file_name());
+
+    let excluded = ["node_modules", "target", "dist", "build", "out", ".git"];
+    let mut lines = Vec::new();
+    for entry in items {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.starts_with('.') || excluded.contains(&name.as_str()) {
+            continue;
+        }
+        let path = entry.path();
+        let is_entry = path == entry_file;
+        let suffix = if is_entry { "     ← 技能主文件" } else { "" };
+        if path.is_dir() {
+            lines.push(format!("├── {}/{}", name, suffix));
+        } else {
+            lines.push(format!("├── {}{}", name, suffix));
+        }
+    }
+    if let Some(last) = lines.last_mut() {
+        *last = last.replacen("├──", "└──", 1);
+    }
+    lines.join("\n")
+}
+
+/// 获取仓库下所有技能数量（用于推断 repo_type）
+fn count_skills_in_repo(all_skills: &[crate::models::Skill], repo_root: &Path) -> usize {
+    let root_str = repo_root.to_string_lossy();
+    all_skills.iter()
+        .filter(|s| s.local_path.starts_with(root_str.as_ref()))
+        .count()
+}
+
+#[tauri::command]
+pub fn generate_skill_reference_prompt(state: State<'_, AppState>, skill_id: String) -> Result<String, String> {
+    let db = state.db.lock().unwrap();
+
+    // 查询技能信息
+    let skill = {
+        let mut stmt = db.prepare(
+            "SELECT id, name, description, local_path, source_type, skill_scope FROM skills WHERE id = ?1"
+        ).map_err(|e| e.to_string())?;
+        let result = stmt.query_row(rusqlite::params![skill_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,  // id
+                row.get::<_, String>(1)?,  // name
+                row.get::<_, String>(2)?,  // description
+                row.get::<_, String>(3)?,  // local_path
+                row.get::<_, String>(4)?,  // source_type
+                row.get::<_, Option<String>>(5)?.unwrap_or_else(|| "repo".to_string()), // skill_scope
+            ))
+        }).map_err(|e| format!("找不到技能: {}", e))?;
+        result
+    };
+
+    let (_id, name, description, local_path, _source_type, skill_scope) = skill;
+    let skill_path = Path::new(&local_path);
+
+    // 查询所有技能（用于 repo_type 推断）
+    let all_skills = crate::db::get_all_skills(&db)?;
+
+    // 找仓库根目录
+    let repo_root = find_git_root(skill_path)
+        .or_else(|| skill_path.parent().map(|p| p.to_path_buf()))
+        .unwrap_or_else(|| skill_path.parent().unwrap_or(skill_path).to_path_buf());
+
+    // 推断 repo_type
+    let skills_in_repo = count_skills_in_repo(&all_skills, &repo_root);
+    let repo_type = if skills_in_repo >= 2 { "collection" } else { "single" };
+
+    // 仓库名（取目录最后一段）
+    let repo_name = repo_root.file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "未知仓库".to_string());
+
+    // 生成提示词
+    let prompt = match skill_scope.as_str() {
+        "loose" => {
+            // 场景 1：散装技能 —— 单文件 + 仓库根兜底
+            format!(
+"## 技能引用：{name}
+
+- 描述: {description}
+- 来源: {repo_name}
+
+### 技能文件
+{local_path}
+
+请阅读上述文件，按照其中定义的角色、规则和工作流程执行任务。
+
+### 仓库上下文
+如需参考共享资源（包括但不限于脚本、示例、文档等），
+可在仓库根目录中查找：
+{repo_root}",
+                name = name,
+                description = description,
+                repo_name = repo_name,
+                local_path = local_path,
+                repo_root = repo_root.display(),
+            )
+        }
+        "packed" => {
+            let skill_dir = skill_path.parent()
+                .unwrap_or(skill_path);
+            let entry_file_name = skill_path.file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| "主文件".to_string());
+            let file_tree = generate_file_tree(skill_dir, skill_path, 2);
+
+            if repo_type == "collection" {
+                // 场景 2：独立包 × 合集
+                format!(
+"## 技能引用：{name}
+
+- 描述: {description}
+- 来源: {repo_name} 技能合集
+
+### 技能目录
+{skill_dir}
+
+该目录下的文件：
+{file_tree}
+
+请先阅读目录下的 {entry_file_name}，技能配套的脚本和文档均在上述目录内。
+
+### 仓库上下文
+此技能属于技能合集。如需引用共享资源（包括但不限于公共脚本、
+hooks、测试工具等），可在仓库根目录中查找：
+{repo_root}",
+                    name = name,
+                    description = description,
+                    repo_name = repo_name,
+                    skill_dir = skill_dir.display(),
+                    file_tree = file_tree,
+                    entry_file_name = entry_file_name,
+                    repo_root = repo_root.display(),
+                )
+            } else {
+                // 场景 3：独立包 × 单技能
+                format!(
+"## 技能引用：{name}
+
+- 描述: {description}
+- 来源: {repo_name}
+
+### 技能目录
+{skill_dir}
+
+该目录下的文件：
+{file_tree}
+
+请先阅读目录下的 {entry_file_name}。
+
+### 仓库级配套资源
+整个仓库都是此技能的配套资源，包含文档、示例、脚本等：
+{repo_root}
+
+如需额外的文档、模板、示例或脚本，请在仓库根目录中查找。",
+                    name = name,
+                    description = description,
+                    repo_name = repo_name,
+                    skill_dir = skill_dir.display(),
+                    file_tree = file_tree,
+                    entry_file_name = entry_file_name,
+                    repo_root = repo_root.display(),
+                )
+            }
+        }
+        _ => {
+            // 场景 4：整仓 (repo) —— 入口文件 + 仓库根 + 一级目录概览
+            let overview = generate_top_level_overview(&repo_root, skill_path);
+            format!(
+"## 技能引用：{name}
+
+- 描述: {description}
+- 来源: {repo_name}
+
+### 技能入口
+{local_path}
+
+请先阅读上述文件。技能的所有配套脚本、文档、模板、示例均在
+仓库目录内，可自由探索：
+{repo_root}
+
+仓库主要内容：
+{overview}",
+                name = name,
+                description = description,
+                repo_name = repo_name,
+                local_path = local_path,
+                repo_root = repo_root.display(),
+                overview = overview,
+            )
+        }
+    };
+
+    Ok(prompt)
 }

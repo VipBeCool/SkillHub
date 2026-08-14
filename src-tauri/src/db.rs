@@ -80,6 +80,19 @@ pub fn init_db(db_path: &PathBuf) -> Result<Connection> {
         if !has_tags {
             let _ = conn.execute("ALTER TABLE skills ADD COLUMN tags TEXT", []);
         }
+        // skill_scope 迁移
+        let mut has_skill_scope = false;
+        let rows2 = {
+            let mut stmt2 = conn.prepare("PRAGMA table_info(skills)").unwrap();
+            stmt2.query_map([], |row| { let name: String = row.get(1)?; Ok(name) }).unwrap()
+                .filter_map(|r| r.ok()).collect::<Vec<_>>()
+        };
+        for col in &rows2 {
+            if col == "skill_scope" { has_skill_scope = true; }
+        }
+        if !has_skill_scope {
+            let _ = conn.execute("ALTER TABLE skills ADD COLUMN skill_scope TEXT NOT NULL DEFAULT 'repo'", []);
+        }
     }
 
     {
@@ -195,7 +208,7 @@ use rusqlite::params;
 use crate::scanner::ScannedSkill;
 
 pub fn get_all_skills(db: &Connection) -> Result<Vec<Skill>, String> {
-    let mut stmt = db.prepare("SELECT id, name, description, local_path, repo_id, source_dir_id, relative_path, source_type, installed_at, updated_at, is_active, category, tags FROM skills").map_err(|e| e.to_string())?;
+    let mut stmt = db.prepare("SELECT id, name, description, local_path, repo_id, source_dir_id, relative_path, source_type, installed_at, updated_at, is_active, category, tags, skill_scope FROM skills").map_err(|e| e.to_string())?;
     let skill_iter = stmt.query_map([], |row| {
         Ok(Skill {
             id: row.get(0)?,
@@ -211,6 +224,7 @@ pub fn get_all_skills(db: &Connection) -> Result<Vec<Skill>, String> {
             is_active: row.get(10)?,
             category: row.get(11)?,
             tags: row.get(12)?,
+            skill_scope: row.get::<_, Option<String>>(13)?.unwrap_or_else(|| "repo".to_string()),
         })
     }).map_err(|e| e.to_string())?;
     
@@ -271,6 +285,7 @@ pub fn get_repositories_with_skills(db: &Connection) -> Result<Vec<GroupedRepo>,
             skills: Vec::new(),
             category: None,
             is_missing: !exists,
+            repo_type: "single".to_string(), // 在所有技能收集完后再推断
         });
 
         if !repo.skills.iter().any(|s| s.id == skill.id) {
@@ -450,8 +465,8 @@ pub fn insert_skill(db: &Connection, skill: &ScannedSkill, source_dir_id: &str, 
     }
 
     db.execute(
-        "INSERT INTO skills (id, name, description, local_path, repo_id, source_dir_id, relative_path, source_type, installed_at, updated_at, is_active, category, tags) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
-         ON CONFLICT(local_path) DO UPDATE SET name=excluded.name, description=excluded.description, updated_at=excluded.updated_at, source_type=excluded.source_type, category=excluded.category, tags=excluded.tags",
+        "INSERT INTO skills (id, name, description, local_path, repo_id, source_dir_id, relative_path, source_type, installed_at, updated_at, is_active, category, tags, skill_scope) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+         ON CONFLICT(local_path) DO UPDATE SET name=excluded.name, description=excluded.description, updated_at=excluded.updated_at, source_type=excluded.source_type, category=excluded.category, tags=excluded.tags, skill_scope=excluded.skill_scope",
         params![
             id,
             skill.name,
@@ -465,7 +480,8 @@ pub fn insert_skill(db: &Connection, skill: &ScannedSkill, source_dir_id: &str, 
             updated_at,
             true,
             skill.category,
-            skill.tags
+            skill.tags,
+            skill.skill_scope
         ],
     ).map_err(|e| e.to_string())?;
     

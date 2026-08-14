@@ -4,7 +4,7 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { 
   FolderGit2, HardDrive, Folder, Copy, Link as LinkIcon, Unlink, 
   FileText, ChevronRight, Loader2, PanelRightClose, PanelRightOpen,
-  Database, RefreshCw, Trash2, Download, FileArchive
+  Database, RefreshCw, Trash2, Download, FileArchive, Sparkles
 } from 'lucide-react';
 import { Tooltip } from '../ui/Tooltip';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
@@ -25,6 +25,8 @@ interface InspectorPanelProps {
   onOpenDrawer: (skill: Skill) => void;
   onSelectRepo: (_repoId: string) => void;
   onRefreshData: () => void;
+  onUpdateRepos?: (e: React.MouseEvent, repos: GroupedRepo[]) => void;
+  onGeneratePrompt: (skill: Skill) => void;
   // 面板开关
   isOpen: boolean;
   onToggle: () => void;
@@ -41,6 +43,8 @@ export function InspectorPanel({
   onOpenDrawer,
   onSelectRepo: _onSelectRepo,
   onRefreshData,
+  onUpdateRepos,
+  onGeneratePrompt,
   isOpen,
   onToggle,
 }: InspectorPanelProps) {
@@ -284,9 +288,14 @@ export function InspectorPanel({
               </span>
             </div>
             {currentLibrary?.path && (
-              <p className="text-[11px] text-[var(--color-muted)] truncate ml-6" title={currentLibrary.path}>
-                {currentLibrary.path.replace(/[/\\][^/\\]+$/, '')}
-              </p>
+              <Tooltip content={currentLibrary.path}>
+                <p 
+                  className="text-[11px] text-[var(--color-muted)] truncate ml-6 cursor-pointer hover:text-[var(--foreground)] transition-colors"
+                  onClick={() => { navigator.clipboard.writeText(currentLibrary.path); showToast('路径已复制'); }}
+                >
+                  {currentLibrary.path.replace(/[/\\][^/\\]+$/, '')}
+                </p>
+              </Tooltip>
             )}
           </div>
 
@@ -455,11 +464,14 @@ export function InspectorPanel({
             </div>
             <Tooltip content="更新当前仓库">
               <button
-                onClick={async () => {
-                  try { 
-                    await invoke('rescan_directory', { dirId: selectedRepo.source_dir_id || selectedRepo.id });
-                    showToast('已下发更新指令，请稍候查看');
-                  } catch (e) { console.error(e); }
+                onClick={(e) => {
+                  if (onUpdateRepos) {
+                    onUpdateRepos(e, [selectedRepo]);
+                  } else {
+                    invoke('rescan_directory', { dirId: selectedRepo.source_dir_id || selectedRepo.id })
+                      .then(() => showToast('已下发更新指令，请稍候查看'))
+                      .catch(console.error);
+                  }
                 }}
                 className="p-1.5 rounded-lg text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-colors shrink-0 border border-black/5"
               >
@@ -695,14 +707,23 @@ export function InspectorPanel({
             )}
           </div>
 
-          {/* 查看文档按钮 */}
-          <button
-            onClick={() => onOpenDrawer(selectedSkill)}
-            className="w-full flex items-center justify-center space-x-2 px-3 py-2 mb-4 bg-black/[0.04] hover:bg-black/[0.07] rounded-lg text-[13px] font-medium text-[var(--foreground)] transition-colors"
-          >
-            <FileText className="w-4 h-4" />
-            <span>查看完整文档</span>
-          </button>
+          {/* 操作按钮区 */}
+          <div className="grid grid-cols-2 gap-2 mb-4">
+            <button
+              onClick={() => onOpenDrawer(selectedSkill)}
+              className="flex items-center justify-center space-x-1.5 px-3 py-2 bg-black/[0.04] hover:bg-black/[0.07] rounded-lg text-[12px] font-medium text-[var(--foreground)] transition-colors"
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>查看文档</span>
+            </button>
+            <button
+              onClick={() => onGeneratePrompt(selectedSkill)}
+              className="flex items-center justify-center space-x-1.5 px-3 py-2 bg-[var(--color-primary)]/10 hover:bg-[var(--color-primary)]/20 text-[var(--color-primary)] rounded-lg text-[12px] font-medium transition-colors"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>引用提示词</span>
+            </button>
+          </div>
 
           {/* 路径 */}
           <div className="mb-4">
@@ -722,7 +743,7 @@ export function InspectorPanel({
               <Tooltip content="在 Finder 中打开">
                 <button
                   onClick={async () => {
-                    try { await invoke('open_local_folder', { path: selectedSkill.local_path }); } catch (e) { console.error(e); }
+                    try { await invoke('reveal_in_finder', { path: selectedSkill.local_path }); } catch (e) { console.error(e); }
                   }}
                   className="p-1 rounded hover:bg-black/5 text-[var(--color-muted)] hover:text-[var(--foreground)] transition-colors shrink-0"
                 >

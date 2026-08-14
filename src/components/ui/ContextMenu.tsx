@@ -117,7 +117,7 @@ export function ContextMenu({ items, position, onClose }: ContextMenuProps) {
             </button>
 
             {hasChildren && subMenuId === item.id && (
-              <div className="absolute left-[calc(100%-8px)] top-[-4px] min-w-[180px] py-1 bg-white border border-[var(--color-border)] rounded-lg shadow-xl animate-in fade-in slide-in-from-left-1 duration-100 z-[110]">
+              <div className="absolute left-[calc(100%-8px)] top-[-4px] min-w-[180px] max-h-[300px] overflow-y-auto py-1 bg-white border border-[var(--color-border)] rounded-lg shadow-xl animate-in fade-in slide-in-from-left-1 duration-100 z-[110] custom-scrollbar">
                 {item.children!.map((child) => (
                   <button
                     key={child.id}

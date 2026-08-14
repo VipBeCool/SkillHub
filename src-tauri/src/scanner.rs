@@ -16,7 +16,7 @@ struct SkillFrontmatter {
     tags: Option<Value>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ScannedSkill {
     pub name: String,
     pub description: String,
@@ -25,19 +25,60 @@ pub struct ScannedSkill {
     pub category: String,
     pub tags: Option<String>,
     pub updated_at: String,
+    /// 技能范围（内部逻辑）：loose / packed / repo
+    pub skill_scope: String,
 }
 
+/// 判断目录是否需要跳过（含白名单：部分隐藏目录可能包含技能）
 fn is_hidden_or_excluded(entry: &walkdir::DirEntry) -> bool {
     let file_name = entry.file_name().to_string_lossy();
     if entry.file_type().is_dir() {
-        file_name.starts_with('.') || file_name == "node_modules" || file_name == "target" || file_name == "dist" || file_name == "build" || file_name == "out"
+        // 白名单：这些 . 开头的目录可能包含技能，不跳过
+        let whitelisted = [".claude", ".agents", ".cursor", ".codex",
+                           ".hermes-plugin", ".kimi-plugin"];
+        if whitelisted.iter().any(|w| file_name == *w) {
+            return false;
+        }
+        file_name.starts_with('.')
+            || file_name == "node_modules"
+            || file_name == "target"
+            || file_name == "dist"
+            || file_name == "build"
+            || file_name == "out"
     } else {
         false
     }
 }
 
+/// 推断技能的 skill_scope：
+/// - 入口文件的父目录 == source_dir → repo（整仓）
+/// - 同父目录有 ≥2 个技能入口 → loose（散装）
+/// - 否则 → packed（独立包）
+fn infer_skill_scope(skill_path: &Path, all_paths: &[PathBuf], source_dir: &Path) -> String {
+    let parent = match skill_path.parent() {
+        Some(p) => p,
+        None => return "repo".to_string(),
+    };
+
+    // 在 source_dir 根目录 → 整仓
+    if parent == source_dir {
+        return "repo".to_string();
+    }
+
+    // 统计同父目录下有多少个其他技能入口文件
+    let siblings = all_paths.iter()
+        .filter(|p| p.as_path() != skill_path && p.parent() == Some(parent))
+        .count();
+
+    if siblings >= 1 {
+        "loose".to_string()   // 同目录有其他技能 → 散装
+    } else {
+        "packed".to_string()  // 该目录仅此一个技能 → 独立包
+    }
+}
+
 pub fn scan_directory(dir_path: &Path) -> Result<Vec<ScannedSkill>, String> {
-    let mut all_parsed = Vec::new();
+    let mut all_parsed: Vec<(PathBuf, bool, ScannedSkill)> = Vec::new();
     let mut skill_roots = std::collections::HashSet::new();
 
     if !dir_path.exists() || !dir_path.is_dir() {
@@ -50,7 +91,7 @@ pub fn scan_directory(dir_path: &Path) -> Result<Vec<ScannedSkill>, String> {
             let is_legacy = file_name_str == "SKILL.md";
             let lower_name = file_name_str.to_lowercase();
             
-            // Skip common non-skill markdown files to speed up
+            // 跳过常见的非技能 md 文件
             if lower_name == "readme.md" || lower_name == "contributing.md" {
                 continue;
             }
@@ -82,7 +123,7 @@ pub fn scan_directory(dir_path: &Path) -> Result<Vec<ScannedSkill>, String> {
                             
                         let mut final_tags = explicit_tags.unwrap_or_default();
                         
-                        // Intelligent fallback tag from folder
+                        // 智能回退：从文件夹名推断标签
                         if final_tags.is_empty() && !parent_dir_name.is_empty() && parent_dir_name != "." {
                             if parent_dir_name != "design-md" && parent_dir_name != "src" && parent_dir_name != "agency-agents-zh" {
                                 final_tags.push(parent_dir_name.clone());
@@ -105,7 +146,7 @@ pub fn scan_directory(dir_path: &Path) -> Result<Vec<ScannedSkill>, String> {
                             Some(final_tags.join(","))
                         };
 
-                        // IMPORTANT: local_path is now the path to the ACTUAL file, ensuring uniqueness in SQLite
+                        // local_path 指向具体文件，保证 SQLite 唯一性
                         let local_path = path.to_string_lossy().to_string();
                         
                         let relative_path = path.strip_prefix(dir_path)
@@ -126,6 +167,7 @@ pub fn scan_directory(dir_path: &Path) -> Result<Vec<ScannedSkill>, String> {
                                 category,
                                 tags: tags_str,
                                 updated_at: mod_time_str,
+                                skill_scope: "repo".to_string(), // 占位，后面第二遍推断
                             }
                         ));
                     }
@@ -134,7 +176,8 @@ pub fn scan_directory(dir_path: &Path) -> Result<Vec<ScannedSkill>, String> {
         }
     }
 
-    let mut skills = Vec::new();
+    // 第一遍过滤：去掉被 skill_roots 覆盖的嵌套文件
+    let mut filtered: Vec<(PathBuf, ScannedSkill)> = Vec::new();
     for (path, is_skill_def, skill) in all_parsed {
         let mut is_ignored = false;
         
@@ -163,8 +206,16 @@ pub fn scan_directory(dir_path: &Path) -> Result<Vec<ScannedSkill>, String> {
         }
         
         if !is_ignored {
-            skills.push(skill);
+            filtered.push((path, skill));
         }
+    }
+
+    // 第二遍：推断每个技能的 skill_scope
+    let all_paths: Vec<PathBuf> = filtered.iter().map(|(p, _)| p.clone()).collect();
+    let mut skills = Vec::new();
+    for (path, mut skill) in filtered {
+        skill.skill_scope = infer_skill_scope(&path, &all_paths, dir_path);
+        skills.push(skill);
     }
 
     Ok(skills)
@@ -213,5 +264,3 @@ fn parse_frontmatter(content: &str) -> Option<(String, String, Option<String>, O
 
     None
 }
-
-

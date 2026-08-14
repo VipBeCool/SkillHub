@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { X, FolderGit2, HardDrive, Link as LinkIcon, Unlink, Edit2, Save, Loader2, Copy, Folder } from "lucide-react";
+import { X, FolderGit2, HardDrive, Link as LinkIcon, Unlink, Edit2, Save, Loader2, Copy, Folder, Sparkles } from "lucide-react";
 import { Tooltip } from '../ui/Tooltip';
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -16,6 +16,7 @@ interface Skill {
   updated_at: string;
   category: string;
   tags?: string;
+  skill_scope?: string;
 }
 
 interface AgentConfig {
@@ -37,9 +38,10 @@ interface SkillDetailsDrawerProps {
   skill: Skill | null;
   isOpen: boolean;
   onClose: () => void;
+  onGeneratePrompt?: (skill: Skill) => void;
 }
 
-export function SkillDetailsDrawer({ skill, isOpen, onClose }: SkillDetailsDrawerProps) {
+export function SkillDetailsDrawer({ skill, isOpen, onClose, onGeneratePrompt }: SkillDetailsDrawerProps) {
   const [content, setContent] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [agents, setAgents] = useState<AgentConfig[]>([]);
@@ -171,7 +173,7 @@ export function SkillDetailsDrawer({ skill, isOpen, onClose }: SkillDetailsDrawe
                         onClick={async (e) => {
                           e.stopPropagation();
                           try {
-                            await invoke("open_local_folder", { path: skill.local_path });
+                            await invoke("reveal_in_finder", { path: skill.local_path });
                           } catch (err) {
                             console.error("Failed to open folder:", err);
                           }
@@ -216,6 +218,15 @@ export function SkillDetailsDrawer({ skill, isOpen, onClose }: SkillDetailsDrawe
             </div>
           </div>
           <div className="flex items-center space-x-2">
+            <Tooltip content="智能引用提示词">
+              <button
+                onClick={() => skill && onGeneratePrompt?.(skill)}
+                disabled={!onGeneratePrompt}
+                className="p-1.5 rounded-lg text-[var(--color-muted)] hover:bg-[var(--color-primary)]/10 hover:text-[var(--color-primary)] transition-colors disabled:opacity-30"
+              >
+                <Sparkles className="w-4 h-4" />
+              </button>
+            </Tooltip>
             {!isEditing && (
               <Tooltip content="编辑文档">
                 <button onClick={() => setIsEditing(true)} className="p-1.5 rounded-lg text-[var(--color-muted)] hover:bg-[var(--color-primary)]/10 hover:text-[var(--color-primary)] transition-colors">

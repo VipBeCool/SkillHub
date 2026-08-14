@@ -3,12 +3,14 @@ import { SelectionArea, SelectionEvent } from '@viselect/react';
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
-import { FolderGit2, HardDrive, Settings, Search, Plus, RefreshCw, ChevronRight, ChevronLeft, X, LayoutGrid, Sparkles, FileQuestion, Globe, FolderX, FolderSearch, Trash2, Info, Folder, Copy, Link as LinkIcon, Check, Download, FileArchive, MessageSquareText, Store, Blocks } from "lucide-react";
+import { HardDrive, Settings, Search, Plus, RefreshCw, ChevronRight, ChevronLeft, X, LayoutGrid, Sparkles, FileQuestion, Globe, FolderX, FolderSearch, Trash2, Info, Folder, Copy, Link as LinkIcon, Check, Download, FileArchive, MessageSquareText, Store, Puzzle, CheckSquare } from "lucide-react";
 import { open } from '@tauri-apps/plugin-dialog';
+import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import { AddRepositoryDialog } from "./components/library/AddRepositoryDialog";
 import { SkillLibrarySelector, SkillLibrarySelectorRef } from './components/library/SkillLibrarySelector';
 import { CreateSkillLibraryModal, OpenSkillLibraryModal, MergeSkillLibraryModal } from "./components/library/LibraryManagementModals";
 import { SkillDetailsDrawer } from "./components/skill/SkillDetailsDrawer";
+import { PromptPreviewModal } from "./components/skill/PromptPreviewModal";
 import { AgentSettingsDialog } from "./components/agent/AgentSettingsDialog";
 import { ConfirmDialog } from './components/ui/ConfirmDialog';
 import { SearchModal } from "./components/search/SearchModal";
@@ -38,6 +40,7 @@ function App() {
   const [directories, setDirectories] = useState<SourceDirectory[]>([]);
   const [agents, setAgents] = useState<AgentConfig[]>([]);
   const [syncRecords, setSyncRecords] = useState<SyncRecord[]>([]);
+  const [openWithApps, setOpenWithApps] = useState<{name: string, path: string, icon_base64?: string}[]>([]);
   const [groupedRepos, setGroupedRepos] = useState<GroupedRepo[]>([]);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -81,6 +84,11 @@ function App() {
   const [loadingText, setLoadingText] = useState("SkillHub载入中…");
   const skillLibrarySelectorRef = useRef<SkillLibrarySelectorRef>(null);
   const isDraggingRef = useRef(false);
+
+  // 智能引用提示词弹窗状态
+  const [promptModal, setPromptModal] = useState<{ isOpen: boolean; skillName: string; content: string; loading: boolean }>({
+    isOpen: false, skillName: '', content: '', loading: false,
+  });
 
   const [confirmData, setConfirmData] = useState<{ title: string, message: string, onConfirm: () => void, onClose: () => void } | null>(null);
 
@@ -136,6 +144,14 @@ function App() {
       setGroupedRepos(fetchedRepos);
       setAgents(fetchedAgents);
       setSyncRecords(allSyncs.flat());
+      
+      // 获取当前可用的关联应用
+      if (fetchedSkills.length > 0 && openWithApps.length === 0) {
+        invoke<{name: string, path: string, icon_base64?: string}[]>('get_open_with_apps', { path: fetchedSkills[0].local_path })
+          .then(apps => setOpenWithApps(apps))
+          .catch(console.error);
+      }
+      
       return fetchedDirs;
     } catch (e) {
       console.error("Failed to load data", e);
@@ -625,6 +641,17 @@ function App() {
     ];
   }, [agents, syncRecords, selectedRepoIds, filteredGroupedRepos, waitConfirm]);
 
+  // 智能引用提示词：打开预览弹窗并生成内容
+  const handleGeneratePrompt = useCallback(async (skill: Skill) => {
+    setPromptModal({ isOpen: true, skillName: skill.name, content: '', loading: true });
+    try {
+      const prompt = await invoke<string>('generate_skill_reference_prompt', { skillId: skill.id });
+      setPromptModal(prev => ({ ...prev, content: prompt, loading: false }));
+    } catch (e) {
+      setPromptModal(prev => ({ ...prev, content: `生成失败: ${e}`, loading: false }));
+    }
+  }, []);
+
   const buildSkillContextMenu = useCallback((skill: Skill): ContextMenuItem[] => {
     const isMulti = selectedSkillIds.has(skill.id) && selectedSkillIds.size > 1;
 
@@ -635,8 +662,29 @@ function App() {
     return [
       { id: 'view_doc', label: isMulti ? `无法批量查看文档` : '查看文档', icon: <Search size={14} />, onClick: () => { if (!isMulti) { setSelectedSkill(skill); setIsDrawerOpen(true); } } },
       {
-        id: 'open_folder', label: `在${fileManagerName}中打开`, icon: <Folder size={14} />, onClick: () => {
+        id: 'generate_prompt', label: isMulti ? `无法批量生成提示词` : '智能引用提示词', icon: <Sparkles size={14} />, onClick: () => {
+          if (!isMulti) handleGeneratePrompt(skill);
+        }
+      },
+      {
+        id: 'open_default', label: `用默认应用打开`, icon: <Folder size={14} />, onClick: () => {
           targetSkills.forEach(s => invoke('open_local_folder', { path: s.local_path }).catch(console.error));
+        }
+      },
+      ...(openWithApps.length > 0 ? [{
+        id: 'open_with_other', label: `在其它应用打开`, icon: <Folder size={14} />,
+        children: openWithApps.map((app, index) => ({
+          id: `open_with_${index}`,
+          label: app.name,
+          icon: app.icon_base64 ? <img src={`data:image/png;base64,${app.icon_base64}`} className="w-3.5 h-3.5 object-contain" /> : undefined,
+          onClick: () => {
+            targetSkills.forEach(s => invoke('open_with_app', { file_path: s.local_path, app_path: app.path }).catch(console.error));
+          }
+        }))
+      }] : []),
+      {
+        id: 'reveal_finder', label: `在${fileManagerName}中显示`, icon: <Folder size={14} />, onClick: () => {
+          targetSkills.forEach(s => invoke('reveal_in_finder', { path: s.local_path }).catch(console.error));
         }
       },
       {
@@ -714,26 +762,35 @@ function App() {
       {
         id: 'select-all',
         label: '全选',
+        icon: <CheckSquare size={14} />,
         onClick: () => {
           if (selectedRepoId) {
             // Select all skills
             const repo = filteredGroupedRepos.find(r => r.id === selectedRepoId);
-            if (repo) setSelectedSkillIds(new Set(repo.skills.map(s => s.id)));
+            if (repo) {
+              setSelectedSkillIds(new Set(repo.skills.map(s => s.id)));
+              setInspectorSelectedType('skill');
+            }
           } else {
             // Select all repos
             setSelectedRepoIds(new Set(filteredGroupedRepos.map(r => r.id)));
+            setInspectorSelectedType('repo');
           }
         }
       },
       { separator: true, id: 's2', label: '' },
       {
         id: 'reveal-workspace',
-        label: '在访达中显示技能库',
+        label: `在${fileManagerName}中显示技能库`,
         icon: <Folder size={14} />,
         disabled: !selectedWorkspaceDir || selectedWorkspaceDir.is_missing,
-        onClick: () => {
+        onClick: async () => {
           if (selectedWorkspaceDir && !selectedWorkspaceDir.is_missing) {
-            open({ defaultPath: selectedWorkspaceDir.path });
+            try {
+              await revealItemInDir(selectedWorkspaceDir.path);
+            } catch (e) {
+              console.error(`Failed to reveal path ${selectedWorkspaceDir.path}:`, e);
+            }
           }
         }
       }
@@ -772,14 +829,14 @@ function App() {
   return (
     <div className="flex h-screen w-full bg-transparent text-[var(--foreground)] overflow-hidden font-sans">
 
-      <div className="w-64 bg-[var(--color-sidebar)] flex flex-col h-full shrink-0 relative z-20 text-[13px] border-r border-black/[0.05]">
+      <div className="w-64 bg-white/70 backdrop-blur-xl flex flex-col h-full shrink-0 relative z-20 text-[13px] border-r border-black/[0.05]">
         <div data-tauri-drag-region onPointerDown={() => getCurrentWindow().startDragging()} className="h-10 w-full shrink-0"></div>
 
         {/* 模块 Tab 导航与全局搜索 */}
         <div className="px-3 pb-3 flex items-center gap-2">
           <div className="flex-1 flex items-center gap-1 p-1 rounded-lg bg-black/[0.04]">
             {([
-              { id: 'skills' as AppModule, label: '技能', icon: Blocks },
+              { id: 'skills' as AppModule, label: '技能', icon: Puzzle },
               { id: 'prompts' as AppModule, label: '提示词', icon: MessageSquareText },
               { id: 'resources' as AppModule, label: '资源', icon: Store },
             ]).map(tab => (
@@ -860,7 +917,7 @@ function App() {
                       }`}
                     onClick={() => setActiveTab("all")}
                   >
-                    <FolderGit2 className="w-4 h-4" />
+                    <FolderSearch className="w-4 h-4" />
                     <span>所有技能</span>
                   </button>
                   <button
@@ -1251,8 +1308,10 @@ function App() {
           onOpenDrawer={(skill) => { setSelectedSkill(skill); setIsDrawerOpen(true); }}
           onSelectRepo={(repoId) => setSelectedRepoId(repoId)}
           onRefreshData={fetchData}
+          onUpdateRepos={handleUpdateRepos}
           isOpen={isInspectorOpen}
           onToggle={() => setIsInspectorOpen(!isInspectorOpen)}
+          onGeneratePrompt={handleGeneratePrompt}
         />
           </>
         ) : activeModule === 'prompts' ? (
@@ -1313,6 +1372,15 @@ function App() {
         isOpen={isDrawerOpen}
         skill={selectedSkill}
         onClose={() => { setIsDrawerOpen(false); fetchData(); }}
+        onGeneratePrompt={handleGeneratePrompt}
+      />
+
+      <PromptPreviewModal
+        isOpen={promptModal.isOpen}
+        skillName={promptModal.skillName}
+        content={promptModal.content}
+        loading={promptModal.loading}
+        onClose={() => setPromptModal(prev => ({ ...prev, isOpen: false }))}
       />
 
       <AgentSettingsDialog

@@ -618,7 +618,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                           </button>
                         </Tooltip>
                         <Tooltip content="在文件管理器中打开">
-                          <button onClick={(e) => { e.stopPropagation(); invoke('open_local_folder', { path: hoveredItem.skill.local_path }).catch(console.error); }} className="p-1.5 text-gray-400 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors">
+                          <button onClick={(e) => { e.stopPropagation(); invoke('reveal_in_finder', { path: hoveredItem.skill.local_path }).catch(console.error); }} className="p-1.5 text-gray-400 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors">
                             <FolderOpen className="w-4 h-4" />
                           </button>
                         </Tooltip>

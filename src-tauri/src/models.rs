@@ -45,6 +45,13 @@ pub struct Skill {
     pub is_active: bool,
     pub category: String,
     pub tags: Option<String>,
+    /// 技能范围（内部逻辑，不对用户暴露）：loose / packed / repo
+    #[serde(default = "default_skill_scope")]
+    pub skill_scope: String,
+}
+
+fn default_skill_scope() -> String {
+    "repo".to_string()
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -80,6 +87,13 @@ pub struct GroupedRepo {
     pub category: Option<String>,
     #[serde(default)]
     pub is_missing: bool,
+    /// 仓库类型（内部逻辑，不对用户暴露）：single / collection
+    #[serde(default = "default_repo_type")]
+    pub repo_type: String,
+}
+
+fn default_repo_type() -> String {
+    "single".to_string()
 }
 
 // ===== Prompt 管理相关模型 =====
