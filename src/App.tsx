@@ -20,6 +20,7 @@ import { SkillCard } from "./components/skill/SkillCard";
 import { ToastContainer, showToast } from "./components/ui/Toast";
 import { Tooltip } from "./components/ui/Tooltip";
 import { AboutDialog } from "./components/ui/AboutDialog";
+import { UpdateNotifier } from "./components/ui/UpdateNotifier";
 import { InspectorPanel } from "./components/inspector/InspectorPanel";
 import { ContextMenu, useContextMenu } from "./components/ui/ContextMenu";
 import type { ContextMenuItem } from "./components/ui/ContextMenu";
@@ -1133,7 +1134,7 @@ function App() {
                 onClick={() => setActiveModule(tab.id)}
                 className={`flex items-center justify-center transition-all duration-200 outline-none select-none rounded-md h-[32px] ${
                   activeModule === tab.id
-                    ? 'bg-black/[0.05] text-[var(--foreground)] font-medium px-3 gap-2'
+                    ? 'bg-black/[0.05] text-[var(--foreground)] font-medium px-2.5 gap-2'
                     : 'text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/[0.04] px-2.5'
                 }`}
               >
@@ -1841,6 +1842,7 @@ function App() {
 
       <ToastContainer />
       {confirmData && <ConfirmDialog {...(confirmData as any)} />}
+      <UpdateNotifier />
     </div>
   );
 }

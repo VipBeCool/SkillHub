@@ -1,69 +1,88 @@
 <div align="center">
   <img src="src-tauri/icons/icon.png" width="128" height="128" alt="SkillHub Logo" />
   <h1>SkillHub</h1>
-  <p>🚀 一款基于 Rust 打造的高性能跨平台 AI 技能（Agent Skill）管理与分发工作站</p>
+  <p>跨平台的 AI 技能与 Prompt 管理工作站</p>
+  <p>
+    <img src="https://img.shields.io/github/v/release/VipBeCool/SkillHub?style=flat-square" alt="release" />
+    <img src="https://img.shields.io/github/license/VipBeCool/SkillHub?style=flat-square" alt="license" />
+    <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-blue?style=flat-square" alt="platform" />
+  </p>
 </div>
 
-## ✨ 核心卖点
+## 简介
 
-- ⚡️ **极速轻量**：采用 Tauri + Rust 底层重构，内存占用极低（相比 Electron 节省 80% 以上内存），启动快如闪电。
-- 🔄 **多库同频**：支持同时挂载和管理本地多个 AI 技能文件夹（如 Claude Desktop 的 Skills），自动侦测变化。
-- 🎨 **极客美学**：现代化的 React + TailwindCSS 界面设计，支持明暗模式无缝切换。
-- 📦 **全平台支持**：一套代码同时编译为 macOS (.dmg)、Windows (.exe) 和 Linux 安装包。
-- 🛡 **隐私至上**：当前架构下所有技能与配置均保存在本地磁盘，无需依赖云端服务器。
+SkillHub 是一款基于 Tauri + Rust 的桌面应用，用于统一管理本地 AI Agent 技能文件（如 Claude Desktop Skills、Cursor Rules 等）和 Prompt 模板。
 
-## 🛠 技术栈
+支持同时挂载多个本地技能库、GitHub 远程仓库、在线技能收藏，提供可视化浏览、标签分类、全文搜索、批量导出、一键同步等功能。
 
-* **前端（GUI）**：React, TypeScript, TailwindCSS, Vite
-* **后端（核心逻辑 & OS 交互）**：Rust, Tauri v2
-* **其他构建工具**：Node.js, Cargo
+## 核心功能
 
-## 🚀 快速开始
+- **多库管理** — 同时挂载多个本地文件夹、GitHub 仓库、在线技能源，统一浏览
+- **Prompt 管理** — 独立的 Prompt 模板管理模块，支持分组、标签、Token 统计
+- **全文搜索** — 快速检索所有技能和 Prompt 内容（Cmd/Ctrl + K）
+- **GitHub 同步** — 一键拉取远程仓库变更，自动检测新增/修改/删除
+- **批量操作** — 框选多个技能库，支持批量导出（ZIP/JSON）、批量删除
+- **应用内更新** — 启动时自动检查新版本，一键下载安装
+- **轻量高性能** — Rust 后端 + SQLite 本地存储，内存占用远低于 Electron 方案
 
-### 环境依赖
+## 技术栈
 
-在开始之前，请确保您的电脑已经安装了以下环境：
+| 层级 | 技术 |
+|------|------|
+| 前端 | React 19, TypeScript, Tailwind CSS v4, Vite |
+| 后端 | Rust, Tauri v2, SQLite (rusqlite) |
+| CI/CD | GitHub Actions + tauri-action |
 
-1. [Node.js](https://nodejs.org/) (v18+)
-2. [Rust 编译环境](https://www.rust-lang.org/tools/install)
-3. 对应的原生系统开发工具（macOS 需要 Xcode Command Line Tools，Windows 需要 C++ Build Tools）
+## 下载安装
 
-### 本地运行
+前往 [Releases](https://github.com/VipBeCool/SkillHub/releases/latest) 页面下载对应平台的安装包：
+
+| 平台 | 安装包 |
+|------|--------|
+| macOS (Intel + Apple Silicon) | `.dmg` |
+| Windows (x64) | `.exe` / `.msi` |
+| Linux (x64) | `.AppImage` / `.deb` |
+
+> 已安装的用户会在应用内收到更新提示，无需手动下载。
+
+## 本地开发
+
+### 环境要求
+
+- [Node.js](https://nodejs.org/) v18+
+- [Rust](https://www.rust-lang.org/tools/install) 稳定版
+- macOS 需要 Xcode Command Line Tools
+- Windows 需要 Visual Studio C++ Build Tools
+
+### 运行
 
 ```bash
-# 1. 克隆仓库
 git clone https://github.com/VipBeCool/SkillHub.git
 cd SkillHub
-
-# 2. 安装前端依赖
 npm install
-
-# 3. 启动开发服务器与桌面窗口
-npm run tauri dev
+npm run skillhub dev
 ```
 
-### 构建打包
-
-如果你想在本地生成可安装的 `.dmg` / `.exe` 文件：
+### 构建
 
 ```bash
-npm run tauri build
+npm run skillhub build
 ```
 
-生成的安装包将位于 `src-tauri/target/release/bundle/` 目录下。
+安装包输出到 `src-tauri/target/release/bundle/` 目录。
 
-## 🤝 参与贡献与商业授权
+### 版本号管理
 
-欢迎提交 PR (Pull Request) 或 Issue 来共同改进 SkillHub！
+版本号分布在 `package.json`、`src-tauri/tauri.conf.json`、`src-tauri/Cargo.toml` 三处，使用脚本一键同步：
 
-**开源协议与商用说明**：
-本项目采用 **[GPL-3.0 License](./LICENSE)** 协议开源。
-这意味着：
+```bash
+node scripts/bump-version.mjs 0.2.0
+```
 
-1. 任何人都可以免费下载、使用、修改本项目的源代码。
-2. 任何使用了本项目源代码的衍生软件，**也必须以 GPL-3.0 协议开源**，严禁闭源套壳。
-3. 如果您所在的商业公司希望将本代码用于闭源的商业产品，请联系作者获取**商业授权 (Commercial License)**。
+## 开源协议
+
+本项目采用 [GPL-3.0](./LICENSE) 协议。允许自由使用和修改，但衍生项目必须同样开源。商业闭源使用请联系作者获取授权。
 
 ---
 
-*Made with ❤️ by VipBeCool*
+Made by [VipBeCool](https://github.com/VipBeCool)

@@ -19,6 +19,8 @@
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2.7.1",
     "@tauri-apps/plugin-opener": "^2",
+    "@tauri-apps/plugin-process": "^2.3.1",
+    "@tauri-apps/plugin-updater": "^2.10.1",
     "@viselect/react": "^3.9.0",
     "clsx": "^2.1.1",
     "franc-min": "^6.2.0",
