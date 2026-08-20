@@ -661,7 +661,7 @@ fn sync_skills_to_db(db: &mut rusqlite::Connection, path: &Path, source_dir_id: 
     // 查询该目录下的所有旧技能记录，如果有不存在于 current_paths 中的，就予以删除
     let mut existing_skills: Vec<(String, String)> = Vec::new();
     {
-        let mut stmt = tx.prepare("SELECT id, local_path FROM skills WHERE source_dir_id = ?1").map_err(|e| e.to_string())?;
+        let mut stmt = tx.prepare("SELECT id, local_path FROM skills WHERE source_dir_id = ?1 AND source_type != 'online'").map_err(|e| e.to_string())?;
         let rows = stmt.query_map(rusqlite::params![source_dir_id], |row| Ok((row.get(0)?, row.get(1)?))).map_err(|e| e.to_string())?;
         for row in rows {
             if let Ok(r) = row {
@@ -1011,7 +1011,7 @@ pub fn sync_skill(state: State<'_, AppState>, skill_id: String, agent_id: String
     let mut actual_source_path = std::path::PathBuf::from(&skill_path);
     let is_skill_md = actual_source_path.file_name().map_or(false, |n| {
         let n_lower = n.to_string_lossy().to_lowercase();
-        n_lower == "skill.md" || n_lower == "skill.mdx"
+        n_lower == "skill.md" || n_lower == "skill.mdx" || n_lower == "design.md"
     });
     
     // If it's a folder-based skill (identified by SKILL.md), symlink the entire folder
@@ -1373,7 +1373,10 @@ pub fn generate_skill_reference_prompt(state: State<'_, AppState>, skill_id: Str
 
     // 场景 5：线上收藏技能
     if source_type == "online" {
-        let url = online_url.unwrap_or_else(|| local_path.clone());
+        let mut url = online_url.unwrap_or_else(|| local_path.clone());
+        if url.ends_with(".git") {
+            url.truncate(url.len() - 4);
+        }
         let desc_line = if description.is_empty() {
             String::new()
         } else {

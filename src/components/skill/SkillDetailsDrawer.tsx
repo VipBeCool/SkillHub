@@ -129,19 +129,24 @@ export function SkillDetailsDrawer({ skill, isOpen, onClose, onGeneratePrompt }:
         setLoading(true);
         setCapacity(null); // Reset capacity immediately
         try {
-          const filesData = await invoke<SkillFile[]>("get_skill_files", { path: skill.local_path });
-          setFiles(filesData);
-          
-          if (filesData.length > 0) {
-            setActiveFile(filesData[0].name);
-            setContent(filesData[0].content);
-            setEditContent(filesData[0].content);
-          } else {
-            setContent("*未找到任何核心文档 (README.md, SKILL.md 等)*");
+          if (skill.source_type === 'online') {
+            setFiles([]);
+            const url = skill.online_url || skill.local_path;
+            setContent(`这是一个线上收藏的技能，未将任何文件下载到本地。\n\n请点击链接访问：\n[${url}](${url})`);
             setEditContent("");
+          } else {
+            const filesData = await invoke<SkillFile[]>("get_skill_files", { path: skill.local_path });
+            setFiles(filesData);
+            
+            if (filesData.length > 0) {
+              setActiveFile(filesData[0].name);
+              setContent(filesData[0].content);
+              setEditContent(filesData[0].content);
+            } else {
+              setContent("*未找到任何核心文档 (README.md, SKILL.md 等)*");
+              setEditContent("");
+            }
           }
-          
-
         } catch (e) {
           console.error(e);
           setContent(`*加载内容失败： ${skill.name}*\n\n\`\`\`\n${e}\n\`\`\``);

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Puzzle, Globe } from 'lucide-react';
+import { Puzzle } from 'lucide-react';
 import { GroupedRepo, SyncRecord, AgentConfig } from '../../types';
 import { Tooltip } from '../ui/Tooltip';
 
@@ -29,7 +29,7 @@ export const RepoCard: React.FC<RepoCardProps> = ({
 
   return (
     <div 
-      data-repo-id={repo.id}
+      data-id={repo.id}
       onClick={(e) => { e.stopPropagation(); onClick(e); }}
       onDoubleClick={(e) => { e.stopPropagation(); onDoubleClick(); }}
       onContextMenu={onContextMenu}
@@ -37,7 +37,7 @@ export const RepoCard: React.FC<RepoCardProps> = ({
         isSelected 
           ? 'border-[var(--color-primary)] shadow-sm shadow-blue-500/10 ring-1 ring-[var(--color-primary)]/20' 
           : 'border-black/5 hover:border-black/10 hover:shadow-sm'
-      } ${repo.is_missing ? 'opacity-60 grayscale-[50%]' : ''}`}
+      } ${repo.is_missing && repo.source_type !== 'online' ? 'opacity-60 grayscale-[50%]' : ''}`}
     >
       {/* 顶部：图标 + 名称 + 技能数/标签 */}
       <div className="flex items-center space-x-2.5">
@@ -48,8 +48,8 @@ export const RepoCard: React.FC<RepoCardProps> = ({
               ? 'bg-[#0066FF]/10 text-[#0066FF]'
               : 'bg-[#86868B]/10 text-[#86868B]'
         }`}>
-          {repo.source_type === 'online' ? <Globe className="w-4 h-4" /> : <Puzzle className="w-4 h-4" />}
-          {repo.is_missing && (
+          <Puzzle className="w-4 h-4" />
+          {repo.is_missing && repo.source_type !== 'online' && (
             <div className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-red-500 rounded-full flex items-center justify-center text-white text-[8px] font-bold border border-white">!</div>
           )}
         </div>
@@ -57,7 +57,7 @@ export const RepoCard: React.FC<RepoCardProps> = ({
           <h3 className="font-semibold text-[13px] text-[var(--foreground)] truncate leading-tight">{repo.name}</h3>
           <div className="flex items-center space-x-1.5 mt-0.5">
             {repo.source_type === 'online' ? (
-              <span className="text-[10px] text-emerald-600 font-medium">线上收藏</span>
+              <span className="text-[10px] text-[var(--color-muted)]">线上技能</span>
             ) : (
               <span className="text-[10px] text-[var(--color-muted)]">{repo.skills.length} 个技能</span>
             )}

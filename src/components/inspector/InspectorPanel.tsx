@@ -311,6 +311,7 @@ export function InspectorPanel({
     const totalSkills = allRepos.reduce((sum, r) => sum + r.skills.length, 0);
     const githubCount = allRepos.filter(r => r.source_type === 'github').length;
     const localCount = allRepos.filter(r => r.source_type === 'local').length;
+    const onlineCount = allRepos.filter(r => r.source_type === 'online').length;
 
     return (
       <div className="w-[280px] border-l border-black/[0.08] bg-white/50 backdrop-blur-sm flex flex-col shrink-0 h-full overflow-hidden">
@@ -373,6 +374,15 @@ export function InspectorPanel({
                     <span className="text-[var(--foreground)]">本地</span>
                   </div>
                   <span className="text-[var(--color-muted)] font-medium">{localCount}</span>
+                </div>
+              )}
+              {onlineCount > 0 && (
+                <div className="flex items-center justify-between text-[12px]">
+                  <div className="flex items-center space-x-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                    <span className="text-[var(--foreground)]">线上技能</span>
+                  </div>
+                  <span className="text-[var(--color-muted)] font-medium">{onlineCount}</span>
                 </div>
               )}
             </div>

@@ -293,6 +293,8 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChang
             });
             setLastSelectedId(nextPrompt.id);
             setInspectorData(null);
+            const el = document.querySelector(`[data-prompt-id="${nextPrompt.id}"]`);
+            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
           } else {
             handleSelectPrompt(nextPrompt);
           }
@@ -350,9 +352,13 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChang
     setInspectorData(null);
   }, [filter]);
 
-  const handleSelectPrompt = (_prompt: Prompt, _e?: React.MouseEvent) => {
-    // Only used for single click open or other non-selection actions if needed.
-    // Selection is handled in handleCardSelect.
+  const handleSelectPrompt = (prompt: Prompt, _e?: React.MouseEvent) => {
+    setSelectedIds(new Set([prompt.id]));
+    setLastSelectedId(prompt.id);
+    const el = document.querySelector(`[data-prompt-id="${prompt.id}"]`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
   };
 
   const handleCardSelect = (id: string, e: React.MouseEvent) => {
@@ -559,7 +565,7 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChang
             features={{ touch: false, range: true, singleTap: { allow: false } }}
           >
             <div 
-              className="p-6 grid grid-cols-2 xl:grid-cols-3 gap-4 min-h-full items-stretch content-start"
+              className="prompt-grid p-6 grid grid-cols-2 xl:grid-cols-3 gap-4 min-h-full items-stretch content-start"
                 onPointerDown={(e) => {
                   if (e.target === e.currentTarget) {
                     setSelectedIds(new Set());

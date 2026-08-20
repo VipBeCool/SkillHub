@@ -13,28 +13,11 @@ interface AddRepositoryDialogProps {
   onCloningSuccess?: (path: string) => void;
   onCloningError?: (path: string, err: any) => void;
   defaultTab?: "local" | "github" | "online" | null;
-  defaultTargetDir?: string;
+  defaultTargetDir?: string | null;
   defaultSourceDirId?: string;
+  defaultWorkspaceLabel?: string | null;
 }
 
-// 检测 URL 类型，判断是否应该显示目录/仓库提示
-function detectUrlType(url: string): "file" | "directory" | "repo" | "unknown" {
-  try {
-    const u = new URL(url);
-    const path = u.pathname;
-    // GitHub 文件链接：包含 /blob/ 且 .md 结尾或其他文件扩展名
-    if (path.includes("/blob/")) return "file";
-    // GitHub 目录链接：包含 /tree/
-    if (path.includes("/tree/")) return "directory";
-    // GitHub 仓库链接：github.com/user/repo 或 .git 结尾
-    if ((u.hostname === "github.com" || u.hostname === "raw.githubusercontent.com") &&
-        path.split("/").filter(Boolean).length === 2) return "repo";
-    if (url.endsWith(".git")) return "repo";
-    return "unknown";
-  } catch {
-    return "unknown";
-  }
-}
 
 // 从 URL 中尝试提取技能名称
 function guessNameFromUrl(url: string): string {
@@ -60,6 +43,7 @@ export function AddRepositoryDialog({
   defaultTab,
   defaultTargetDir,
   defaultSourceDirId,
+  defaultWorkspaceLabel,
 }: AddRepositoryDialogProps) {
   const [step, setStep] = useState<"select" | "form">("select");
   const [tab, setTab] = useState<"local" | "github" | "online">("local");
@@ -67,7 +51,7 @@ export function AddRepositoryDialog({
   
   // Local state
   const [localPath, setLocalPath] = useState("");
-  const [strategy, setStrategy] = useState<"link" | "copy" | "move">("link");
+  const [strategy, setStrategy] = useState<"link" | "copy" | "move">("copy");
   const [localTargetDir, setLocalTargetDir] = useState("");
 
   // GitHub state
@@ -77,20 +61,30 @@ export function AddRepositoryDialog({
   // Online state
   const [onlineUrl, setOnlineUrl] = useState("");
   const [onlineName, setOnlineName] = useState("");
-  const [onlineDescription, setOnlineDescription] = useState("");
   const [urlAutoNamed, setUrlAutoNamed] = useState(false); // 是否由 URL 自动填充了名称
 
   useEffect(() => {
     if (isOpen) {
+      // 每次打开弹窗时，清空之前残留的表单状态
+      setLocalPath("");
+      setGithubUrl("");
+      setOnlineUrl("");
+      setOnlineName("");
+      setUrlAutoNamed(false);
+
       if (defaultTab) {
         setTab(defaultTab);
         setStep("form");
       } else {
         setStep("select");
       }
+      
       if (defaultTargetDir) {
          setLocalTargetDir(defaultTargetDir);
          setGithubTargetDir(defaultTargetDir);
+      } else {
+         setLocalTargetDir("");
+         setGithubTargetDir("");
       }
     }
   }, [isOpen, defaultTab, defaultTargetDir]);
@@ -109,19 +103,6 @@ export function AddRepositoryDialog({
     } catch (e) { console.error(e); }
   };
 
-  const handleBrowseLocalTarget = async () => {
-    try {
-      const selected = await open({ directory: true, multiple: false });
-      if (selected && typeof selected === "string") setLocalTargetDir(selected);
-    } catch (e) { console.error(e); }
-  };
-
-  const handleBrowseTarget = async () => {
-    try {
-      const selected = await open({ directory: true, multiple: false });
-      if (selected && typeof selected === "string") setGithubTargetDir(selected);
-    } catch (e) { console.error(e); }
-  };
 
   const handleOnlineUrlChange = (url: string) => {
     setOnlineUrl(url);
@@ -156,14 +137,14 @@ export function AddRepositoryDialog({
         await invoke("add_online_skill", {
           url: onlineUrl,
           name: onlineName.trim() || onlineUrl,
-          description: onlineDescription.trim(),
+          description: "",
           sourceDirId: sourceDirId,
         });
         showToast(`「${onlineName || onlineUrl}」已收藏`);
         onSuccess();
         onClose();
         // 重置表单
-        setOnlineUrl(""); setOnlineName(""); setOnlineDescription(""); setUrlAutoNamed(false);
+        setOnlineUrl(""); setOnlineName(""); setUrlAutoNamed(false);
         setTimeout(() => setStep("select"), 300);
       } else {
         // GitHub 克隆
@@ -213,8 +194,6 @@ export function AddRepositoryDialog({
     }
   };
 
-  const urlType = tab === "online" ? detectUrlType(onlineUrl) : "unknown";
-  const showUrlWarning = tab === "online" && onlineUrl.length > 0 && (urlType === "directory" || urlType === "repo");
 
   const submitDisabled =
     loading ||
@@ -303,6 +282,22 @@ export function AddRepositoryDialog({
           {/* Step 2: Form View */}
           {step === "form" && (
             <form onSubmit={handleSubmit} className="p-6 flex flex-col space-y-4 animate-in fade-in slide-in-from-right-8 duration-300">
+              
+              {/* 顶部目标技能库提示 */}
+              {defaultWorkspaceLabel && (
+                <div className="flex items-center p-2.5 bg-[var(--color-primary)]/5 border border-[var(--color-primary)]/20 rounded-lg -mt-2 mb-2">
+                  <div className="w-6 h-6 rounded-md bg-[var(--color-primary)]/10 flex items-center justify-center shrink-0 mr-2.5">
+                    <svg className="w-3.5 h-3.5 text-[var(--color-primary)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[11px] text-[var(--color-primary)]/70 font-medium leading-none mb-1">将导入至技能库</p>
+                    <p className="text-[13px] font-medium text-[var(--color-primary)] truncate leading-none">
+                      {defaultWorkspaceLabel} <span className="text-[11px] opacity-70 font-normal ml-1">({defaultTargetDir})</span>
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {tab === "local" ? (
                 <>
                   <div className="space-y-2">
@@ -343,29 +338,11 @@ export function AddRepositoryDialog({
                     </div>
                     <div className="text-[11px] mt-2 leading-relaxed bg-blue-50/50 text-blue-800 p-2.5 rounded-md border border-blue-100">
                       {strategy === "link" && <><span className="font-semibold text-blue-900">仅挂载读取：</span>保持你上面选择的文件夹在原地不动。开发者首选，支持热更新测试。</>}
-                      {strategy === "copy" && <><span className="font-semibold text-blue-900">创建副本：</span>将上面选中的源文件夹安全复制到下方选择的「目标集中目录」中，保留双份。</>}
-                      {strategy === "move" && <><span className="font-semibold text-blue-900">物理转移：</span>将上面选中的源文件夹直接剪切到下方选择的「目标集中目录」中，节约空间。</>}
+                      {strategy === "copy" && <><span className="font-semibold text-blue-900">创建副本：</span>将上面选中的源文件夹安全复制到顶部的「目标技能库」中，保留双份。</>}
+                      {strategy === "move" && <><span className="font-semibold text-blue-900">物理转移：</span>将上面选中的源文件夹直接剪切到顶部的「目标技能库」中，节约空间。</>}
                     </div>
                   </div>
 
-                  {(strategy === "copy" || strategy === "move") && (
-                    <div className="space-y-2 animate-in fade-in slide-in-from-top-2 duration-300">
-                      <label className="text-sm font-medium text-[var(--foreground)]">目标集中目录</label>
-                      <div className="flex space-x-2">
-                        <input
-                          type="text"
-                          required
-                          readOnly
-                          value={localTargetDir}
-                          placeholder="选择你要集中管理 Skill 的文件夹..."
-                          className="input-field flex-1"
-                        />
-                        <button type="button" onClick={handleBrowseLocalTarget} className="px-2.5 py-0.5 rounded-md border border-[var(--color-border)] bg-white text-[12px] font-medium hover:bg-black/5 transition-colors">
-                          浏览
-                        </button>
-                      </div>
-                    </div>
-                  )}
                 </>
               ) : tab === "online" ? (
                 <>
@@ -383,19 +360,6 @@ export function AddRepositoryDialog({
                     <p className="text-[11px] text-[var(--color-muted)]">支持 GitHub 文件/目录/仓库链接，或任意公开 URL</p>
                   </div>
 
-                  {/* 智能提示卡：检测到目录/仓库时显示 */}
-                  {showUrlWarning && (
-                    <div className="flex items-start space-x-2.5 p-3 bg-amber-50 border border-amber-200 rounded-lg animate-in fade-in zoom-in-95 duration-200">
-                      <AlertTriangle className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-[12px] font-medium text-amber-800">检测到{urlType === "repo" ? "仓库" : "目录"}链接</p>
-                        <p className="text-[11px] text-amber-700 mt-0.5 leading-relaxed">
-                          线上收藏仅保存地址，无法同步至 AI Agent。如需完整功能，建议使用「克隆 GitHub 技能库」。
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
                   {/* 技能名称 */}
                   <div className="space-y-1.5">
                     <label className="text-sm font-medium text-[var(--foreground)]">技能名称</label>
@@ -409,24 +373,16 @@ export function AddRepositoryDialog({
                     />
                   </div>
 
-                  {/* 备注 */}
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-medium text-[var(--foreground)]">备注 <span className="text-[var(--color-muted)] font-normal">（可选）</span></label>
-                    <input
-                      type="text"
-                      value={onlineDescription}
-                      onChange={(e) => setOnlineDescription(e.target.value)}
-                      placeholder="简短描述这个技能的用途..."
-                      className="input-field w-full"
-                    />
-                  </div>
-
                   {/* 说明 */}
-                  <div className="flex items-start space-x-2 p-2.5 bg-[var(--color-muted-bg)] rounded-lg border border-[var(--color-border)]">
-                    <Globe className="w-3.5 h-3.5 text-[var(--color-muted)] mt-0.5 shrink-0" />
-                    <p className="text-[11px] text-[var(--color-muted)] leading-relaxed">
-                      线上模式仅保存地址，不下载任何文件到本地，零磁盘占用。可随时生成智能引用提示词。
-                    </p>
+                  <div className="flex items-start space-x-2.5 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                    <AlertTriangle className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[12px] font-medium text-amber-800">关于线上收藏</p>
+                      <p className="text-[11px] text-amber-700 mt-0.5 leading-relaxed">
+                        线上模式仅保存地址，不下载文件，零磁盘占用，无法同步至 AI Agent，但可用于生成引用提示词。<br/>
+                        如需完整功能或管理整个仓库，建议使用「克隆 GitHub 技能库」。
+                      </p>
+                    </div>
                   </div>
                 </>
               ) : (
@@ -442,41 +398,21 @@ export function AddRepositoryDialog({
                       className="input-field w-full"
                     />
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-[var(--foreground)]">本地保存目录</label>
-                    <div className="flex space-x-2">
-                      <input
-                        type="text"
-                        required
-                        readOnly
-                        value={githubTargetDir}
-                        placeholder="选择下载位置..."
-                        className="input-field flex-1"
-                      />
-                      <button type="button" onClick={handleBrowseTarget} className="px-2.5 py-0.5 rounded-md border border-[var(--color-border)] bg-white text-[12px] font-medium hover:bg-black/5 transition-colors">
-                        浏览
-                      </button>
-                    </div>
-                    {githubUrl && githubTargetDir ? (
-                      <div className="mt-3 p-2.5 bg-blue-50/80 rounded-lg border border-blue-100 flex items-start space-x-2.5 animate-in fade-in zoom-in-95 duration-200">
-                        <svg className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M15 22v-4a4.8 4.8 0 0 0-1-3.24c3-.3 6-1.5 6-6.76a5.5 5.5 0 0 0-1.5-3.8 5.1 5.1 0 0 0-.1-3.8s-1.2-.4-3.9 1.4a13.4 13.4 0 0 0-7 0C6.3 2.4 5.1 2.8 5.1 2.8a5.1 5.1 0 0 0-.1 3.8 5.5 5.5 0 0 0-1.5 3.8c0 5.2 3 6.4 6 6.76a4.8 4.8 0 0 0-1 3.24v4" />
-                        </svg>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[12px] font-medium text-blue-900 mb-0.5">将克隆至本地：</p>
-                          <Tooltip content={`${githubTargetDir.replace(/\\/g, '/')}/${githubUrl.split('/').filter(Boolean).pop()?.replace('.git', '') || 'repo'}`}>
-                            <p className="text-[11px] font-mono text-blue-700/90 truncate cursor-default">
-                              {githubTargetDir.replace(/\\/g, '/')}/{githubUrl.split('/').filter(Boolean).pop()?.replace('.git', '') || 'repo'}
-                            </p>
-                          </Tooltip>
-                        </div>
+                  {githubUrl && githubTargetDir && (
+                    <div className="mt-1 p-2.5 bg-blue-50/80 rounded-lg border border-blue-100 flex items-start space-x-2.5 animate-in fade-in zoom-in-95 duration-200">
+                      <svg className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M15 22v-4a4.8 4.8 0 0 0-1-3.24c3-.3 6-1.5 6-6.76a5.5 5.5 0 0 0-1.5-3.8 5.1 5.1 0 0 0-.1-3.8s-1.2-.4-3.9 1.4a13.4 13.4 0 0 0-7 0C6.3 2.4 5.1 2.8 5.1 2.8a5.1 5.1 0 0 0-.1 3.8 5.5 5.5 0 0 0-1.5 3.8c0 5.2 3 6.4 6 6.76a4.8 4.8 0 0 0-1 3.24v4" />
+                      </svg>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[12px] font-medium text-blue-900 mb-0.5">将克隆至：</p>
+                        <Tooltip content={`${githubTargetDir.replace(/\\/g, '/')}/${githubUrl.split('/').filter(Boolean).pop()?.replace('.git', '') || 'repo'}`}>
+                          <p className="text-[11px] font-mono text-blue-700/90 truncate cursor-default">
+                            {githubTargetDir.replace(/\\/g, '/')}/{githubUrl.split('/').filter(Boolean).pop()?.replace('.git', '') || 'repo'}
+                          </p>
+                        </Tooltip>
                       </div>
-                    ) : (
-                      <p className="text-[11px] text-[var(--color-muted)] mt-2 leading-relaxed">
-                        我们将把存储库克隆到该目录下。
-                      </p>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </>
               )}
 

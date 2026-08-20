@@ -29,7 +29,7 @@ export const SkillCard: React.FC<SkillCardProps> = ({
 
   return (
     <div 
-      data-skill-id={skill.id}
+      data-id={skill.id}
       onClick={(e) => { e.stopPropagation(); onClick(e); }}
       onDoubleClick={(e) => { e.stopPropagation(); onDoubleClick(); }}
       onContextMenu={onContextMenu}

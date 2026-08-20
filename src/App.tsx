@@ -963,12 +963,12 @@ function App() {
         if (inspectorSelectedType === 'skill' && selectedSkillIds.size === 1) {
           e.preventDefault();
           const currentId = Array.from(selectedSkillIds)[0];
-          const currentEl = document.querySelector(`[data-skill-id="${currentId}"]`);
+          const currentEl = document.querySelector(`[data-id="${currentId}"]`);
           if (currentEl) {
-            const allEls = Array.from(document.querySelectorAll('[data-skill-id]'));
+            const allEls = Array.from(document.querySelectorAll('[data-id]'));
             const nextEl = getNextElement(currentEl, e.key, allEls);
             if (nextEl) {
-              const nextId = nextEl.getAttribute('data-skill-id');
+              const nextId = nextEl.getAttribute('data-id');
               if (nextId) {
                 const nextSkill = filteredGroupedRepos.flatMap(r => r.skills).find(s => s.id === nextId);
                 if (nextSkill) {
@@ -982,12 +982,12 @@ function App() {
         } else if (inspectorSelectedType === 'repo' && selectedRepoIds.size === 1) {
           e.preventDefault();
           const currentId = Array.from(selectedRepoIds)[0];
-          const currentEl = document.querySelector(`[data-repo-id="${currentId}"]`);
+          const currentEl = document.querySelector(`[data-id="${currentId}"]`);
           if (currentEl) {
-            const allEls = Array.from(document.querySelectorAll('[data-repo-id]'));
+            const allEls = Array.from(document.querySelectorAll('[data-id]'));
             const nextEl = getNextElement(currentEl, e.key, allEls);
             if (nextEl) {
-              const nextId = nextEl.getAttribute('data-repo-id');
+              const nextId = nextEl.getAttribute('data-id');
               if (nextId) {
                 const nextRepo = filteredGroupedRepos.find(r => r.id === nextId);
                 if (nextRepo) {
@@ -1121,8 +1121,8 @@ function App() {
         <div data-tauri-drag-region className="h-10 w-full shrink-0"></div>
 
         {/* 模块 Tab 导航与全局搜索 */}
-        <div className="px-3 pb-3 flex items-center gap-2">
-          <div className="flex-1 flex items-center gap-1 p-1 rounded-lg bg-black/[0.04]">
+        <div className="px-3 pb-3 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1">
             {([
               { id: 'skills' as AppModule, label: '技能', icon: Puzzle },
               { id: 'prompts' as AppModule, label: '提示词', icon: MessageSquareText },
@@ -1131,10 +1131,10 @@ function App() {
               <button
                 key={tab.id}
                 onClick={() => setActiveModule(tab.id)}
-                className={`flex items-center justify-center gap-2 px-3 py-1.5 rounded-md transition-all duration-200 outline-none select-none ${
+                className={`flex items-center justify-center transition-all duration-200 outline-none select-none rounded-md h-[32px] ${
                   activeModule === tab.id
-                    ? 'bg-white text-[var(--foreground)] font-semibold shadow-sm flex-1'
-                    : 'text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/[0.04]'
+                    ? 'bg-black/[0.05] text-[var(--foreground)] font-medium px-3 gap-2'
+                    : 'text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/[0.04] px-2.5'
                 }`}
               >
                 <tab.icon className="w-4 h-4 shrink-0" />
@@ -1315,9 +1315,9 @@ function App() {
             </div>
           </div>
 
-          <div
+          <div 
             ref={mainContentRef}
-            className="flex-1 overflow-y-auto p-6 relative z-0 bg-[var(--color-background)]"
+            className="flex-1 overflow-y-auto p-6 relative z-0 bg-[var(--color-background)] flex flex-col"
             onClick={(e) => { if (e.target === e.currentTarget) handleDeselectAll(); }}
             onContextMenu={(e) => {
               // Because cards call stopPropagation(), this only fires for blank space
@@ -1456,7 +1456,8 @@ function App() {
                 }}
                 onStop={() => { setTimeout(() => { isDraggingRef.current = false; }, 0); }}
                 selectables="[data-id]"
-                className="w-full"
+                className="w-full flex-1 min-h-full"
+                features={{ touch: false, range: true, singleTap: { allow: false } }}
               >
                 <div className="grid gap-3 content-start pb-20" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }} onClick={(e) => { if (e.target === e.currentTarget && !isDraggingRef.current) handleDeselectAll(); }}>
                   {cloningRepos.map((repo, idx) => (
@@ -1531,7 +1532,8 @@ function App() {
                 }}
                 onStop={() => { setTimeout(() => { isDraggingRef.current = false; }, 0); }}
                 selectables="[data-id]"
-                className="w-full"
+                className="w-full flex-1 min-h-full"
+                features={{ touch: false, range: true, singleTap: { allow: false } }}
               >
                 <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))' }} onClick={(e) => { if (e.target === e.currentTarget && !isDraggingRef.current) handleDeselectAll(); }}>
                   {(() => {
@@ -1614,7 +1616,7 @@ function App() {
                   </div>
 
                   <div className="text-[10px] text-[var(--color-muted)] mb-3 pb-2 border-b border-[var(--color-border)]">
-                    共 {syncLogs.length} 个仓库 <span className="text-green-500 font-semibold ml-1">同步 {syncLogs.filter(l => l.status === 'success').length}</span> <span className="text-gray-500 font-semibold ml-1">跳过 {syncLogs.filter(l => l.status === 'skipped').length}</span> <span className="text-red-500 font-semibold ml-1">失败 {syncLogs.filter(l => l.status === 'error').length}</span>
+                    共 {syncLogs.length} 个 GitHub 仓库 <span className="text-green-500 font-semibold ml-1">同步 {syncLogs.filter(l => l.status === 'success').length}</span> <span className="text-gray-500 font-semibold ml-1">跳过 {syncLogs.filter(l => l.status === 'skipped').length}</span> <span className="text-red-500 font-semibold ml-1">失败 {syncLogs.filter(l => l.status === 'error').length}</span>
                   </div>
 
                   <div className="space-y-2 max-h-[300px] overflow-y-auto pr-5 custom-scrollbar">
@@ -1699,8 +1701,9 @@ function App() {
         onCloningSuccess={(path) => { setCloningRepos(prev => prev.filter(r => r.path !== path)); }}
         onCloningError={(path, err) => { setCloningRepos(prev => prev.filter(r => r.path !== path)); if (err) showToast(`克隆失败: ${err}`, 'error'); }}
         defaultTab={addDialogTab}
-        defaultTargetDir={selectedWorkspaceId !== "all" ? directories.find(d => d.id === selectedWorkspaceId)?.path : undefined}
-        defaultSourceDirId={selectedWorkspaceId !== "all" ? selectedWorkspaceId : undefined}
+        defaultTargetDir={selectedWorkspaceId !== "all" ? directories.find(d => d.id === selectedWorkspaceId)?.path || undefined : undefined}
+        defaultWorkspaceLabel={selectedWorkspaceId !== "all" ? directories.find(d => d.id === selectedWorkspaceId)?.label : undefined}
+        defaultSourceDirId={selectedWorkspaceId !== "all" ? (selectedWorkspaceId || undefined) : undefined}
       />
 
       <SkillDetailsDrawer
