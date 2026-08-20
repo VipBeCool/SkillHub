@@ -1,4 +1,3 @@
-use std::os::unix::fs::symlink;
 use std::path::PathBuf;
 use std::fs;
 
@@ -27,7 +26,17 @@ pub fn create_symlink(source_path: &str, target_dir: &str, link_name: &str) -> R
         }
     }
 
-    symlink(&source, &symlink_path).map_err(|e| format!("Failed to create symlink: {}", e))?;
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(&source, &symlink_path).map_err(|e| format!("Failed to create symlink: {}", e))?;
+
+    #[cfg(windows)]
+    {
+        if source.is_dir() {
+            std::os::windows::fs::symlink_dir(&source, &symlink_path).map_err(|e| format!("Failed to create directory symlink: {}", e))?;
+        } else {
+            std::os::windows::fs::symlink_file(&source, &symlink_path).map_err(|e| format!("Failed to create file symlink: {}", e))?;
+        }
+    }
 
     Ok(symlink_path.to_string_lossy().to_string())
 }
