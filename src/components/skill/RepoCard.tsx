@@ -1,5 +1,5 @@
 import React from 'react';
-import { Puzzle } from 'lucide-react';
+import { Puzzle, Globe } from 'lucide-react';
 import { GroupedRepo, SyncRecord, AgentConfig } from '../../types';
 import { Tooltip } from '../ui/Tooltip';
 
@@ -29,7 +29,7 @@ export const RepoCard: React.FC<RepoCardProps> = ({
 
   return (
     <div 
-      data-id={repo.id}
+      data-repo-id={repo.id}
       onClick={(e) => { e.stopPropagation(); onClick(e); }}
       onDoubleClick={(e) => { e.stopPropagation(); onDoubleClick(); }}
       onContextMenu={onContextMenu}
@@ -39,10 +39,16 @@ export const RepoCard: React.FC<RepoCardProps> = ({
           : 'border-black/5 hover:border-black/10 hover:shadow-sm'
       } ${repo.is_missing ? 'opacity-60 grayscale-[50%]' : ''}`}
     >
-      {/* 顶部：图标 + 名称 + 技能数 */}
+      {/* 顶部：图标 + 名称 + 技能数/标签 */}
       <div className="flex items-center space-x-2.5">
-        <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 relative ${repo.source_type === 'github' ? 'bg-[#0066FF]/10 text-[#0066FF]' : 'bg-[#86868B]/10 text-[#86868B]'}`}>
-          <Puzzle className="w-4 h-4" />
+        <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 relative ${
+          repo.source_type === 'online'
+            ? 'bg-emerald-500/10 text-emerald-600'
+            : repo.source_type === 'github'
+              ? 'bg-[#0066FF]/10 text-[#0066FF]'
+              : 'bg-[#86868B]/10 text-[#86868B]'
+        }`}>
+          {repo.source_type === 'online' ? <Globe className="w-4 h-4" /> : <Puzzle className="w-4 h-4" />}
           {repo.is_missing && (
             <div className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-red-500 rounded-full flex items-center justify-center text-white text-[8px] font-bold border border-white">!</div>
           )}
@@ -50,8 +56,15 @@ export const RepoCard: React.FC<RepoCardProps> = ({
         <div className="min-w-0 flex-1">
           <h3 className="font-semibold text-[13px] text-[var(--foreground)] truncate leading-tight">{repo.name}</h3>
           <div className="flex items-center space-x-1.5 mt-0.5">
-            <span className="text-[10px] text-[var(--color-muted)]">{repo.skills.length} 个技能</span>
-            <span className={`w-1.5 h-1.5 rounded-full ${repo.source_type === 'github' ? 'bg-[#0066FF]' : 'bg-[#86868B]'}`} />
+            {repo.source_type === 'online' ? (
+              <span className="text-[10px] text-emerald-600 font-medium">线上收藏</span>
+            ) : (
+              <span className="text-[10px] text-[var(--color-muted)]">{repo.skills.length} 个技能</span>
+            )}
+            <span className={`w-1.5 h-1.5 rounded-full ${
+              repo.source_type === 'online' ? 'bg-emerald-500' :
+              repo.source_type === 'github' ? 'bg-[#0066FF]' : 'bg-[#86868B]'
+            }`} />
           </div>
         </div>
       </div>

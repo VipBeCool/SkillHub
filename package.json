@@ -21,6 +21,8 @@
     "@tauri-apps/plugin-opener": "^2",
     "@viselect/react": "^3.9.0",
     "clsx": "^2.1.1",
+    "franc-min": "^6.2.0",
+    "js-tiktoken": "^1.0.21",
     "lucide-react": "^1.21.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",

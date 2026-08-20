@@ -8,13 +8,14 @@ interface PromptEditorDrawerProps {
   isOpen: boolean;
   prompt: Prompt | null;  // null = 新建模式
   groups: PromptGroup[];
+  allTags: string[];
   onClose: () => void;
   onSave: () => void;
 }
 
 type EditorMode = "text" | "markdown";
 
-export function PromptEditorDrawer({ isOpen, prompt, groups, onClose, onSave }: PromptEditorDrawerProps) {
+export function PromptEditorDrawer({ isOpen, prompt, groups, allTags, onClose, onSave }: PromptEditorDrawerProps) {
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [description, setDescription] = useState("");
@@ -24,7 +25,38 @@ export function PromptEditorDrawer({ isOpen, prompt, groups, onClose, onSave }: 
   const [editorMode, setEditorMode] = useState<EditorMode>("text");
   const [saving, setSaving] = useState(false);
   const [showGroupDropdown, setShowGroupDropdown] = useState(false);
+  const [tagInput, setTagInput] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const tagInputRef = useRef<HTMLInputElement>(null);
+
+  const tagDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowGroupDropdown(false);
+      }
+    };
+    if (showGroupDropdown) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [showGroupDropdown]);
+
+  const tagList = tags.split(/[,，]/).map(t => t.trim()).filter(Boolean);
+  
+  const addTag = (newTag: string) => {
+    if (!tagList.includes(newTag)) {
+      setTags([...tagList, newTag].join(","));
+    }
+  };
+
+  const removeTag = (tagToRemove: string) => {
+    setTags(tagList.filter(t => t !== tagToRemove).join(","));
+  };
 
   useEffect(() => {
     if (isOpen) {
@@ -41,6 +73,7 @@ export function PromptEditorDrawer({ isOpen, prompt, groups, onClose, onSave }: 
         setDescription("");
         setGroupId("");
         setTags("");
+        setTagInput("");
         setChangeNote("");
       }
       setEditorMode("text");
@@ -85,10 +118,10 @@ export function PromptEditorDrawer({ isOpen, prompt, groups, onClose, onSave }: 
   return (
     <div className="fixed inset-0 z-50 flex items-stretch pointer-events-none">
       {/* 背景遮罩 */}
-      <div className="flex-1 pointer-events-auto" onClick={onClose} />
+      <div className="flex-1 pointer-events-auto bg-black/10" onClick={onClose} />
 
       {/* 抽屉面板 */}
-      <div className="w-[560px] bg-white/95 backdrop-blur-xl border-l border-[var(--color-border)] shadow-2xl flex flex-col pointer-events-auto animate-in slide-in-from-right duration-200">
+      <div className="w-[750px] bg-white border-l border-[var(--color-border)] shadow-2xl flex flex-col pointer-events-auto animate-in slide-in-from-right duration-200">
         {/* 顶栏 */}
         <div className="px-6 py-4 border-b border-[var(--color-border)] flex items-center justify-between shrink-0">
           <div>
@@ -181,7 +214,7 @@ export function PromptEditorDrawer({ isOpen, prompt, groups, onClose, onSave }: 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <label className="text-[12px] font-semibold text-[var(--color-muted)] uppercase tracking-wide flex items-center gap-1"><Folder className="w-3 h-3" /> 分组</label>
-                <div className="relative">
+                <div className="relative" ref={dropdownRef}>
                   <button
                     onClick={() => setShowGroupDropdown(!showGroupDropdown)}
                     className="w-full px-3 py-2 text-[13px] border border-[var(--color-border)] rounded-lg bg-white flex items-center justify-between hover:border-[var(--color-primary)]/40 transition-colors"
@@ -192,7 +225,7 @@ export function PromptEditorDrawer({ isOpen, prompt, groups, onClose, onSave }: 
                     <ChevronDown className="w-3.5 h-3.5 text-[var(--color-muted)]" />
                   </button>
                   {showGroupDropdown && (
-                    <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-[var(--color-border)] rounded-lg shadow-lg z-10 overflow-hidden">
+                    <div className="absolute bottom-full left-0 right-0 mb-1 max-h-[200px] overflow-y-auto bg-white border border-[var(--color-border)] rounded-lg shadow-lg z-10">
                       <button
                         onClick={() => { setGroupId(""); setShowGroupDropdown(false); }}
                         className="w-full px-3 py-2 text-[13px] text-left hover:bg-black/5 text-[var(--color-muted)]"
@@ -213,14 +246,86 @@ export function PromptEditorDrawer({ isOpen, prompt, groups, onClose, onSave }: 
 
               <div className="space-y-1.5">
                 <label className="text-[12px] font-semibold text-[var(--color-muted)] uppercase tracking-wide flex items-center gap-1"><Tag className="w-3 h-3" /> 标签</label>
-                <input
-                  type="text"
-                  value={tags}
-                  onChange={e => setTags(e.target.value)}
-                  placeholder="代码,Python,调试"
-                  className="w-full px-3 py-2 text-[13px] border border-[var(--color-border)] rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/30 focus:border-[var(--color-primary)] transition-all"
-                />
-                <p className="text-[11px] text-[var(--color-muted)]">用逗号分隔多个标签</p>
+                <div 
+                  className="w-full flex flex-wrap items-center gap-1.5 px-2 py-1.5 min-h-[38px] text-[13px] border border-[var(--color-border)] rounded-lg bg-white focus-within:ring-2 focus-within:ring-[var(--color-primary)]/30 focus-within:border-[var(--color-primary)] transition-all cursor-text"
+                  onClick={() => tagInputRef.current?.focus()}
+                >
+                  {tagList.map(tag => (
+                    <span key={tag} className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-[var(--color-primary)]/10 text-[var(--color-primary)] font-medium text-[12px]">
+                      {tag}
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); removeTag(tag); }}
+                        className="hover:bg-[var(--color-primary)]/20 rounded-full p-0.5 flex-shrink-0"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  ))}
+                  <div className="relative flex-1 min-w-[60px]" ref={tagDropdownRef}>
+                    <input
+                      ref={tagInputRef}
+                      type="text"
+                      value={tagInput}
+                      onChange={e => setTagInput(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' || e.key === ',' || e.key === '，') {
+                          e.preventDefault();
+                          const newTag = tagInput.trim().replace(/[,，]/g, '');
+                          if (newTag) {
+                            addTag(newTag);
+                            setTagInput("");
+                          }
+                        } else if (e.key === 'Backspace' && !tagInput && tagList.length > 0) {
+                          removeTag(tagList[tagList.length - 1]);
+                        }
+                      }}
+                      onBlur={() => {
+                        // Delay clearing to allow clicking dropdown items
+                        setTimeout(() => {
+                          const newTag = tagInput.trim().replace(/[,，]/g, '');
+                          if (newTag) {
+                            addTag(newTag);
+                            setTagInput("");
+                          }
+                        }, 150);
+                      }}
+                      placeholder={tagList.length === 0 ? "输入后回车" : ""}
+                      className="w-full bg-transparent focus:outline-none border-none p-0 text-[13px] text-[var(--foreground)]"
+                    />
+                    
+                    {/* Tags Dropdown */}
+                    {(tagInput || document.activeElement === tagInputRef.current) && (
+                      <div className="absolute bottom-full left-0 mb-1 w-[200px] max-h-[160px] overflow-y-auto bg-white border border-[var(--color-border)] rounded-lg shadow-lg z-20">
+                        {allTags.filter(t => !tagList.includes(t) && t.toLowerCase().includes(tagInput.toLowerCase())).length > 0 ? (
+                          allTags
+                            .filter(t => !tagList.includes(t) && t.toLowerCase().includes(tagInput.toLowerCase()))
+                            .map(tag => (
+                              <button
+                                key={tag}
+                                onMouseDown={(e) => {
+                                  e.preventDefault(); // Prevent onBlur from firing
+                                  addTag(tag);
+                                  setTagInput("");
+                                }}
+                                className="w-full px-3 py-2 text-[13px] text-left hover:bg-black/5 text-[var(--foreground)]"
+                              >
+                                {tag}
+                              </button>
+                            ))
+                        ) : tagInput ? (
+                          <div className="px-3 py-2 text-[13px] text-[var(--color-muted)]">
+                            按回车创建 "{tagInput}"
+                          </div>
+                        ) : (
+                          <div className="px-3 py-2 text-[13px] text-[var(--color-muted)]">
+                            暂无其他标签
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <p className="text-[11px] text-[var(--color-muted)]">输入标签后按回车或逗号分隔</p>
               </div>
             </div>
 

@@ -1,5 +1,5 @@
 use tauri::State;
-use crate::models::{Skill, SourceDirectory, Repository};
+use crate::models::{Skill, SourceDirectory};
 use crate::scanner;
 use crate::git_engine;
 use std::path::Path;
@@ -153,10 +153,11 @@ pub fn delete_skill_by_path(state: State<'_, AppState>, path: String) -> Result<
     let db = state.db.lock().unwrap();
     
     // `path` 是前端传入的仓库目录路径，我们需要匹配所有 `local_path` 在该目录下的技能
-    let path_prefix = format!("{}%", path);
+    let path_prefix_slash = format!("{}/%", path);
+    let path_prefix_backslash = format!("{}\\%", path); // For windows
     
-    let mut stmt = db.prepare("SELECT id FROM skills WHERE local_path LIKE ?1").map_err(|e| e.to_string())?;
-    let skill_ids: Vec<String> = stmt.query_map(rusqlite::params![path_prefix], |row| row.get(0))
+    let mut stmt = db.prepare("SELECT id FROM skills WHERE local_path = ?1 OR local_path LIKE ?2 OR local_path LIKE ?3").map_err(|e| e.to_string())?;
+    let skill_ids: Vec<String> = stmt.query_map(rusqlite::params![path, path_prefix_slash, path_prefix_backslash], |row| row.get(0))
         .map_err(|e| e.to_string())?
         .filter_map(|r| r.ok())
         .collect();
@@ -219,6 +220,28 @@ pub fn update_skill_metadata(
 }
 
 #[tauri::command]
+pub fn update_skill_tags(
+    state: State<'_, AppState>,
+    id: String,
+    tags: Option<String>,
+) -> Result<(), String> {
+    let db = state.db.lock().unwrap();
+    crate::db::update_skill_tags(&db, &id, tags.as_deref())
+}
+
+#[tauri::command]
+pub fn increment_skill_use_count(state: State<'_, AppState>, id: String) -> Result<(), String> {
+    let db = state.db.lock().unwrap();
+    crate::db::increment_skill_use_count(&db, &id)
+}
+
+#[tauri::command]
+pub fn toggle_skill_favorite(state: State<'_, AppState>, id: String) -> Result<(), String> {
+    let db = state.db.lock().unwrap();
+    crate::db::toggle_skill_favorite(&db, &id)
+}
+
+#[tauri::command]
 pub fn add_source_directory(state: State<'_, AppState>, path: String, dir_type: String) -> Result<String, String> {
     let db = state.db.lock().unwrap();
     crate::db::insert_source_directory(&db, &path, &dir_type)
@@ -233,10 +256,107 @@ fn copy_dir_all(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> io::Result<()> 
     for entry in std::fs::read_dir(src)? {
         let entry = entry?;
         let ty = entry.file_type()?;
+        let fname = entry.file_name();
+        let fname_str = fname.to_string_lossy();
+        
+        // 跳过体积大且无关的目录
+        if ty.is_dir() && (fname_str == "node_modules" || fname_str == ".git" || fname_str == "dist" || fname_str == "build" || fname_str == "target") {
+            continue;
+        }
+        
         if ty.is_dir() {
-            copy_dir_all(entry.path(), dst.as_ref().join(entry.file_name()))?;
+            copy_dir_all(entry.path(), dst.as_ref().join(&fname))?;
         } else {
-            std::fs::copy(entry.path(), dst.as_ref().join(entry.file_name()))?;
+            std::fs::copy(entry.path(), dst.as_ref().join(&fname))?;
+        }
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn remove_macos_folder_icon(folder_path: &str) {
+    let script = format!(r#"
+use framework "AppKit"
+use scripting additions
+on run
+    set folderPath to "{folder}"
+    set workspace to current application's NSWorkspace's sharedWorkspace()
+    workspace's setIcon:(missing value) forFile:folderPath options:0
+end run
+"#, folder = folder_path);
+
+    let _ = std::process::Command::new("osascript")
+        .arg("-e")
+        .arg(&script)
+        .output();
+}
+
+#[tauri::command]
+pub async fn import_skills_to_directory(
+    paths: Vec<String>,
+    target_dir: String,
+    strategy: String
+) -> Result<(), String> {
+    let base_target_dir = PathBuf::from(target_dir);
+    if !base_target_dir.exists() {
+        return Err("目标技能库不存在".into());
+    }
+
+    for path in paths {
+        let src_path = Path::new(&path);
+        
+        // 防止无限套娃：禁止将技能文件夹导入到它自身或其子目录中
+        if base_target_dir.starts_with(&src_path) {
+            return Err("不能将技能文件夹导入到其自身或其子目录中".into());
+        }
+
+        // 只接受文件夹（非文件）
+        if !src_path.is_dir() {
+            let name = src_path.file_name().unwrap_or_default().to_string_lossy();
+            return Err(format!("「{}」是文件而非文件夹，请拖入技能文件夹", name));
+        }
+
+
+
+        let file_name = src_path.file_name().ok_or("无效的文件名")?;
+        let mut final_target_dir = base_target_dir.join(file_name);
+        
+        // Handle name collision
+        let mut counter = 1;
+        while final_target_dir.exists() {
+            let name_str = file_name.to_string_lossy();
+            let new_name = if src_path.is_file() {
+                let stem = src_path.file_stem().unwrap_or_default().to_string_lossy();
+                let ext = src_path.extension().unwrap_or_default().to_string_lossy();
+                if ext.is_empty() {
+                    format!("{}_{}", stem, counter)
+                } else {
+                    format!("{}_{}.{}", stem, counter, ext)
+                }
+            } else {
+                format!("{}_{}", name_str, counter)
+            };
+            final_target_dir = base_target_dir.join(new_name);
+            counter += 1;
+        }
+
+        if strategy == "copy" || strategy == "move" {
+            if src_path.is_dir() {
+                copy_dir_all(&src_path, &final_target_dir).map_err(|e| e.to_string())?;
+                if strategy == "move" {
+                    std::fs::remove_dir_all(&src_path).map_err(|e| e.to_string())?;
+                }
+                
+                #[cfg(target_os = "macos")]
+                {
+                    remove_macos_folder_icon(&final_target_dir.to_string_lossy());
+                }
+            } else {
+                std::fs::copy(&src_path, &final_target_dir).map_err(|e| e.to_string())?;
+                if strategy == "move" {
+                    std::fs::remove_file(&src_path).map_err(|e| e.to_string())?;
+                }
+            }
         }
     }
     Ok(())
@@ -263,9 +383,9 @@ pub async fn scan_and_add_source_directory(
             };
             std::fs::create_dir_all(&base_target_dir).map_err(|e| e.to_string())?;
             
-            let src_path = Path::new(&path);
-            let dir_name = src_path.file_name().ok_or("Invalid directory name")?;
-            let mut final_target_dir = base_target_dir.join(dir_name);
+            let src_path = PathBuf::from(&path);
+            let dir_name = src_path.file_name().ok_or("Invalid directory name")?.to_owned();
+            let mut final_target_dir = base_target_dir.join(&dir_name);
             
             // Handle name collision
             let mut counter = 1;
@@ -275,15 +395,26 @@ pub async fn scan_and_add_source_directory(
                 counter += 1;
             }
 
-            if strat == "copy" {
-                copy_dir_all(src_path, &final_target_dir).map_err(|e| e.to_string())?;
-            } else if strat == "move" {
-                // Try rename first, fallback to copy+delete
-                if std::fs::rename(src_path, &final_target_dir).is_err() {
-                    copy_dir_all(src_path, &final_target_dir).map_err(|e| e.to_string())?;
-                    std::fs::remove_dir_all(src_path).map_err(|e| e.to_string())?;
+            let src_clone = src_path.clone();
+            let target_clone = final_target_dir.clone();
+            let strat_clone = strat.clone();
+            
+            tauri::async_runtime::spawn_blocking(move || {
+                if strat_clone == "copy" {
+                    copy_dir_all(&src_clone, &target_clone).map_err(|e| e.to_string())
+                } else if strat_clone == "move" {
+                    if std::fs::rename(&src_clone, &target_clone).is_err() {
+                        copy_dir_all(&src_clone, &target_clone).map_err(|e| e.to_string())?;
+                        std::fs::remove_dir_all(&src_clone).map_err(|e| e.to_string())?;
+                    }
+                    Ok(())
+                } else {
+                    Ok(())
                 }
-            }
+            })
+            .await
+            .map_err(|e| format!("Task panicked: {}", e))?
+            ?;
             
             final_path = final_target_dir.to_string_lossy().to_string();
         }
@@ -310,11 +441,7 @@ pub async fn scan_and_add_source_directory(
         crate::db::insert_skill(&tx, &skill, &dir_id, &dir_type)?;
     }
     tx.commit().map_err(|e| e.to_string())?;
-    
-    #[cfg(target_os = "macos")]
-    {
-        set_macos_folder_icon(&final_path);
-    }
+
     
     Ok(())
 }
@@ -382,6 +509,142 @@ pub async fn cancel_github_clone(state: State<'_, AppState>, target_dir: String)
     if let Some(tx) = tokens.remove(&target_dir) {
         let _ = tx.send(());
     }
+    Ok(())
+}
+
+
+#[tauri::command]
+pub async fn import_local_skills_to_workspace(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    path: String,
+    strategy: Option<String>,
+    target_dir: Option<String>,
+    source_dir_id: String
+) -> Result<(), String> {
+    let mut final_path = path.clone();
+
+    if let Some(strat) = strategy {
+        if strat == "copy" || strat == "move" {
+            let base_target_dir = PathBuf::from(target_dir.ok_or("Missing target_dir for copy/move")?);
+            std::fs::create_dir_all(&base_target_dir).map_err(|e| e.to_string())?;
+            
+            let src_path = PathBuf::from(&path);
+            let dir_name = src_path.file_name().ok_or("Invalid directory name")?.to_owned();
+            let mut final_target_dir = base_target_dir.join(&dir_name);
+            
+            let mut counter = 1;
+            while final_target_dir.exists() {
+                let new_name = format!("{}_{}", dir_name.to_string_lossy(), counter);
+                final_target_dir = base_target_dir.join(new_name);
+                counter += 1;
+            }
+
+            let src_clone = src_path.clone();
+            let target_clone = final_target_dir.clone();
+            let strat_clone = strat.clone();
+            
+            tauri::async_runtime::spawn_blocking(move || {
+                if strat_clone == "copy" {
+                    copy_dir_all(&src_clone, &target_clone).map_err(|e| e.to_string())
+                } else if strat_clone == "move" {
+                    if std::fs::rename(&src_clone, &target_clone).is_err() {
+                        copy_dir_all(&src_clone, &target_clone).map_err(|e| e.to_string())?;
+                        std::fs::remove_dir_all(&src_clone).map_err(|e| e.to_string())?;
+                    }
+                    Ok(())
+                } else {
+                    Ok(())
+                }
+            })
+            .await
+            .map_err(|e| format!("Task panicked: {}", e))??;
+            
+            final_path = final_target_dir.to_string_lossy().to_string();
+        }
+    }
+
+    let path_clone = final_path.clone();
+    
+    // Scan for skills in a background thread
+    let skills = tauri::async_runtime::spawn_blocking(move || {
+        scanner::scan_directory(Path::new(&path_clone))
+    })
+    .await
+    .map_err(|e| format!("Scan task panicked: {}", e))??;
+    
+    let mut db = state.db.lock().unwrap();
+    let tx = db.transaction().map_err(|e| e.to_string())?;
+    
+    let source_type: String = tx.query_row(
+        "SELECT source_type FROM source_directories WHERE id = ?1",
+        rusqlite::params![source_dir_id],
+        |row| row.get(0)
+    ).unwrap_or("local".to_string());
+
+    for skill in skills {
+        crate::db::insert_skill(&tx, &skill, &source_dir_id, &source_type)?;
+    }
+    tx.commit().map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn import_github_skills_to_workspace(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    url: String,
+    target_dir: String,
+    source_dir_id: String
+) -> Result<(), String> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    {
+        let mut tokens = state.clone_cancel_tokens.lock().unwrap();
+        tokens.insert(target_dir.clone(), tx);
+    }
+    
+    let target_path = std::path::PathBuf::from(&target_dir);
+    let url_clone = url.clone();
+    
+    let clone_future = crate::git_engine::clone_repository(&url_clone, &target_path);
+    
+    let res = tokio::select! {
+        res = clone_future => res,
+        _ = rx => {
+            let _ = std::fs::remove_dir_all(&target_path);
+            Err("克隆已被取消".to_string())
+        }
+    };
+    
+    {
+        let mut tokens = state.clone_cancel_tokens.lock().unwrap();
+        tokens.remove(&target_dir);
+    }
+    
+    res?;
+    
+    let path_clone = target_dir.clone();
+    let skills = tauri::async_runtime::spawn_blocking(move || {
+        scanner::scan_directory(Path::new(&path_clone))
+    })
+    .await
+    .map_err(|e| format!("Scan task panicked: {}", e))??;
+    
+    let mut db = state.db.lock().unwrap();
+    let tx = db.transaction().map_err(|e| e.to_string())?;
+    
+    let source_type: String = tx.query_row(
+        "SELECT source_type FROM source_directories WHERE id = ?1",
+        rusqlite::params![source_dir_id],
+        |row| row.get(0)
+    ).unwrap_or("github".to_string());
+
+    for skill in skills {
+        crate::db::insert_skill(&tx, &skill, &source_dir_id, &source_type)?;
+    }
+    tx.commit().map_err(|e| e.to_string())?;
+    
     Ok(())
 }
 
@@ -1049,7 +1312,7 @@ fn collect_tree(
 
 /// 生成仓库一级目录概览（用于 scope=repo 场景）
 fn generate_top_level_overview(repo_root: &Path, entry_file: &Path) -> String {
-    let Ok(mut entries) = std::fs::read_dir(repo_root) else { return String::new() };
+    let Ok(entries) = std::fs::read_dir(repo_root) else { return String::new() };
     let mut items: Vec<_> = entries.flatten().collect();
     items.sort_by_key(|e| e.file_name());
 
@@ -1090,7 +1353,7 @@ pub fn generate_skill_reference_prompt(state: State<'_, AppState>, skill_id: Str
     // 查询技能信息
     let skill = {
         let mut stmt = db.prepare(
-            "SELECT id, name, description, local_path, source_type, skill_scope FROM skills WHERE id = ?1"
+            "SELECT id, name, description, local_path, source_type, skill_scope, online_url FROM skills WHERE id = ?1"
         ).map_err(|e| e.to_string())?;
         let result = stmt.query_row(rusqlite::params![skill_id], |row| {
             Ok((
@@ -1100,12 +1363,37 @@ pub fn generate_skill_reference_prompt(state: State<'_, AppState>, skill_id: Str
                 row.get::<_, String>(3)?,  // local_path
                 row.get::<_, String>(4)?,  // source_type
                 row.get::<_, Option<String>>(5)?.unwrap_or_else(|| "repo".to_string()), // skill_scope
+                row.get::<_, Option<String>>(6)?,  // online_url
             ))
         }).map_err(|e| format!("找不到技能: {}", e))?;
         result
     };
 
-    let (_id, name, description, local_path, _source_type, skill_scope) = skill;
+    let (_id, name, description, local_path, source_type, skill_scope, online_url) = skill;
+
+    // 场景 5：线上收藏技能
+    if source_type == "online" {
+        let url = online_url.unwrap_or_else(|| local_path.clone());
+        let desc_line = if description.is_empty() {
+            String::new()
+        } else {
+            format!("- 描述: {}\n", description)
+        };
+        return Ok(format!(
+"## 技能引用：{name}
+
+{desc_line}
+### 技能地址
+{url}
+
+⚠️ 此技能以线上地址管理，未在本地存储。
+请访问上述地址阅读技能文件及相关内容。",
+            name = name,
+            desc_line = desc_line,
+            url = url,
+        ));
+    }
+
     let skill_path = Path::new(&local_path);
 
     // 查询所有技能（用于 repo_type 推断）
@@ -1139,6 +1427,9 @@ pub fn generate_skill_reference_prompt(state: State<'_, AppState>, skill_id: Str
 {local_path}
 
 请阅读上述文件，按照其中定义的角色、规则和工作流程执行任务。
+
+### 执行指令
+请主动读取包含此入口文件的所在目录结构。如果该目录下存在 `scripts`、`references`、`assets`、`agents` 等配套文件夹或其他相关文件，请务必一并阅读并结合相对路径进行理解。**不要仅仅只阅读入口文件本身。**在执行任务前，请确认你已掌握了该技能所需的全部配套上下文。
 
 ### 仓库上下文
 如需参考共享资源（包括但不限于脚本、示例、文档等），
@@ -1175,6 +1466,9 @@ pub fn generate_skill_reference_prompt(state: State<'_, AppState>, skill_id: Str
 
 请先阅读目录下的 {entry_file_name}，技能配套的脚本和文档均在上述目录内。
 
+### 执行指令
+请主动读取完整的技能目录结构。务必探索并加载配套的 `scripts`、`references`、`assets`、`agents` 等关联文件夹及其内部文件，保留并理解它们之间的相对目录结构。**不要仅仅只阅读入口文件（{entry_file_name}）本身。**在执行任务前，请确认你已掌握并加载了这个 skill 需要的全部配套上下文。
+
 ### 仓库上下文
 此技能属于技能合集。如需引用共享资源（包括但不限于公共脚本、
 hooks、测试工具等），可在仓库根目录中查找：
@@ -1203,6 +1497,9 @@ hooks、测试工具等），可在仓库根目录中查找：
 
 请先阅读目录下的 {entry_file_name}。
 
+### 执行指令
+请主动读取完整的技能目录结构。务必探索并加载配套的 `scripts`、`references`、`assets`、`agents` 等关联文件夹及其内部文件，保留并理解它们之间的相对目录结构。**不要仅仅只阅读入口文件（{entry_file_name}）本身。**在执行任务前，请确认你已掌握并加载了这个 skill 需要的全部配套上下文。
+
 ### 仓库级配套资源
 整个仓库都是此技能的配套资源，包含文档、示例、脚本等：
 {repo_root}
@@ -1230,8 +1527,10 @@ hooks、测试工具等），可在仓库根目录中查找：
 ### 技能入口
 {local_path}
 
-请先阅读上述文件。技能的所有配套脚本、文档、模板、示例均在
-仓库目录内，可自由探索：
+请先阅读上述入口文件。
+
+### 执行指令
+请主动读取完整的技能仓库目录结构。务必探索并加载配套的 `scripts`、`references`、`assets`、`agents` 等关联文件夹及其内部文件，保留并理解它们之间的相对目录结构。**不要仅仅只阅读入口文件本身。**在执行任务前，请确认你已掌握并加载了这个 skill 需要的全部配套上下文。技能的所有配套脚本、文档、模板、示例均在仓库目录内，可自由探索：
 {repo_root}
 
 仓库主要内容：
@@ -1247,4 +1546,279 @@ hooks、测试工具等），可在仓库根目录中查找：
     };
 
     Ok(prompt)
+}
+
+/// 线上收藏技能：不需要本地文件，直接保存 URL
+#[tauri::command]
+pub fn add_online_skill(
+    state: State<'_, AppState>,
+    url: String,
+    name: String,
+    description: String,
+    source_dir_id: String,
+) -> Result<(), String> {
+    let db = state.db.lock().unwrap();
+    let now = chrono::Utc::now().to_rfc3339();
+    let id = uuid::Uuid::new_v4().to_string();
+    crate::db::add_online_skill(&db, &id, &url, &name, &description, &source_dir_id, &now)
+}
+
+#[tauri::command]
+pub async fn translate_text(text: String, target_lang: String) -> Result<String, String> {
+    use reqwest::Client;
+    use serde_json::Value;
+
+    let client = Client::new();
+    let url = format!(
+        "https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl={}&dt=t",
+        target_lang
+    );
+
+    let body = format!("q={}", urlencoding::encode(&text));
+
+    let res = client
+        .post(&url)
+        .header("Content-Type", "application/x-www-form-urlencoded")
+        .body(body)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let json: Value = res.json().await.map_err(|e| e.to_string())?;
+
+    let mut translated_text = String::new();
+    if let Some(array) = json.as_array() {
+        if let Some(sentences) = array.get(0).and_then(|v| v.as_array()) {
+            for sentence in sentences {
+                if let Some(text_part) = sentence.get(0).and_then(|v| v.as_str()) {
+                    translated_text.push_str(text_part);
+                }
+            }
+        }
+    }
+
+    Ok(translated_text)
+}
+
+#[derive(serde::Serialize)]
+pub struct SkillCapacity {
+    pub file_count: u32,
+    pub line_count: u32,
+    pub token_count: u32,
+    pub char_count: u32,
+    
+    pub main_doc_file_count: u32,
+    pub main_doc_token_count: u32,
+    pub knowledge_file_count: u32,
+    pub knowledge_token_count: u32,
+    pub script_file_count: u32,
+    pub script_token_count: u32,
+}
+
+#[tauri::command]
+pub async fn get_skill_token_count(state: tauri::State<'_, crate::AppState>, skill_id: String) -> Result<SkillCapacity, String> {
+    let (local_path_str, skill_scope): (String, String) = {
+        let db = state.db.lock().unwrap();
+        db.query_row(
+            "SELECT local_path, skill_scope FROM skills WHERE id = ?1",
+            rusqlite::params![skill_id],
+            |row| Ok((row.get(0)?, row.get::<_, Option<String>>(1)?.unwrap_or_else(|| "repo".to_string()))),
+        ).map_err(|e| format!("Skill not found: {}", e))?
+    };
+
+    let path = std::path::Path::new(&local_path_str);
+    if !path.exists() {
+        return Err("Path does not exist".to_string());
+    }
+
+    // Determine actual scan scope
+    let target_path = if skill_scope == "packed" || skill_scope == "pkg" {
+        path.parent().unwrap_or(path).to_path_buf()
+    } else if skill_scope == "repo" {
+        find_git_root(path).unwrap_or_else(|| path.parent().unwrap_or(path).to_path_buf())
+    } else {
+        path.to_path_buf() // "loose" or single file
+    };
+
+    println!("DEBUG: skill_id={}, local_path={}, skill_scope={}, target_path={}", skill_id, local_path_str, skill_scope, target_path.display());
+
+    let mut capacity = SkillCapacity {
+        file_count: 0,
+        line_count: 0,
+        token_count: 0,
+        char_count: 0,
+        main_doc_file_count: 0,
+        main_doc_token_count: 0,
+        knowledge_file_count: 0,
+        knowledge_token_count: 0,
+        script_file_count: 0,
+        script_token_count: 0,
+    };
+
+    let bpe = tiktoken_rs::cl100k_base().map_err(|e| e.to_string())?;
+
+    let is_main_doc = |path: &std::path::Path| -> bool {
+        if let Some(ext) = path.extension().and_then(|e| e.to_str()).map(|e| e.to_lowercase()) {
+            if ext == "md" || ext == "mdx" {
+                if let Some(name) = path.file_stem().and_then(|n| n.to_str()).map(|n| n.to_lowercase()) {
+                    return name == "skill" || name == "readme" || name == "design" || name == "agents" || name == "claude" || name == "readme_cn";
+                }
+            }
+        }
+        false
+    };
+
+    let is_knowledge = |path: &std::path::Path| -> bool {
+        if let Some(ext) = path.extension().and_then(|e| e.to_str()).map(|e| e.to_lowercase()) {
+            ext == "md" || ext == "mdx"
+        } else {
+            false
+        }
+    };
+
+    // If target is just a file, calculate it directly
+    if target_path.is_file() {
+        if let Ok(content) = std::fs::read_to_string(&target_path) {
+            capacity.file_count = 1;
+            capacity.line_count = content.lines().count() as u32;
+            capacity.char_count = content.chars().count() as u32;
+            let tokens = bpe.encode_with_special_tokens(&content).len() as u32;
+            capacity.token_count = tokens;
+            
+            if is_main_doc(&target_path) {
+                capacity.main_doc_file_count = 1;
+                capacity.main_doc_token_count = tokens;
+            } else if is_knowledge(&target_path) {
+                capacity.knowledge_file_count = 1;
+                capacity.knowledge_token_count = tokens;
+            } else {
+                capacity.script_file_count = 1;
+                capacity.script_token_count = tokens;
+            }
+        }
+        return Ok(capacity);
+    }
+
+    // If it's a directory, walk through it respecting .gitignore and explicitly filtering massive directories
+    let walker = ignore::WalkBuilder::new(&target_path)
+        .hidden(true)
+        .git_ignore(true)
+        .filter_entry(|e| {
+            if let Some(name) = e.file_name().to_str() {
+                if e.file_type().map_or(false, |ft| ft.is_dir()) {
+                    let ignored_dirs = [
+                        "node_modules", "venv", ".venv", "env", ".env", "target", "dist", "build", "__pycache__", ".git", ".idea", ".vscode"
+                    ];
+                    if ignored_dirs.contains(&name) {
+                        return false;
+                    }
+                }
+            }
+            true
+        })
+        .build();
+
+    for result in walker {
+        if let Ok(entry) = result {
+            let p = entry.path();
+            if p.is_file() {
+                // Try reading as string (skips binaries automatically if read_to_string fails)
+                if let Ok(content) = std::fs::read_to_string(p) {
+                    capacity.file_count += 1;
+                    capacity.line_count += content.lines().count() as u32;
+                    capacity.char_count += content.chars().count() as u32;
+                    
+                    let tokens = bpe.encode_with_special_tokens(&content).len() as u32;
+                    capacity.token_count += tokens;
+                    
+                    if is_main_doc(p) {
+                        capacity.main_doc_file_count += 1;
+                        capacity.main_doc_token_count += tokens;
+                    } else if is_knowledge(p) {
+                        capacity.knowledge_file_count += 1;
+                        capacity.knowledge_token_count += tokens;
+                    } else {
+                        capacity.script_file_count += 1;
+                        capacity.script_token_count += tokens;
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(capacity)
+}
+
+
+
+#[tauri::command]
+pub async fn validate_and_copy_dropped_folders(
+    paths: Vec<String>,
+    target_workspace_path: String
+) -> Result<String, String> {
+    let mut copied_count = 0;
+    let mut failed_paths = Vec::new();
+
+    let base_target_dir = PathBuf::from(&target_workspace_path);
+    if !base_target_dir.exists() {
+        return Err("当前目标资源库路径不存在".to_string());
+    }
+
+    for path in paths {
+        let src_path = Path::new(&path);
+        if !src_path.is_dir() {
+            failed_paths.push(format!("{} 不是一个文件夹", src_path.display()));
+            continue;
+        }
+
+        // Validate if it contains any skills
+        let skills = scanner::scan_directory(src_path).unwrap_or_default();
+        if skills.is_empty() {
+            failed_paths.push(format!("{} 不包含任何有效的 Skill 文件", src_path.display()));
+            continue;
+        }
+
+        let dir_name = match src_path.file_name() {
+            Some(name) => name,
+            None => {
+                failed_paths.push(format!("无法获取文件夹名: {}", src_path.display()));
+                continue;
+            }
+        };
+
+        let mut final_target_dir = base_target_dir.join(dir_name);
+        
+        let mut counter = 1;
+        while final_target_dir.exists() {
+            let new_name = format!("{}_{}", dir_name.to_string_lossy(), counter);
+            final_target_dir = base_target_dir.join(new_name);
+            counter += 1;
+        }
+        
+        let src_clone = src_path.to_path_buf();
+        let target_clone = final_target_dir.clone();
+        
+        let copy_result = tauri::async_runtime::spawn_blocking(move || {
+            copy_dir_all(&src_clone, &target_clone)
+        }).await.unwrap_or_else(|e| Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())));
+
+        if let Err(e) = copy_result {
+            failed_paths.push(format!("无法拷贝 {}: {}", src_path.display(), e));
+        } else {
+            copied_count += 1;
+        }
+    }
+
+    if copied_count == 0 {
+        if !failed_paths.is_empty() {
+            return Err(failed_paths.join("\n"));
+        }
+        return Err("没有任何文件夹被导入".to_string());
+    }
+
+    if !failed_paths.is_empty() {
+        Ok(format!("成功导入 {} 个文件夹，但部分导入失败:\n{}", copied_count, failed_paths.join("\n")))
+    } else {
+        Ok(format!("成功导入 {} 个文件夹", copied_count))
+    }
 }

@@ -1,4 +1,4 @@
-use git2::{Repository, build::RepoBuilder, FetchOptions, RemoteCallbacks};
+use git2::{Repository, FetchOptions, RemoteCallbacks};
 use std::path::Path;
 use tokio::process::Command;
 use tokio::time::{timeout, Duration};
@@ -8,7 +8,7 @@ pub async fn clone_repository(url: &str, target_path: &Path) -> Result<(), Strin
         return Err("目标文件夹已存在，请先删除旧目录。".into());
     }
 
-    let mut child = Command::new("git")
+    let child = Command::new("git")
         .arg("clone")
         .arg(url)
         .arg(target_path)
@@ -41,7 +41,7 @@ pub async fn clone_repository(url: &str, target_path: &Path) -> Result<(), Strin
 }
 
 pub async fn pull_repository(repo_path: &Path) -> Result<String, String> {
-    let mut child = Command::new("git")
+    let child = Command::new("git")
         .arg("pull")
         .current_dir(repo_path)
         .env("GIT_TERMINAL_PROMPT", "0") // Prevent hanging on authentication

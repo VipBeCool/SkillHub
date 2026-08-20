@@ -1,5 +1,5 @@
-use tauri::{AppHandle, Manager, Wry};
-use tauri::menu::{Menu, SubmenuBuilder, MenuItemBuilder, PredefinedMenuItem, CheckMenuItemBuilder};
+use tauri::{AppHandle, Manager};
+use tauri::menu::{SubmenuBuilder, MenuItemBuilder, PredefinedMenuItem, CheckMenuItemBuilder};
 use crate::models::SourceDirectory;
 
 pub fn update_app_menu(app: &AppHandle) -> tauri::Result<()> {

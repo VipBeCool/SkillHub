@@ -1,11 +1,7 @@
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 use serde::Deserialize;
-use uuid::Uuid;
 use chrono::Utc;
-use rusqlite::params;
-use crate::AppState;
-use tauri::State;
 use serde_yaml::Value;
 
 #[derive(Debug, Deserialize)]
@@ -108,7 +104,7 @@ pub fn scan_directory(dir_path: &Path) -> Result<Vec<ScannedSkill>, String> {
                 }
 
                 if let Ok(content) = std::fs::read_to_string(path) {
-                    if let Some((name, description, explicit_cat, explicit_tags)) = parse_frontmatter(&content) {
+                    if let Some((name, description, explicit_cat, _explicit_tags)) = parse_frontmatter(&content) {
                         let is_skill_def = lower_name == "skill.md" || lower_name == "skill.mdx";
                         if is_skill_def {
                             if let Some(parent) = path.parent() {
@@ -116,20 +112,10 @@ pub fn scan_directory(dir_path: &Path) -> Result<Vec<ScannedSkill>, String> {
                             }
                         }
                         
-                        let parent_dir_name = path.parent()
+                        let _parent_dir_name = path.parent()
                             .and_then(|p| p.file_name())
                             .map(|n| n.to_string_lossy().to_string())
                             .unwrap_or_default();
-                            
-                        let mut final_tags = explicit_tags.unwrap_or_default();
-                        
-                        // 智能回退：从文件夹名推断标签
-                        if final_tags.is_empty() && !parent_dir_name.is_empty() && parent_dir_name != "." {
-                            if parent_dir_name != "design-md" && parent_dir_name != "src" && parent_dir_name != "agency-agents-zh" {
-                                final_tags.push(parent_dir_name.clone());
-                            }
-                        }
-
                         let category = if let Some(ref cat) = explicit_cat {
                             cat.clone()
                         } else {
@@ -139,13 +125,6 @@ pub fn scan_directory(dir_path: &Path) -> Result<Vec<ScannedSkill>, String> {
                                 "其他".to_string()
                             }
                         };
-
-                        let tags_str = if final_tags.is_empty() {
-                            None
-                        } else {
-                            Some(final_tags.join(","))
-                        };
-
                         // local_path 指向具体文件，保证 SQLite 唯一性
                         let local_path = path.to_string_lossy().to_string();
                         
@@ -165,7 +144,7 @@ pub fn scan_directory(dir_path: &Path) -> Result<Vec<ScannedSkill>, String> {
                                 local_path,
                                 relative_path,
                                 category,
-                                tags: tags_str,
+                                tags: None, // 标签完全由用户手动管理，不再从文件或目录解析
                                 updated_at: mod_time_str,
                                 skill_scope: "repo".to_string(), // 占位，后面第二遍推断
                             }

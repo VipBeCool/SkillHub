@@ -3,11 +3,15 @@ export interface Skill {
   name: string;
   description: string;
   local_path: string;
-  source_type: string;
+  source_type: string; // "github" | "local" | "online"
   updated_at: string;
   source_dir_id?: string;
   category: string;
   tags?: string;
+  skill_scope?: string;
+  online_url?: string;
+  is_favorite: boolean;
+  use_count: number;
 }
 
 export interface SourceDirectory {

@@ -86,12 +86,18 @@ pub fn get_prompts(state: State<AppState>, group_id: Option<String>, search: Opt
     let db = state.db.lock().map_err(|e| e.to_string())?;
 
     let mut conditions: Vec<String> = Vec::new();
+    let mut order_clause = "ORDER BY p.is_favorite DESC, p.updated_at DESC".to_string();
     if let Some(ref gid) = group_id {
         match gid.as_str() {
             "all" => conditions.push("p.deleted_at IS NULL".to_string()),
             "favorites" => {
                 conditions.push("p.is_favorite = 1".to_string());
                 conditions.push("p.deleted_at IS NULL".to_string());
+            }
+            "recent" => {
+                conditions.push("p.use_count > 0".to_string());
+                conditions.push("p.deleted_at IS NULL".to_string());
+                order_clause = "ORDER BY p.use_count DESC, p.updated_at DESC".to_string();
             }
             "ungrouped" => {
                 conditions.push("p.group_id IS NULL".to_string());
@@ -118,8 +124,8 @@ pub fn get_prompts(state: State<AppState>, group_id: Option<String>, search: Opt
         "SELECT p.id, p.title, p.content, p.description, p.group_id, g.name,
                 p.tags, p.is_favorite, p.use_count, p.variables, p.version, p.created_at, p.updated_at, p.deleted_at
          FROM prompts p LEFT JOIN prompt_groups g ON p.group_id = g.id
-         {} ORDER BY p.is_favorite DESC, p.updated_at DESC",
-        where_clause
+         {} {}",
+        where_clause, order_clause
     );
 
     let mut stmt = db.prepare(&sql).map_err(|e| e.to_string())?;

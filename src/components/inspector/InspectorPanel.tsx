@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { openUrl } from '@tauri-apps/plugin-opener';
 import { open } from '@tauri-apps/plugin-dialog';
 import { 
-  FolderGit2, HardDrive, Folder, Copy, Link as LinkIcon, Unlink, 
+  FolderGit2, HardDrive, Folder, Copy, Link as LinkIcon, Unlink, Globe,
   FileText, ChevronRight, Loader2, PanelRightClose, PanelRightOpen,
-  Database, RefreshCw, Trash2, Download, FileArchive, Sparkles
+  Database, RefreshCw, Trash2, Download, FileArchive, Sparkles, X
 } from 'lucide-react';
 import { Tooltip } from '../ui/Tooltip';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
@@ -26,6 +27,7 @@ interface InspectorPanelProps {
   onSelectRepo: (_repoId: string) => void;
   onRefreshData: () => void;
   onUpdateRepos?: (e: React.MouseEvent, repos: GroupedRepo[]) => void;
+  onDeleteRepos?: (e: React.MouseEvent, repos: GroupedRepo[]) => void;
   onGeneratePrompt: (skill: Skill) => void;
   // 面板开关
   isOpen: boolean;
@@ -44,23 +46,63 @@ export function InspectorPanel({
   onSelectRepo: _onSelectRepo,
   onRefreshData,
   onUpdateRepos,
+  onDeleteRepos,
   onGeneratePrompt,
   isOpen,
   onToggle,
 }: InspectorPanelProps) {
   const [syncing, setSyncing] = useState<Record<string, boolean>>({});
   const [skillSyncRecords, setSkillSyncRecords] = useState<SyncRecord[]>([]);
+  const [isSkillsExpanded, setIsSkillsExpanded] = useState(false);
 
-  // 当选中唯一技能时，加载该技能的同步记录
+  // 标签编辑状态
+  const [tags, setTags] = useState("");
+  const [tagInput, setTagInput] = useState("");
+  const tagInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setIsSkillsExpanded(false);
+  }, [selectedRepos]);
+
+  // 当选中唯一技能时，加载该技能的同步记录和标签
   useEffect(() => {
     if (selectedItemType === 'skill' && selectedSkills.length === 1) {
+      setTags(selectedSkills[0].tags || "");
       invoke<SyncRecord[]>('get_sync_records_for_skill', { skillId: selectedSkills[0].id })
         .then(setSkillSyncRecords)
         .catch(console.error);
     } else {
       setSkillSyncRecords([]);
+      setTags("");
     }
   }, [selectedItemType, selectedSkills.length === 1 ? selectedSkills[0].id : null]);
+
+  const addTag = async (newTag: string, skill: Skill) => {
+    if (!newTag || tags.split(',').map(t => t.trim()).includes(newTag)) return;
+    const newTagsList = [...tags.split(','), newTag].filter(t => t.trim() !== "");
+    const newTagsStr = newTagsList.join(',');
+    setTags(newTagsStr);
+    try {
+      await invoke("update_skill_tags", { id: skill.id, tags: newTagsStr || null });
+      skill.tags = newTagsStr;
+      onRefreshData(); // 触发上层数据刷新
+    } catch (e) {
+      showToast("更新标签失败", "error");
+    }
+  };
+
+  const removeTag = async (tagToRemove: string, skill: Skill) => {
+    const newTagsList = tags.split(',').map(t => t.trim()).filter(t => t !== tagToRemove && t !== "");
+    const newTagsStr = newTagsList.join(',');
+    setTags(newTagsStr);
+    try {
+      await invoke("update_skill_tags", { id: skill.id, tags: newTagsStr || null });
+      skill.tags = newTagsStr;
+      onRefreshData(); // 触发上层数据刷新
+    } catch (e) {
+      showToast("更新标签失败", "error");
+    }
+  };
 
   // 同步/取消同步
   const handleToggleSync = async (agentId: string, skillId: string, isSynced: boolean) => {
@@ -288,10 +330,10 @@ export function InspectorPanel({
               </span>
             </div>
             {currentLibrary?.path && (
-              <Tooltip content={currentLibrary.path}>
+              <Tooltip content={currentLibrary.path} side="bottom">
                 <p 
-                  className="text-[11px] text-[var(--color-muted)] truncate ml-6 cursor-pointer hover:text-[var(--foreground)] transition-colors"
-                  onClick={() => { navigator.clipboard.writeText(currentLibrary.path); showToast('路径已复制'); }}
+                  className="text-[11px] text-[var(--color-muted)] truncate ml-6 cursor-default select-none"
+                  onDoubleClick={() => { navigator.clipboard.writeText(currentLibrary.path); showToast('路径已复制'); }}
                 >
                   {currentLibrary.path.replace(/[/\\][^/\\]+$/, '')}
                 </p>
@@ -413,18 +455,8 @@ export function InspectorPanel({
               <span>批量更新</span>
             </button>
             <button
-              onClick={async () => {
-                if (!confirm(`确定要删除选中的 ${selectedRepos.length} 个仓库吗？\n（仅移除仓库，不会删除本地文件）`)) return;
-                try {
-                  for (const repo of selectedRepos) {
-                    await invoke('remove_source_directory', { id: repo.source_dir_id || repo.id });
-                  }
-                  showToast(`已批量删除 ${selectedRepos.length} 个仓库`);
-                  onRefreshData();
-                } catch (e) {
-                  console.error(e);
-                  showToast('批量删除失败', 'error');
-                }
+              onClick={(e) => {
+                if (onDeleteRepos) onDeleteRepos(e, selectedRepos);
               }}
               className="flex items-center justify-center space-x-2 w-full py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg transition-colors text-[13px] font-medium"
             >
@@ -442,6 +474,9 @@ export function InspectorPanel({
   if (selectedItemType === 'repo' && selectedRepos.length === 1) {
     const selectedRepo = selectedRepos[0];
     const isGithub = selectedRepo.source_type === 'github';
+    const isOnline = selectedRepo.source_type === 'online';
+    // online 就只有一个技能，取其 online_url
+    const onlineUrl = isOnline ? (selectedRepo.skills[0]?.online_url || selectedRepo.path) : null;
     return (
       <div className="w-[280px] border-l border-black/[0.08] bg-white/50 backdrop-blur-sm flex flex-col shrink-0 h-full overflow-hidden">
         {/* 头部 */}
@@ -453,65 +488,125 @@ export function InspectorPanel({
         <div className="flex-1 overflow-y-auto p-4">
           {/* 仓库名与图标及同步按钮 */}
           <div className="flex items-center space-x-2.5 mb-4">
-            <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${isGithub ? 'bg-[#0066FF]/10 text-[#0066FF]' : 'bg-[#86868B]/10 text-[#86868B]'}`}>
-              <FolderGit2 className="w-4.5 h-4.5" />
+            <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
+              isOnline ? 'bg-emerald-500/10 text-emerald-600' :
+              isGithub ? 'bg-[#0066FF]/10 text-[#0066FF]' : 'bg-[#86868B]/10 text-[#86868B]'
+            }`}>
+              {isOnline ? <Globe size={16} /> : <FolderGit2 className="w-4.5 h-4.5" />}
             </div>
             <div className="min-w-0 flex-1">
               <h3 className="text-[14px] font-semibold text-[var(--foreground)] truncate">{selectedRepo.name}</h3>
-              <span className={`text-[10px] font-medium uppercase tracking-wider ${isGithub ? 'text-[#0066FF]' : 'text-[#86868B]'}`}>
-                {selectedRepo.source_type}
+              <span className={`text-[10px] font-medium uppercase tracking-wider ${
+                isOnline ? 'text-emerald-600' : isGithub ? 'text-[#0066FF]' : 'text-[#86868B]'
+              }`}>
+                {isOnline ? '线上收藏' : selectedRepo.source_type}
               </span>
             </div>
-            <Tooltip content="更新当前仓库">
-              <button
-                onClick={(e) => {
-                  if (onUpdateRepos) {
-                    onUpdateRepos(e, [selectedRepo]);
-                  } else {
-                    invoke('rescan_directory', { dirId: selectedRepo.source_dir_id || selectedRepo.id })
-                      .then(() => showToast('已下发更新指令，请稍候查看'))
-                      .catch(console.error);
-                  }
-                }}
-                className="p-1.5 rounded-lg text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-colors shrink-0 border border-black/5"
-              >
-                <RefreshCw className="w-4 h-4" />
-              </button>
-            </Tooltip>
+            {!isOnline && (
+              <Tooltip content="更新当前仓库">
+                <button
+                  onClick={(e) => {
+                    if (onUpdateRepos) {
+                      onUpdateRepos(e, [selectedRepo]);
+                    } else {
+                      invoke('rescan_directory', { dirId: selectedRepo.source_dir_id || selectedRepo.id })
+                        .then(() => showToast('已下发更新指令，请稍候查看'))
+                        .catch(console.error);
+                    }
+                  }}
+                  className="p-1.5 rounded-lg text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-colors shrink-0 border border-black/5"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                </button>
+              </Tooltip>
+            )}
+            {isOnline && onlineUrl && (
+              <Tooltip content="在浏览器中打开">
+                <a
+                  href={onlineUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="p-1.5 rounded-lg text-[var(--color-muted)] hover:text-emerald-600 hover:bg-emerald-500/10 transition-colors shrink-0 border border-black/5"
+                >
+                  <Globe className="w-4 h-4" />
+                </a>
+              </Tooltip>
+            )}
           </div>
 
-          {/* 路径 */}
+          {/* 路径/URL */}
           <div className="mb-4">
-            <h4 className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider mb-1.5">路径</h4>
-            <div className="flex items-center space-x-1">
-              <Tooltip content={selectedRepo.path}>
-                <p className="text-[11px] text-[var(--color-muted)] truncate flex-1 bg-black/[0.03] px-2 py-1 rounded cursor-default">
+            <div className="flex justify-between items-center mb-1.5">
+              <h4 className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider">
+                {isOnline ? '技能地址' : '路径'}
+              </h4>
+              {!isOnline && (
+                <div className="flex items-center space-x-0.5">
+                  <Tooltip content="复制路径">
+                    <button
+                      onClick={() => { navigator.clipboard.writeText(selectedRepo.path); showToast('路径已复制'); }}
+                      className="p-1 rounded hover:bg-black/5 text-[var(--color-muted)] hover:text-[var(--foreground)] transition-colors shrink-0"
+                    >
+                      <Copy size={12} />
+                    </button>
+                  </Tooltip>
+                  <Tooltip content="在 Finder 中打开">
+                    <button
+                      onClick={async () => {
+                        try { await invoke('open_local_folder', { path: selectedRepo.path }); } catch (e) { console.error(e); }
+                      }}
+                      className="p-1 rounded hover:bg-black/5 text-[var(--color-muted)] hover:text-[var(--foreground)] transition-colors shrink-0"
+                    >
+                      <Folder size={12} />
+                    </button>
+                  </Tooltip>
+                  {isGithub && (
+                    <Tooltip content="在 GitHub 中查看">
+                      <button
+                        onClick={async () => {
+                          try {
+                            const url = await invoke<string>('get_git_remote_url', { path: selectedRepo.path });
+                            if (url) {
+                              await openUrl(url);
+                            } else {
+                              showToast('未找到远程仓库地址', 'error');
+                            }
+                          } catch (e) {
+                            showToast(`获取仓库地址失败: ${e}`, 'error');
+                          }
+                        }}
+                        className="p-1 rounded hover:bg-black/5 text-[var(--color-muted)] hover:text-[#0066FF] transition-colors shrink-0"
+                      >
+                        <Globe size={12} />
+                      </button>
+                    </Tooltip>
+                  )}
+                </div>
+              )}
+            </div>
+            {isOnline && onlineUrl ? (
+              <a
+                href={onlineUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block text-[11px] text-[var(--color-primary)] hover:underline break-all bg-[var(--color-primary)]/5 px-2 py-1.5 rounded border border-[var(--color-primary)]/10 transition-colors"
+              >
+                {onlineUrl}
+              </a>
+            ) : (
+              <Tooltip content={selectedRepo.path} side="bottom">
+                <p 
+                  onDoubleClick={() => { navigator.clipboard.writeText(selectedRepo.path); showToast('路径已复制'); }}
+                  className="text-[11px] text-[var(--color-muted)] truncate w-full bg-black/[0.03] border border-black/[0.04] px-2 py-1.5 rounded cursor-default select-none"
+                >
                   {selectedRepo.path}
                 </p>
               </Tooltip>
-              <Tooltip content="复制路径">
-                <button
-                  onClick={() => { navigator.clipboard.writeText(selectedRepo.path); showToast('路径已复制'); }}
-                  className="p-1 rounded hover:bg-black/5 text-[var(--color-muted)] hover:text-[var(--foreground)] transition-colors shrink-0"
-                >
-                  <Copy size={12} />
-                </button>
-              </Tooltip>
-              <Tooltip content="在 Finder 中打开">
-                <button
-                  onClick={async () => {
-                    try { await invoke('open_local_folder', { path: selectedRepo.path }); } catch (e) { console.error(e); }
-                  }}
-                  className="p-1 rounded hover:bg-black/5 text-[var(--color-muted)] hover:text-[var(--foreground)] transition-colors shrink-0"
-                >
-                  <Folder size={12} />
-                </button>
-              </Tooltip>
-            </div>
+            )}
           </div>
 
-          {/* 同步至 AI Agent */}
-          {agents.length > 0 && (
+          {/* 同步至 AI Agent（线上收藏模式不显示） */}
+          {!isOnline && agents.length > 0 && (
             <div className="mb-4">
               <h4 className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider mb-2">同步至 AI Agent</h4>
               <div className="space-y-1.5">
@@ -559,11 +654,21 @@ export function InspectorPanel({
 
           {/* 子技能列表 */}
           <div className="mb-4">
-            <h4 className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider mb-2">
-              子技能 ({selectedRepo.skills.length})
-            </h4>
+            <div className="flex justify-between items-center mb-2">
+              <h4 className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider">
+                子技能 ({selectedRepo.skills.length})
+              </h4>
+              {selectedRepo.skills.length > 5 && isSkillsExpanded && (
+                <button
+                  onClick={() => setIsSkillsExpanded(false)}
+                  className="text-[11px] text-[var(--color-primary)] hover:underline shrink-0"
+                >
+                  收起
+                </button>
+              )}
+            </div>
             <div className="space-y-0.5 max-h-[300px] overflow-y-auto">
-              {selectedRepo.skills.map(skill => (
+              {(isSkillsExpanded ? selectedRepo.skills : selectedRepo.skills.slice(0, 5)).map(skill => (
                 <button
                   key={skill.id}
                   onClick={() => onOpenDrawer(skill)}
@@ -574,6 +679,14 @@ export function InspectorPanel({
                   <ChevronRight className="w-3 h-3 text-[var(--color-muted)] opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
                 </button>
               ))}
+              {!isSkillsExpanded && selectedRepo.skills.length > 5 && (
+                <button
+                  onClick={() => setIsSkillsExpanded(true)}
+                  className="w-full text-center py-1.5 mt-1 text-[11px] text-[var(--color-primary)] hover:bg-[var(--color-primary)]/5 rounded transition-colors"
+                >
+                  查看全部 (+{selectedRepo.skills.length - 5})
+                </button>
+              )}
             </div>
           </div>
 
@@ -641,13 +754,8 @@ export function InspectorPanel({
             </div>
 
             <button
-              onClick={async () => {
-                if (!confirm(`确定要删除仓库 "${selectedRepo.name}" 吗？\n（仅从应用中移除，不会删除本地文件）`)) return;
-                try { 
-                  await invoke('remove_source_directory', { id: selectedRepo.source_dir_id || selectedRepo.id });
-                  showToast('仓库已删除');
-                  onRefreshData();
-                } catch (e) { console.error(e); }
+              onClick={(e) => {
+                if (onDeleteRepos) onDeleteRepos(e, [selectedRepo]);
               }}
               className="flex-1 flex items-center justify-center space-x-1.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg transition-colors text-[12px] font-medium"
             >
@@ -727,30 +835,45 @@ export function InspectorPanel({
 
           {/* 路径 */}
           <div className="mb-4">
-            <h4 className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider mb-1.5">路径</h4>
-            <div className="flex items-center space-x-1">
-              <p className="text-[11px] text-[var(--color-muted)] truncate flex-1 bg-black/[0.03] px-2 py-1 rounded">
+            <div className="flex justify-between items-center mb-1.5">
+              <h4 className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider">路径</h4>
+              <div className="flex items-center space-x-0.5">
+                <Tooltip content="复制路径">
+                  <button
+                    onClick={() => { 
+                      navigator.clipboard.writeText(selectedSkill.local_path); 
+                      showToast('路径已复制'); 
+                      invoke('increment_skill_use_count', { id: selectedSkill.id });
+                    }}
+                    className="p-1 rounded hover:bg-black/5 text-[var(--color-muted)] hover:text-[var(--foreground)] transition-colors shrink-0"
+                  >
+                    <Copy size={12} />
+                  </button>
+                </Tooltip>
+                <Tooltip content="在 Finder 中打开">
+                  <button
+                    onClick={async () => {
+                      try { await invoke('reveal_in_finder', { path: selectedSkill.local_path }); } catch (e) { console.error(e); }
+                    }}
+                    className="p-1 rounded hover:bg-black/5 text-[var(--color-muted)] hover:text-[var(--foreground)] transition-colors shrink-0"
+                  >
+                    <Folder size={12} />
+                  </button>
+                </Tooltip>
+              </div>
+            </div>
+            <Tooltip content={selectedSkill.local_path} side="bottom">
+              <p 
+                onDoubleClick={() => { 
+                  navigator.clipboard.writeText(selectedSkill.local_path); 
+                  showToast('路径已复制'); 
+                  invoke('increment_skill_use_count', { id: selectedSkill.id });
+                }}
+                className="text-[11px] text-[var(--color-muted)] truncate w-full bg-black/[0.03] border border-black/[0.04] px-2 py-1.5 rounded cursor-default select-none"
+              >
                 {selectedSkill.local_path}
               </p>
-              <Tooltip content="复制路径">
-                <button
-                  onClick={() => { navigator.clipboard.writeText(selectedSkill.local_path); showToast('路径已复制'); }}
-                  className="p-1 rounded hover:bg-black/5 text-[var(--color-muted)] hover:text-[var(--foreground)] transition-colors shrink-0"
-                >
-                  <Copy size={12} />
-                </button>
-              </Tooltip>
-              <Tooltip content="在 Finder 中打开">
-                <button
-                  onClick={async () => {
-                    try { await invoke('reveal_in_finder', { path: selectedSkill.local_path }); } catch (e) { console.error(e); }
-                  }}
-                  className="p-1 rounded hover:bg-black/5 text-[var(--color-muted)] hover:text-[var(--foreground)] transition-colors shrink-0"
-                >
-                  <Folder size={12} />
-                </button>
-              </Tooltip>
-            </div>
+            </Tooltip>
           </div>
 
           {/* 同步至 AI Agent */}
@@ -787,20 +910,51 @@ export function InspectorPanel({
             </div>
           )}
 
-          {/* 分类与标签 */}
+          {/* 标签 */}
           <div className="mb-4">
-            <h4 className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider mb-2">分类与标签</h4>
-            <div className="flex flex-wrap gap-1.5">
-              {selectedSkill.category && (
-                <span className="text-[10px] px-2 py-0.5 bg-[var(--color-muted-bg)] text-[var(--color-muted)] border border-[var(--color-border)] rounded-full">
-                  {selectedSkill.category}
-                </span>
-              )}
-              {selectedSkill.tags && selectedSkill.tags.split(',').map(t => t.trim()).filter(Boolean).map((tag, idx) => (
-                <span key={idx} className="text-[10px] px-2 py-0.5 bg-[var(--color-primary)]/10 text-[var(--color-primary)] rounded-full">
-                  {tag}
+            <h4 className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider mb-2">标签</h4>
+            <div className="flex flex-wrap gap-1.5 items-center">
+              {tags.split(',').map(t => t.trim()).filter(Boolean).map(tag => (
+                <span key={tag} className="group/tag inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-md bg-[var(--color-primary)]/10 text-[var(--color-primary)] font-medium">
+                  #{tag}
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); removeTag(tag, selectedSkill); }}
+                    className="opacity-0 group-hover/tag:opacity-100 hover:text-red-500 transition-all"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
                 </span>
               ))}
+              <input
+                ref={tagInputRef}
+                type="text"
+                value={tagInput}
+                onChange={e => setTagInput(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' || e.key === ',' || e.key === '，') {
+                    e.preventDefault();
+                    const newTag = tagInput.trim().replace(/[,，]/g, '');
+                    if (newTag) {
+                      addTag(newTag, selectedSkill);
+                      setTagInput("");
+                    }
+                  } else if (e.key === 'Backspace' && !tagInput) {
+                    const currentTags = tags.split(',').map(t => t.trim()).filter(Boolean);
+                    if (currentTags.length > 0) {
+                      removeTag(currentTags[currentTags.length - 1], selectedSkill);
+                    }
+                  }
+                }}
+                onBlur={() => {
+                  const newTag = tagInput.trim().replace(/[,，]/g, '');
+                  if (newTag) {
+                    addTag(newTag, selectedSkill);
+                    setTagInput("");
+                  }
+                }}
+                placeholder="加标签..."
+                className="text-[11px] w-20 px-2 py-1 rounded-md border border-transparent bg-black/5 focus:outline-none focus:border-[var(--color-primary)]/50 focus:bg-white transition-colors placeholder:text-[var(--color-muted)]"
+              />
             </div>
           </div>
 

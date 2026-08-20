@@ -13,7 +13,7 @@ use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
 use tokio::sync::oneshot;
 use tauri::{Manager, Emitter};
-use tauri::tray::{TrayIconBuilder, TrayIconEvent, MouseButton};
+use tauri::tray::TrayIconBuilder;
 use tauri::menu::{Menu, MenuItemBuilder, PredefinedMenuItem};
 
 pub struct AppState {
@@ -102,9 +102,16 @@ pub fn run() {
             commands::get_source_directories,
             commands::get_repositories_with_skills,
             commands::update_skill_metadata,
+            commands::update_skill_tags,
+            commands::increment_skill_use_count,
+            commands::toggle_skill_favorite,
             commands::add_source_directory,
             commands::scan_and_add_source_directory,
+            commands::validate_and_copy_dropped_folders,
+            commands::import_skills_to_directory,
             commands::add_github_repository,
+            commands::import_local_skills_to_workspace,
+            commands::import_github_skills_to_workspace,
             commands::pull_repository,
             commands::rescan_directory,
             commands::get_skill_content,
@@ -136,6 +143,8 @@ pub fn run() {
             commands::remove_source_directory,
             commands::create_local_skill_library,
             commands::merge_skill_libraries,
+            commands::translate_text,
+            commands::get_skill_token_count,
             export::export_item,
             export::export_batch,
             export::check_exists,
@@ -158,7 +167,9 @@ pub fn run() {
             prompt_commands::hard_delete_prompts,
             prompt_commands::empty_trash,
             prompt_commands::cleanup_expired_trash,
-            commands::generate_skill_reference_prompt
+            commands::generate_skill_reference_prompt,
+            commands::add_online_skill,
+            commands::update_skill_tags
         ])
         .on_window_event(|window, event| match event {
             tauri::WindowEvent::CloseRequested { api, .. } => {

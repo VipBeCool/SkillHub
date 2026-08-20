@@ -82,6 +82,7 @@ pub fn init_db(db_path: &PathBuf) -> Result<Connection> {
         }
         // skill_scope 迁移
         let mut has_skill_scope = false;
+        let mut has_online_url = false;
         let rows2 = {
             let mut stmt2 = conn.prepare("PRAGMA table_info(skills)").unwrap();
             stmt2.query_map([], |row| { let name: String = row.get(1)?; Ok(name) }).unwrap()
@@ -89,9 +90,26 @@ pub fn init_db(db_path: &PathBuf) -> Result<Connection> {
         };
         for col in &rows2 {
             if col == "skill_scope" { has_skill_scope = true; }
+            if col == "online_url" { has_online_url = true; }
         }
         if !has_skill_scope {
             let _ = conn.execute("ALTER TABLE skills ADD COLUMN skill_scope TEXT NOT NULL DEFAULT 'repo'", []);
+        }
+        if !has_online_url {
+            let _ = conn.execute("ALTER TABLE skills ADD COLUMN online_url TEXT", []);
+        }
+        
+        let mut has_is_favorite = false;
+        let mut has_use_count = false;
+        for col in &rows2 {
+            if col == "is_favorite" { has_is_favorite = true; }
+            if col == "use_count" { has_use_count = true; }
+        }
+        if !has_is_favorite {
+            let _ = conn.execute("ALTER TABLE skills ADD COLUMN is_favorite BOOLEAN NOT NULL DEFAULT 0", []);
+        }
+        if !has_use_count {
+            let _ = conn.execute("ALTER TABLE skills ADD COLUMN use_count INTEGER NOT NULL DEFAULT 0", []);
         }
     }
 
@@ -208,7 +226,7 @@ use rusqlite::params;
 use crate::scanner::ScannedSkill;
 
 pub fn get_all_skills(db: &Connection) -> Result<Vec<Skill>, String> {
-    let mut stmt = db.prepare("SELECT id, name, description, local_path, repo_id, source_dir_id, relative_path, source_type, installed_at, updated_at, is_active, category, tags, skill_scope FROM skills").map_err(|e| e.to_string())?;
+    let mut stmt = db.prepare("SELECT id, name, description, local_path, repo_id, source_dir_id, relative_path, source_type, installed_at, updated_at, is_active, category, tags, skill_scope, online_url, is_favorite, use_count FROM skills").map_err(|e| e.to_string())?;
     let skill_iter = stmt.query_map([], |row| {
         Ok(Skill {
             id: row.get(0)?,
@@ -225,6 +243,9 @@ pub fn get_all_skills(db: &Connection) -> Result<Vec<Skill>, String> {
             category: row.get(11)?,
             tags: row.get(12)?,
             skill_scope: row.get::<_, Option<String>>(13)?.unwrap_or_else(|| "repo".to_string()),
+            online_url: row.get(14)?,
+            is_favorite: row.get(15)?,
+            use_count: row.get(16)?,
         })
     }).map_err(|e| e.to_string())?;
     
@@ -274,7 +295,6 @@ pub fn get_repositories_with_skills(db: &Connection) -> Result<Vec<GroupedRepo>,
         }
 
         let exists = std::path::Path::new(&repo_path).exists();
-        println!("Checking repo with skills: path='{}', exists={}", repo_path, exists);
         let repo = repo_map.entry(repo_path.clone()).or_insert_with(|| GroupedRepo {
             id: repo_path.clone(),
             name: repo_name.clone(),
@@ -297,7 +317,7 @@ pub fn get_repositories_with_skills(db: &Connection) -> Result<Vec<GroupedRepo>,
     }
     
     for dir in dir_map.values() {
-        let exists = std::path::Path::new(&dir.path).exists();
+        let _exists = std::path::Path::new(&dir.path).exists();
         // Here we do not add empty source directories as repos anymore.
         // The is_missing status for SourceDirectories is returned via get_source_directories
     }
@@ -318,6 +338,30 @@ pub fn update_skill_metadata(db: &Connection, id: &str, name: &str, description:
     db.execute(
         "UPDATE skills SET name = ?1, description = ?2, category = ?3, tags = ?4, updated_at = ?5 WHERE id = ?6",
         params![name, description, category, tags, chrono::Utc::now().to_rfc3339(), id],
+    ).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub fn update_skill_tags(db: &Connection, id: &str, tags: Option<&str>) -> Result<(), String> {
+    db.execute(
+        "UPDATE skills SET tags = ?1, updated_at = ?2 WHERE id = ?3",
+        params![tags, chrono::Utc::now().to_rfc3339(), id],
+    ).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub fn increment_skill_use_count(db: &Connection, id: &str) -> Result<(), String> {
+    db.execute(
+        "UPDATE skills SET use_count = use_count + 1, updated_at = ?1 WHERE id = ?2",
+        params![chrono::Utc::now().to_rfc3339(), id],
+    ).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub fn toggle_skill_favorite(db: &Connection, id: &str) -> Result<(), String> {
+    db.execute(
+        "UPDATE skills SET is_favorite = NOT is_favorite, updated_at = ?1 WHERE id = ?2",
+        params![chrono::Utc::now().to_rfc3339(), id],
     ).map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -352,9 +396,19 @@ pub fn rename_source_directory(db: &Connection, id: &str, new_label: &str) -> Re
 
 pub fn remove_source_directory(db: &Connection, id: &str) -> Result<(), String> {
     db.execute(
+        "DELETE FROM skills WHERE source_dir_id = ?1",
+        rusqlite::params![id],
+    ).map_err(|e| format!("Failed to delete skills: {}", e))?;
+
+    db.execute(
+        "DELETE FROM repositories WHERE source_dir_id = ?1",
+        rusqlite::params![id],
+    ).map_err(|e| format!("Failed to delete repositories: {}", e))?;
+
+    db.execute(
         "DELETE FROM source_directories WHERE id = ?1",
         rusqlite::params![id],
-    ).map_err(|e| e.to_string())?;
+    ).map_err(|e| format!("Failed to delete source directory: {}", e))?;
     Ok(())
 }
 
@@ -465,8 +519,8 @@ pub fn insert_skill(db: &Connection, skill: &ScannedSkill, source_dir_id: &str, 
     }
 
     db.execute(
-        "INSERT INTO skills (id, name, description, local_path, repo_id, source_dir_id, relative_path, source_type, installed_at, updated_at, is_active, category, tags, skill_scope) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
-         ON CONFLICT(local_path) DO UPDATE SET name=excluded.name, description=excluded.description, updated_at=excluded.updated_at, source_type=excluded.source_type, category=excluded.category, tags=excluded.tags, skill_scope=excluded.skill_scope",
+        "INSERT INTO skills (id, name, description, local_path, repo_id, source_dir_id, relative_path, source_type, installed_at, updated_at, is_active, category, tags, skill_scope, is_favorite, use_count) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, 0, 0)
+         ON CONFLICT(local_path) DO UPDATE SET name=excluded.name, description=excluded.description, updated_at=excluded.updated_at, source_type=excluded.source_type, category=excluded.category, skill_scope=excluded.skill_scope",
         params![
             id,
             skill.name,
@@ -485,6 +539,40 @@ pub fn insert_skill(db: &Connection, skill: &ScannedSkill, source_dir_id: &str, 
         ],
     ).map_err(|e| e.to_string())?;
     
+    Ok(())
+}
+
+pub fn add_online_skill(
+    db: &Connection,
+    id: &str,
+    url: &str,
+    name: &str,
+    description: &str,
+    source_dir_id: &str,
+    now: &str,
+) -> Result<(), String> {
+    db.execute(
+        "INSERT INTO skills (id, name, description, local_path, repo_id, source_dir_id, relative_path, source_type, installed_at, updated_at, is_active, category, tags, skill_scope, online_url, is_favorite, use_count) 
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, 0, 0)
+         ON CONFLICT(local_path) DO UPDATE SET name=excluded.name, description=excluded.description, updated_at=excluded.updated_at, online_url=excluded.online_url",
+        params![
+            id,
+            name,
+            description,
+            url, // local_path 用 url 代替
+            None::<String>,
+            source_dir_id,
+            "", // relative_path
+            "online", // source_type
+            now,
+            now,
+            true,
+            "Other",
+            None::<String>,
+            "repo",
+            url
+        ],
+    ).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -536,7 +624,7 @@ pub fn delete_agent_config(db: &Connection, id: &str) -> Result<(), String> {
 }
 
 pub fn get_sync_records_for_skill(db: &Connection, skill_id: &str) -> Result<Vec<SyncRecord>, String> {
-    let mut stmt = db.prepare("SELECT skill_id, agent_id, sync_type, synced_path, synced_at, status FROM sync_records WHERE skill_id = ?1").map_err(|e| e.to_string())?;
+    let mut stmt = db.prepare("SELECT skill_id, agent_id, sync_type, synced_path, synced_at, status FROM sync_records WHERE skill_id = ?1 ORDER BY synced_at DESC").map_err(|e| e.to_string())?;
     let iter = stmt.query_map(params![skill_id], |row| {
         Ok(SyncRecord {
             skill_id: row.get(0)?,
@@ -624,4 +712,5 @@ pub fn remove_sync_record(db: &Connection, skill_id: &str, agent_id: &str) -> Re
     ).map_err(|e| e.to_string())?;
     Ok(())
 }
+
 

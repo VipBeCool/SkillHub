@@ -3,7 +3,8 @@ import { SelectionArea, SelectionEvent } from '@viselect/react';
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
-import { HardDrive, Settings, Search, Plus, RefreshCw, ChevronRight, ChevronLeft, X, LayoutGrid, Sparkles, FileQuestion, Globe, FolderX, FolderSearch, Trash2, Info, Folder, Copy, Link as LinkIcon, Check, Download, FileArchive, MessageSquareText, Store, Puzzle, CheckSquare } from "lucide-react";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { HardDrive, Settings, Search, Plus, RefreshCw, ChevronRight, ChevronLeft, X, LayoutGrid, Sparkles, Globe, FolderX, FolderSearch, Trash2, Info, Folder, Copy, Link as LinkIcon, Check, Download, FileArchive, MessageSquareText, Store, Puzzle, CheckSquare, Star, Clock, Tag } from "lucide-react";
 import { open } from '@tauri-apps/plugin-dialog';
 import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import { AddRepositoryDialog } from "./components/library/AddRepositoryDialog";
@@ -22,6 +23,7 @@ import { AboutDialog } from "./components/ui/AboutDialog";
 import { InspectorPanel } from "./components/inspector/InspectorPanel";
 import { ContextMenu, useContextMenu } from "./components/ui/ContextMenu";
 import type { ContextMenuItem } from "./components/ui/ContextMenu";
+import { getNextElement } from "./utils/navigation";
 import { Skill, SourceDirectory, AgentConfig, SyncRecord, GroupedRepo, PromptGroup } from "./types";
 import { PromptModule, PromptSidebarNav, PromptFilter } from "./PromptModule";
 
@@ -35,7 +37,8 @@ type AppModule = 'skills' | 'prompts' | 'resources';
 function App() {
   const [activeModule, setActiveModule] = useState<AppModule>('skills');
   const [activeTab, setActiveTab] = useState("all");
-  const [selectedCategory, setSelectedCategory] = useState("all");
+  const [selectedTag, setSelectedTag] = useState<string>("all");
+  const [activeView, setActiveView] = useState<"all" | "starred" | "recent" | "untagged">("all");
   const [, setSkills] = useState<Skill[]>([]);
   const [directories, setDirectories] = useState<SourceDirectory[]>([]);
   const [agents, setAgents] = useState<AgentConfig[]>([]);
@@ -72,7 +75,7 @@ function App() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isOpenModalOpen, setIsOpenModalOpen] = useState(false);
   const [isMergeModalOpen, setIsMergeModalOpen] = useState(false);
-  const [addDialogTab, setAddDialogTab] = useState<"local" | "github" | null>(null);
+  const [addDialogTab, setAddDialogTab] = useState<"local" | "github" | "online" | null>(null);
 
   const [isSyncingAll, setIsSyncingAll] = useState(false);
   const [isRetryingMissing, setIsRetryingMissing] = useState(false);
@@ -81,6 +84,8 @@ function App() {
   const [cloningRepos, setCloningRepos] = useState<{ path: string, name: string }[]>([]);
   const [deleteConfirmRepos, setDeleteConfirmRepos] = useState<GroupedRepo[] | null>(null);
   const [isAppStarting, setIsAppStarting] = useState(true);
+  const [isFileDraggingOver, setIsFileDraggingOver] = useState(false);
+  const mainContentRef = useRef<HTMLDivElement>(null);
   const [loadingText, setLoadingText] = useState("SkillHub载入中…");
   const skillLibrarySelectorRef = useRef<SkillLibrarySelectorRef>(null);
   const isDraggingRef = useRef(false);
@@ -122,7 +127,8 @@ function App() {
       invoke("refresh_app_menu", { selectedId: null }).catch(console.error);
     }
     setActiveTab("all");
-    setSelectedCategory("all");
+    setSelectedTag("all");
+    setActiveView("all");
   };
 
   const fetchData = async () => {
@@ -216,6 +222,70 @@ function App() {
       }
     }).then(un => unlisten = un);
 
+    
+    let isDragDropMounted = true;
+    getCurrentWebviewWindow().onDragDropEvent((event) => {
+      if (!isDragDropMounted) return;
+      if (event.payload.type === 'over' || event.payload.type === 'enter') {
+        const { x, y } = event.payload.position;
+        if (mainContentRef.current) {
+          const rect = mainContentRef.current.getBoundingClientRect();
+          const logicalX = x / window.devicePixelRatio;
+          const logicalY = y / window.devicePixelRatio;
+          if (logicalX >= rect.left && logicalX <= rect.right && logicalY >= rect.top && logicalY <= rect.bottom) {
+            setIsFileDraggingOver(true);
+          } else {
+            setIsFileDraggingOver(false);
+          }
+        }
+      } else if (event.payload.type === 'drop') {
+        setIsFileDraggingOver(false);
+        const { x, y } = event.payload.position;
+        if (mainContentRef.current) {
+          const rect = mainContentRef.current.getBoundingClientRect();
+          const logicalX = x / window.devicePixelRatio;
+          const logicalY = y / window.devicePixelRatio;
+          if (logicalX >= rect.left && logicalX <= rect.right && logicalY >= rect.top && logicalY <= rect.bottom) {
+            const paths = event.payload.paths;
+            const targetWorkspaceId = localStorage.getItem("skillhub_selected_workspace");
+            if (!targetWorkspaceId || targetWorkspaceId === "all") {
+              showToast("请先在左侧选择一个具体的目标资源库再进行拖入", "error");
+              return;
+            }
+            
+            // Validate and copy
+            setLoadingText("正在导入...");
+            setIsAppStarting(true);
+            invoke("get_source_directories").then((dirs: any) => {
+              const targetWorkspaceDir = dirs.find((d: any) => d.id === targetWorkspaceId)?.path;
+              if (targetWorkspaceDir) {
+                 invoke("validate_and_copy_dropped_folders", {
+                   paths,
+                   targetWorkspacePath: targetWorkspaceDir
+                 }).then((msg) => {
+                   return invoke("rescan_directory", { path: targetWorkspaceDir }).then(() => {
+                     return fetchData().then(() => {
+                       showToast(msg as string, "success");
+                     });
+                   });
+                 }).catch((err) => {
+                   showToast(err as string, "error");
+                 }).finally(() => {
+                   setIsAppStarting(false);
+                 });
+              } else {
+                 showToast("目标资源库路径不存在", "error");
+                 setIsAppStarting(false);
+              }
+            });
+          }
+        }
+      } else {
+        setIsFileDraggingOver(false);
+      }
+    });
+
+
     listen("open-preferences", () => {
       getCurrentWindow().unminimize();
       getCurrentWindow().setFocus();
@@ -226,6 +296,10 @@ function App() {
       clearInterval(interval);
       if (unlisten) unlisten();
       if (unlistenPrefs) unlistenPrefs();
+      isDragDropMounted = false;
+      // We do NOT call unlistenDragDrop() because in Tauri v2, unlistening the drag-drop event
+      // can sometimes globally disable drag-drop for the webview due to a race condition in StrictMode.
+      // Setting isDragDropMounted = false is enough to prevent double-firing.
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -294,9 +368,17 @@ function App() {
     setDeleteConfirmRepos(null);
   };
 
-  const handleAddRepo = () => {
-    setAddDialogTab(null);
+  const openAddDialog = (tab: "local" | "github" | "online" | null = null) => {
+    if (!selectedWorkspaceId || selectedWorkspaceId === "all") {
+      showToast("请先在左侧选择一个具体的技能库再导入", "error");
+      return;
+    }
+    setAddDialogTab(tab);
     setIsAddDialogOpen(true);
+  };
+
+  const handleAddRepo = () => {
+    openAddDialog();
   };
 
   const handleCancelClone = async (e: React.MouseEvent, targetPath: string) => {
@@ -387,11 +469,50 @@ function App() {
     if (activeTab !== "all") {
       result = result.filter(r => r.source_type === activeTab);
     }
-    if (selectedCategory !== "all") {
-      result = result.filter(r => r.category === selectedCategory);
+    if (activeView !== "all") {
+      result = result.map(repo => {
+        let matchingSkills = repo.skills;
+        if (activeView === "starred") {
+          matchingSkills = matchingSkills.filter(s => s.is_favorite);
+        } else if (activeView === "recent") {
+          matchingSkills = matchingSkills.filter(s => s.use_count && s.use_count > 0).sort((a, b) => (b.use_count || 0) - (a.use_count || 0));
+        } else if (activeView === "untagged") {
+          matchingSkills = matchingSkills.filter(s => !s.tags || s.tags.trim() === "");
+        }
+        if (matchingSkills.length > 0) {
+          return { ...repo, skills: matchingSkills };
+        }
+        return null;
+      }).filter(Boolean) as GroupedRepo[];
+    }
+    if (selectedTag !== "all") {
+      result = result.map(repo => {
+        const matchingSkills = repo.skills.filter(s => s.tags?.split(',').map(t=>t.trim()).includes(selectedTag));
+        if (matchingSkills.length > 0) {
+          return { ...repo, skills: matchingSkills };
+        }
+        return null;
+      }).filter(Boolean) as GroupedRepo[];
     }
     return result;
-  }, [groupedRepos, selectedWorkspaceId, activeTab, selectedCategory]);
+  }, [groupedRepos, selectedWorkspaceId, activeTab, selectedTag, activeView]);
+
+  const allTags = useMemo(() => {
+    const tags = new Set<string>();
+    groupedRepos.forEach(repo => {
+      if (selectedWorkspaceId !== "all" && repo.source_dir_id !== selectedWorkspaceId) return;
+      if (activeTab !== "all" && repo.source_type !== activeTab) return;
+      repo.skills.forEach(skill => {
+        if (skill.tags) {
+          skill.tags.split(",").forEach(t => {
+            const tr = t.trim();
+            if (tr) tags.add(tr);
+          });
+        }
+      });
+    });
+    return Array.from(tags).sort();
+  }, [groupedRepos, selectedWorkspaceId, activeTab]);
 
   useEffect(() => {
     // If selected repo is deleted, clear selection
@@ -407,7 +528,7 @@ function App() {
     setSelectedSkillIds(new Set());
     setLastSelectedRepoId(null);
     setLastSelectedSkillId(null);
-  }, [selectedWorkspaceId, activeTab, selectedCategory]);
+  }, [selectedWorkspaceId, activeTab, selectedTag, activeView]);
 
   // 单击选中仓库
   const handleSelectRepo = useCallback((repo: GroupedRepo, e?: React.MouseEvent) => {
@@ -485,6 +606,15 @@ function App() {
   }, [filteredGroupedRepos, selectedRepoId, lastSelectedSkillId]);
 
   // 返回上一级
+  const handleToggleFavorite = async (id: string) => {
+    try {
+      await invoke("toggle_skill_favorite", { id });
+      fetchData();
+    } catch (e) {
+      showToast(`操作失败: ${e}`, "error");
+    }
+  };
+
   const handleGoBack = useCallback(() => {
     setSelectedRepoId(null);
     setInspectorSelectedType(null);
@@ -748,13 +878,19 @@ function App() {
             id: 'add-local',
             label: '导入本地技能',
             icon: <HardDrive size={14} />,
-            onClick: () => { setAddDialogTab("local"); setIsAddDialogOpen(true); }
+            onClick: () => openAddDialog("local")
           },
           {
             id: 'add-github',
             label: '克隆 GitHub 库',
             icon: <Globe size={14} />,
-            onClick: () => { setAddDialogTab("github"); setIsAddDialogOpen(true); }
+            onClick: () => openAddDialog("github")
+          },
+          {
+            id: 'add-online',
+            label: '收藏线上地址',
+            icon: <LinkIcon size={14} />,
+            onClick: () => openAddDialog("online")
           }
         ]
       },
@@ -799,22 +935,137 @@ function App() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
         setIsSearchModalOpen(true);
       }
-      // Esc 取消选中
-      if (e.key === 'Escape' && !isDrawerOpen && !isAddDialogOpen && !isSettingsOpen && !isSearchModalOpen) {
-        if (inspectorSelectedType) {
-          handleDeselectAll();
-        } else if (selectedRepoId) {
-          setSelectedRepoId(null);
+      if (activeModule !== 'skills') return;
+      // Esc 取消选中或取消删除对话框
+      if (e.key === 'Escape') {
+        if (deleteConfirmRepos) {
+          e.preventDefault();
+          setDeleteConfirmRepos(null);
+          return;
+        }
+        if (!isDrawerOpen && !isAddDialogOpen && !isSettingsOpen && !isSearchModalOpen) {
+          if (inspectorSelectedType) {
+            handleDeselectAll();
+          } else if (selectedRepoId) {
+            setSelectedRepoId(null);
+          }
+        }
+      }
+
+      // 方向键导航
+      if ((e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !isDrawerOpen && !isAddDialogOpen && !isSettingsOpen && !isSearchModalOpen && !isInput) {
+        if (inspectorSelectedType === 'skill' && selectedSkillIds.size === 1) {
+          e.preventDefault();
+          const currentId = Array.from(selectedSkillIds)[0];
+          const currentEl = document.querySelector(`[data-skill-id="${currentId}"]`);
+          if (currentEl) {
+            const allEls = Array.from(document.querySelectorAll('[data-skill-id]'));
+            const nextEl = getNextElement(currentEl, e.key, allEls);
+            if (nextEl) {
+              const nextId = nextEl.getAttribute('data-skill-id');
+              if (nextId) {
+                const nextSkill = filteredGroupedRepos.flatMap(r => r.skills).find(s => s.id === nextId);
+                if (nextSkill) {
+                  setSelectedSkillIds(new Set([nextId]));
+                  setLastSelectedSkillId(nextId);
+                  nextEl.scrollIntoView({ block: 'nearest' });
+                }
+              }
+            }
+          }
+        } else if (inspectorSelectedType === 'repo' && selectedRepoIds.size === 1) {
+          e.preventDefault();
+          const currentId = Array.from(selectedRepoIds)[0];
+          const currentEl = document.querySelector(`[data-repo-id="${currentId}"]`);
+          if (currentEl) {
+            const allEls = Array.from(document.querySelectorAll('[data-repo-id]'));
+            const nextEl = getNextElement(currentEl, e.key, allEls);
+            if (nextEl) {
+              const nextId = nextEl.getAttribute('data-repo-id');
+              if (nextId) {
+                const nextRepo = filteredGroupedRepos.find(r => r.id === nextId);
+                if (nextRepo) {
+                  setSelectedRepoIds(new Set([nextId]));
+                  setLastSelectedRepoId(nextId);
+                  nextEl.scrollIntoView({ block: 'nearest' });
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // Enter 确认删除 / 双击卡片
+      if (e.key === 'Enter') {
+        if (deleteConfirmRepos) {
+          e.preventDefault();
+          confirmDeleteRepos();
+          return;
+        }
+        if (!isDrawerOpen && !isAddDialogOpen && !isSettingsOpen && !isSearchModalOpen && !isInput) {
+          if (inspectorSelectedType === 'skill' && selectedSkillIds.size === 1) {
+             e.preventDefault();
+             const currentId = Array.from(selectedSkillIds)[0];
+             const skill = filteredGroupedRepos.flatMap(r => r.skills).find(s => s.id === currentId);
+             if (skill) {
+               setSelectedSkill(skill);
+               setIsDrawerOpen(true);
+             }
+          } else if (inspectorSelectedType === 'repo' && selectedRepoIds.size === 1) {
+             e.preventDefault();
+             const currentId = Array.from(selectedRepoIds)[0];
+             const repo = filteredGroupedRepos.find(r => r.id === currentId);
+             if (repo) {
+               setSelectedRepoId(repo.id);
+               setInspectorSelectedType('repo');
+               setSelectedRepoIds(new Set([repo.id]));
+               setSelectedSkillIds(new Set());
+             }
+          }
+        }
+      }
+
+      // Delete / Backspace 删除选中项
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (!isInput && !isDrawerOpen && !isAddDialogOpen && !isSettingsOpen && !isSearchModalOpen && !deleteConfirmRepos) {
+          if (selectedRepoIds.size > 0 && inspectorSelectedType === 'repo') {
+            e.preventDefault();
+            const reposToDelete = filteredGroupedRepos.filter(r => selectedRepoIds.has(r.id));
+            handleDeleteRepos({ stopPropagation: () => {} } as any, reposToDelete);
+          } else if (selectedRepoId && !inspectorSelectedType) {
+            e.preventDefault();
+            const repoToDelete = filteredGroupedRepos.find(r => r.id === selectedRepoId);
+            if (repoToDelete) {
+              handleDeleteRepos({ stopPropagation: () => {} } as any, [repoToDelete]);
+            }
+          }
         }
       }
     };
 
-    const handleFocus = () => {
-      fetchData();
+    let isRescanning = false;
+    const handleFocus = async () => {
+      if (isRescanning) return;
+      isRescanning = true;
+      try {
+        const dirs = await invoke<SourceDirectory[]>("get_source_directories");
+        if (dirs && dirs.length > 0) {
+          for (const d of dirs) {
+            await invoke("rescan_directory", { path: d.path }).catch(() => {});
+          }
+        }
+        await fetchData();
+      } catch (e) {
+        console.error("Focus rescan failed", e);
+      } finally {
+        isRescanning = false;
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
@@ -824,13 +1075,50 @@ function App() {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('focus', handleFocus);
     };
-  }, [inspectorSelectedType, selectedRepoId, isDrawerOpen, isAddDialogOpen, isSettingsOpen, isSearchModalOpen, handleDeselectAll]);
+  }, [
+    inspectorSelectedType, 
+    selectedRepoId, 
+    isDrawerOpen, 
+    isAddDialogOpen, 
+    isSettingsOpen, 
+    isSearchModalOpen, 
+    handleDeselectAll,
+    selectedRepoIds,
+    filteredGroupedRepos,
+    deleteConfirmRepos,
+    confirmDeleteRepos,
+    selectedSkillIds
+  ]);
+
+  const isFlatView = activeView !== "all" || selectedTag !== "all";
+
+  const getHeaderTitle = () => {
+    if (isFlatView) {
+      if (selectedTag !== "all") return `标签: ${selectedTag}`;
+      if (activeView === "starred") return "星标技能";
+      if (activeView === "recent") return "最近使用";
+      if (activeView === "untagged") return "未标签技能";
+    }
+    const wsLabel = directories.find(d => d.id === selectedWorkspaceId)?.label || "未知技能库";
+    if (selectedRepoId && !isFlatView) {
+      return (
+        <>
+          <span className="text-[var(--color-muted)] cursor-pointer hover:text-[var(--foreground)] transition-colors" onClick={handleGoBack}>
+            {wsLabel}
+          </span>
+          <ChevronRight className="w-4 h-4 mx-2 text-[var(--color-muted)] opacity-50" />
+          <span>{filteredGroupedRepos.find(r => r.id === selectedRepoId)?.name}</span>
+        </>
+      );
+    }
+    return wsLabel;
+  };
 
   return (
     <div className="flex h-screen w-full bg-transparent text-[var(--foreground)] overflow-hidden font-sans">
 
       <div className="w-64 bg-white/70 backdrop-blur-xl flex flex-col h-full shrink-0 relative z-20 text-[13px] border-r border-black/[0.05]">
-        <div data-tauri-drag-region onPointerDown={() => getCurrentWindow().startDragging()} className="h-10 w-full shrink-0"></div>
+        <div data-tauri-drag-region className="h-10 w-full shrink-0"></div>
 
         {/* 模块 Tab 导航与全局搜索 */}
         <div className="px-3 pb-3 flex items-center gap-2">
@@ -882,28 +1170,58 @@ function App() {
 
 
             <div className="flex-1 overflow-y-auto">
+              <div className="px-3 mb-5 mt-2 space-y-0.5">
+                <button
+                  onClick={() => { setActiveView("all"); setSelectedTag("all"); }}
+                  className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none ${activeView === "all" && selectedTag === "all" ? "bg-black/5 text-[var(--foreground)] font-semibold" : "text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] font-medium"}`}
+                >
+                  <LayoutGrid className="w-4 h-4" />
+                  <span>全部技能</span>
+                </button>
+                <button
+                  onClick={() => { setActiveView("starred"); setSelectedTag("all"); }}
+                  className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none ${activeView === "starred" ? "bg-black/5 text-[var(--foreground)] font-semibold" : "text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] font-medium"}`}
+                >
+                  <Star className="w-4 h-4" />
+                  <span>星标</span>
+                </button>
+                <button
+                  onClick={() => { setActiveView("recent"); setSelectedTag("all"); }}
+                  className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none ${activeView === "recent" ? "bg-black/5 text-[var(--foreground)] font-semibold" : "text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] font-medium"}`}
+                >
+                  <Clock className="w-4 h-4" />
+                  <span>最近使用</span>
+                </button>
+                <button
+                  onClick={() => { setActiveView("untagged"); setSelectedTag("all"); }}
+                  className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none ${activeView === "untagged" ? "bg-black/5 text-[var(--foreground)] font-semibold" : "text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] font-medium"}`}
+                >
+                  <Tag className="w-4 h-4" />
+                  <span>未标签</span>
+                </button>
+              </div>
+
               <div className="px-3 mb-5">
                 <h3 className="text-[11px] font-semibold text-[var(--color-muted)]/60 mb-1 px-2">
-                  分类视图
+                  标签
                 </h3>
                 <div className="space-y-0.5">
-                  {[
-                    { id: "all", label: "全部分类", icon: LayoutGrid },
-                    { id: "正式技能", label: "正式技能", icon: Sparkles },
-                    { id: "其他", label: "其他", icon: FileQuestion }
-                  ].map(cat => (
+                  {allTags.map(tag => (
                     <button
-                      key={cat.id}
-                      onClick={() => setSelectedCategory(cat.id)}
-                      className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none ${selectedCategory === cat.id
+                      key={tag}
+                      onClick={() => { setSelectedTag(tag); setActiveView("all"); }}
+                      className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none ${selectedTag === tag && activeView === "all"
                           ? "bg-black/5 text-[var(--foreground)] font-semibold"
                           : "text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] font-medium"
                         }`}
                     >
-                      <cat.icon className="w-4 h-4" />
-                      <span>{cat.label}</span>
+                      <Tag className="w-3.5 h-3.5 opacity-70" />
+                      <span className="truncate">{tag}</span>
                     </button>
                   ))}
+                  {allTags.length === 0 && (
+                    <div className="text-[11px] text-[var(--color-muted)]/50 px-2 py-1">暂无标签</div>
+                  )}
                 </div>
               </div>
 
@@ -974,29 +1292,15 @@ function App() {
         {activeModule === 'skills' ? (
           <>
             <div className="flex-1 flex flex-col h-full min-w-0 bg-transparent relative">
-          <div data-tauri-drag-region onPointerDown={(e) => {
-            if (e.target === e.currentTarget) {
-              getCurrentWindow().startDragging();
-            }
-          }} className="h-16 border-b border-[var(--color-border)] bg-white/70 backdrop-blur-xl flex items-center justify-between px-8 shrink-0 relative z-0">
+          <div data-tauri-drag-region className="h-16 border-b border-[var(--color-border)] bg-white/70 backdrop-blur-xl flex items-center justify-between px-8 shrink-0 relative z-0">
             <div className="flex items-center space-x-3">
-              {selectedRepoId && (
+              {selectedRepoId && !isFlatView && (
                 <button onClick={handleGoBack} className="p-1.5 rounded-lg text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] transition-colors mr-1">
                   <ChevronLeft className="w-5 h-5 text-[var(--color-muted)]" />
                 </button>
               )}
               <h1 className="text-xl font-medium tracking-tight text-[var(--foreground)] flex items-center">
-                {selectedRepoId ? (
-                  <>
-                    <span className="text-[var(--color-muted)] cursor-pointer hover:text-[var(--foreground)] transition-colors" onClick={handleGoBack}>
-                      {directories.find(d => d.id === selectedWorkspaceId)?.label || "未知技能库"}
-                    </span>
-                    <ChevronRight className="w-4 h-4 mx-2 text-[var(--color-muted)] opacity-50" />
-                    <span>{filteredGroupedRepos.find(r => r.id === selectedRepoId)?.name}</span>
-                  </>
-                ) : (
-                  directories.find(d => d.id === selectedWorkspaceId)?.label || "未知技能库"
-                )}
+                {getHeaderTitle()}
               </h1>
             </div>
             <div className="flex items-center space-x-3">
@@ -1012,6 +1316,7 @@ function App() {
           </div>
 
           <div
+            ref={mainContentRef}
             className="flex-1 overflow-y-auto p-6 relative z-0 bg-[var(--color-background)]"
             onClick={(e) => { if (e.target === e.currentTarget) handleDeselectAll(); }}
             onContextMenu={(e) => {
@@ -1019,6 +1324,16 @@ function App() {
               showContextMenu(e, { type: 'empty', data: null });
             }}
           >
+
+            {isFileDraggingOver && (
+              <div className="absolute inset-0 z-50 m-6 flex flex-col items-center justify-end pb-10 bg-[var(--color-primary)]/5 border-4 border-dashed border-[var(--color-primary)] rounded-xl pointer-events-none transition-all duration-200 backdrop-blur-[2px]">
+                 <div className="bg-[var(--color-primary)] text-white px-6 py-3 rounded-full font-medium shadow-lg flex items-center space-x-2 animate-bounce">
+                    <Folder className="w-5 h-5" />
+                    <span>将文件拖放到这里进行添加</span>
+                 </div>
+              </div>
+            )}
+
             {selectedWorkspaceDir?.is_missing ? (
               <div className="flex flex-col items-center justify-center h-full text-[var(--color-muted)] animate-in fade-in duration-500">
                 <div className="w-32 h-32 mb-6 relative group">
@@ -1080,22 +1395,38 @@ function App() {
                 <p className="text-sm text-[var(--color-muted)] mb-8 text-center max-w-sm leading-relaxed">
                   你可以一次拖拽多个文件到这里添加，也可以通过下方按钮导入本地或云端技能库
                 </p>
-                <div className="flex items-center space-x-3">
-                  <button onClick={() => { setAddDialogTab("local"); setIsAddDialogOpen(true); }} className="flex flex-col items-center justify-center p-3 bg-black/5 rounded-md hover:bg-black/10 transition-all group">
-                    <div className="p-1.5 rounded-md bg-white shadow-sm transition-colors mr-2">
-                      <HardDrive className="w-3.5 h-3.5 text-[var(--color-muted)] group-hover:text-[var(--foreground)]" />
-                    </div>
-                    <span className="text-[12px] font-medium text-[var(--foreground)] mt-2">导入本地技能</span>
+                <div className="flex items-center justify-center space-x-4 mt-2">
+                  {/* 本地导入 */}
+                  <button 
+                    onClick={() => openAddDialog("local")}
+                    className="flex items-center px-4 py-1.5 bg-white border border-[var(--color-border)] rounded-lg hover:border-[var(--color-primary)] hover:shadow-sm transition-all group"
+                  >
+                    <HardDrive className="w-4 h-4 text-[var(--color-muted)] group-hover:text-[var(--color-primary)] transition-colors mr-2.5" />
+                    <span className="text-[13px] font-medium text-[var(--foreground)] group-hover:text-[var(--color-primary)] transition-colors">导入本地技能</span>
                   </button>
-                  <button onClick={() => { setAddDialogTab("github"); setIsAddDialogOpen(true); }} className="flex flex-col items-center justify-center p-3 bg-black/5 rounded-md hover:bg-black/10 transition-all group">
-                    <div className="p-1.5 rounded-md bg-white shadow-sm transition-colors mr-2">
-                      <Globe className="w-3.5 h-3.5 text-[var(--color-muted)] group-hover:text-[var(--foreground)]" />
-                    </div>
-                    <span className="text-[12px] font-medium text-[var(--foreground)] mt-2">克隆 GitHub 库</span>
+
+                  {/* GitHub 克隆 */}
+                  <button 
+                    onClick={() => openAddDialog("github")}
+                    className="flex items-center px-4 py-1.5 bg-white border border-[var(--color-border)] rounded-lg hover:border-[var(--color-primary)] hover:shadow-sm transition-all group"
+                  >
+                    <svg className="w-4 h-4 text-[var(--color-muted)] group-hover:text-[var(--color-primary)] transition-colors mr-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M15 22v-4a4.8 4.8 0 0 0-1-3.24c3-.3 6-1.5 6-6.76a5.5 5.5 0 0 0-1.5-3.8 5.1 5.1 0 0 0-.1-3.8s-1.2-.4-3.9 1.4a13.4 13.4 0 0 0-7 0C6.3 2.4 5.1 2.8 5.1 2.8a5.1 5.1 0 0 0-.1 3.8 5.5 5.5 0 0 0-1.5 3.8c0 5.2 3 6.4 6 6.76a4.8 4.8 0 0 0-1 3.24v4" />
+                    </svg>
+                    <span className="text-[13px] font-medium text-[var(--foreground)] group-hover:text-[var(--color-primary)] transition-colors">克隆 GitHub 库</span>
+                  </button>
+
+                  {/* 线上地址收藏 */}
+                  <button 
+                    onClick={() => openAddDialog("online")}
+                    className="flex items-center px-4 py-1.5 bg-white border border-[var(--color-border)] rounded-lg hover:border-[var(--color-primary)] hover:shadow-sm transition-all group"
+                  >
+                    <Globe className="w-4 h-4 text-[var(--color-muted)] group-hover:text-[var(--color-primary)] transition-colors mr-2.5" />
+                    <span className="text-[13px] font-medium text-[var(--foreground)] group-hover:text-[var(--color-primary)] transition-colors">收藏线上地址</span>
                   </button>
                 </div>
               </div>
-            ) : !selectedRepoId ? (
+            ) : !selectedRepoId && !isFlatView ? (
               <SelectionArea
                 onBeforeStart={({ event }: SelectionEvent) => {
                   if ((event?.target as Element)?.closest?.('[data-id]')) return false;
@@ -1203,9 +1534,14 @@ function App() {
                 className="w-full"
               >
                 <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))' }} onClick={(e) => { if (e.target === e.currentTarget && !isDraggingRef.current) handleDeselectAll(); }}>
-                  {filteredGroupedRepos.find(r => r.id === selectedRepoId)?.skills.map((skill) => (
-                    <SkillCard
-                      key={skill.id}
+                  {(() => {
+                    const skillsToRender = isFlatView 
+                      ? filteredGroupedRepos.flatMap(r => r.skills)
+                      : filteredGroupedRepos.find(r => r.id === selectedRepoId)?.skills || [];
+                    
+                    return skillsToRender.map((skill) => (
+                      <SkillCard
+                        key={skill.id}
                       skill={skill}
                       syncRecords={syncRecords}
                       agents={agents}
@@ -1216,9 +1552,10 @@ function App() {
                         if (!selectedSkillIds.has(skill.id)) handleSelectSkill(skill, e);
                         showContextMenu(e, { type: 'skill', data: skill });
                       }}
-                      onCopyPath={handleCopyPath}
+                      onFavoriteToggle={(_, s) => handleToggleFavorite(s.id)}
                     />
-                  ))}
+                  ));
+                  })()}
                 </div>
               </SelectionArea>
             )}
@@ -1309,6 +1646,7 @@ function App() {
           onSelectRepo={(repoId) => setSelectedRepoId(repoId)}
           onRefreshData={fetchData}
           onUpdateRepos={handleUpdateRepos}
+          onDeleteRepos={(e, r) => handleDeleteRepos(e as any, r)}
           isOpen={isInspectorOpen}
           onToggle={() => setIsInspectorOpen(!isInspectorOpen)}
           onGeneratePrompt={handleGeneratePrompt}
@@ -1327,24 +1665,20 @@ function App() {
         ) : (
           /* 资源社区占位页面 */
           <div className="flex-1 flex flex-col h-full min-w-0 bg-transparent relative">
-            <div data-tauri-drag-region onPointerDown={(e) => {
-              if (e.target === e.currentTarget) getCurrentWindow().startDragging();
-            }} className="h-16 border-b border-[var(--color-border)] bg-white/70 backdrop-blur-xl flex items-center px-8 shrink-0 relative z-0">
+            <div data-tauri-drag-region className="h-16 border-b border-[var(--color-border)] bg-white/70 backdrop-blur-xl flex items-center px-8 shrink-0 relative z-0">
               <h1 className="text-xl font-medium tracking-tight text-[var(--foreground)]">资源社区</h1>
             </div>
             <div className="flex-1 flex flex-col items-center justify-center p-6 bg-[var(--color-background)]">
-              <div className="w-28 h-28 mb-6 relative">
-                <div className="relative bg-white/60 backdrop-blur-xl rounded-3xl p-7 flex items-center justify-center shadow-sm">
-                  <Store className="w-12 h-12 text-amber-400 drop-shadow-sm" />
-                </div>
+              <div className="w-24 h-24 mb-6 rounded-3xl bg-white flex items-center justify-center">
+                <Store className="w-10 h-10 text-blue-500" strokeWidth={1.5} />
               </div>
               <h2 className="text-xl font-semibold text-[var(--foreground)] mb-2 tracking-tight">资源社区</h2>
               <p className="text-sm text-[var(--color-muted)] mb-2 text-center max-w-sm leading-relaxed">
                 发现优质 Skill 和 Prompt 资源，一键导入使用，与社区共享你的创作
               </p>
-              <div className="mt-4 flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-blue-50 to-violet-50 border border-blue-100">
-                <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse"></div>
-                <span className="text-[13px] font-medium text-blue-600">功能建设中，敬请期待</span>
+              <div className="mt-4 flex items-center gap-2 px-4 py-2 rounded-full bg-[var(--color-primary)]/5 border border-[var(--color-primary)]/10">
+                <div className="w-2 h-2 rounded-full bg-[var(--color-primary)] animate-pulse"></div>
+                <span className="text-[13px] font-medium text-[var(--color-primary)]">功能建设中，敬请期待</span>
               </div>
             </div>
           </div>
@@ -1366,6 +1700,7 @@ function App() {
         onCloningError={(path, err) => { setCloningRepos(prev => prev.filter(r => r.path !== path)); if (err) showToast(`克隆失败: ${err}`, 'error'); }}
         defaultTab={addDialogTab}
         defaultTargetDir={selectedWorkspaceId !== "all" ? directories.find(d => d.id === selectedWorkspaceId)?.path : undefined}
+        defaultSourceDirId={selectedWorkspaceId !== "all" ? selectedWorkspaceId : undefined}
       />
 
       <SkillDetailsDrawer
@@ -1398,13 +1733,13 @@ function App() {
           const repo = groupedRepos.find(r => r.id === repoId);
           if (repo) {
             if (activeTab !== "all" && repo.source_type !== activeTab) setActiveTab("all");
-            if (selectedCategory !== "all" && repo.category !== selectedCategory) setSelectedCategory("all");
+            if (activeView !== "all" || selectedTag !== "all") { setActiveView("all"); setSelectedTag("all"); }
           }
           setSelectedRepoId(repoId);
         }}
         onSelectSkill={(skill, repo) => {
           if (activeTab !== "all" && repo.source_type !== activeTab) setActiveTab("all");
-          if (selectedCategory !== "all" && repo.category !== selectedCategory) setSelectedCategory("all");
+          if (activeView !== "all" || selectedTag !== "all") { setActiveView("all"); setSelectedTag("all"); }
           setSelectedRepoId(repo.id);
           setSelectedSkill(skill);
           setIsDrawerOpen(true);

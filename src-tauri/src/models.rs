@@ -39,7 +39,7 @@ pub struct Skill {
     pub repo_id: Option<String>,
     pub source_dir_id: String,
     pub relative_path: String,
-    pub source_type: String, // "github" or "local"
+    pub source_type: String, // "github" | "local" | "online"
     pub installed_at: String,
     pub updated_at: String,
     pub is_active: bool,
@@ -48,7 +48,15 @@ pub struct Skill {
     /// 技能范围（内部逻辑，不对用户暴露）：loose / packed / repo
     #[serde(default = "default_skill_scope")]
     pub skill_scope: String,
+    /// 线上地址（仅 source_type="online" 时有值）
+    #[serde(default)]
+    pub online_url: Option<String>,
+    #[serde(default)]
+    pub is_favorite: bool,
+    #[serde(default)]
+    pub use_count: i64,
 }
+
 
 fn default_skill_scope() -> String {
     "repo".to_string()

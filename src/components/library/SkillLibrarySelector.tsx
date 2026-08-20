@@ -111,6 +111,7 @@ export const SkillLibrarySelector = forwardRef<SkillLibrarySelectorRef, SkillLib
       setMenuOpenId(null);
     } catch (error) {
       console.error('Failed to remove directory:', error);
+      alert(`移除失败: ${error}`);
     } finally {
       setDeleteConfirmDir(null);
     }
@@ -245,6 +246,7 @@ export const SkillLibrarySelector = forwardRef<SkillLibrarySelectorRef, SkillLib
         const next = directories.find(d => d.id !== dir.id);
         if (next) onSelect(next.id);
       }
+      setMenuOpenId(null);
     } catch (err) {
       alert(`移除失败: ${err}`);
     }
