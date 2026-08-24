@@ -8,6 +8,8 @@ import {
   Database, RefreshCw, Trash2, Download, FileArchive, Sparkles, X
 } from 'lucide-react';
 import { Tooltip } from '../ui/Tooltip';
+import { DynamicIcon } from "../ui/DynamicIcon";
+import { parseIconConfig } from "../../lib/iconTypes";
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { showToast } from '../ui/Toast';
 import { Skill, GroupedRepo, AgentConfig, SyncRecord, SourceDirectory } from '../../types';
@@ -325,7 +327,21 @@ export function InspectorPanel({
           {/* 库名称 */}
           <div className="mb-5">
             <div className="flex items-center space-x-2 mb-1">
-              <Database className="w-4 h-4 text-blue-500" />
+              {currentLibrary?.icon ? (
+                <div 
+                  className="w-5 h-5 rounded-md flex items-center justify-center bg-gray-100 shrink-0"
+                  style={(() => {
+                    const config = parseIconConfig(currentLibrary.icon);
+                    return config?.type === 'icon' && config.color ? { backgroundColor: `${config.color}26` } : {};
+                  })()}
+                >
+                  <DynamicIcon config={parseIconConfig(currentLibrary.icon)} size={14} />
+                </div>
+              ) : (
+                <div className="w-5 h-5 rounded-md flex items-center justify-center bg-blue-500 shrink-0">
+                  <Database className="w-3 h-3 text-white fill-white/20" />
+                </div>
+              )}
               <span className="text-[14px] font-semibold text-[var(--foreground)] truncate">
                 {currentLibrary?.label || '未选择技能库'}
               </span>

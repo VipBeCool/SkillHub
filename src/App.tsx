@@ -40,6 +40,7 @@ function App() {
   const [activeTab, setActiveTab] = useState("all");
   const [selectedTag, setSelectedTag] = useState<string>("all");
   const [activeView, setActiveView] = useState<"all" | "starred" | "recent" | "untagged">("all");
+  const isFlatView = activeView !== "all" || selectedTag !== "all";
   const [, setSkills] = useState<Skill[]>([]);
   const [directories, setDirectories] = useState<SourceDirectory[]>([]);
   const [agents, setAgents] = useState<AgentConfig[]>([]);
@@ -569,11 +570,13 @@ function App() {
   }, [filteredGroupedRepos, lastSelectedRepoId]);
 
   // 单击选中技能
-  const handleSelectSkill = useCallback((skill: Skill, e?: React.MouseEvent) => {
+  const handleSelectSkill = useCallback((skill: Skill, e?: React.MouseEvent) => { console.log("handleSelectSkill called:", skill.name, "modifiers:", e?.metaKey, e?.ctrlKey, e?.shiftKey); 
     setInspectorSelectedType('skill');
     setSelectedRepoIds(new Set());
 
-    const visibleSkills = filteredGroupedRepos.find(r => r.id === selectedRepoId)?.skills || [];
+    const visibleSkills = isFlatView 
+      ? filteredGroupedRepos.flatMap(r => r.skills)
+      : filteredGroupedRepos.find(r => r.id === selectedRepoId)?.skills || [];
 
     setSelectedSkillIds(prev => {
       const newSet = new Set(prev);
@@ -604,7 +607,7 @@ function App() {
     if (!e?.shiftKey) {
       setLastSelectedSkillId(skill.id);
     }
-  }, [filteredGroupedRepos, selectedRepoId, lastSelectedSkillId]);
+  }, [filteredGroupedRepos, selectedRepoId, isFlatView, lastSelectedSkillId]);
 
   // 返回上一级
   const handleToggleFavorite = async (id: string) => {
@@ -1091,7 +1094,6 @@ function App() {
     selectedSkillIds
   ]);
 
-  const isFlatView = activeView !== "all" || selectedTag !== "all";
 
   const getHeaderTitle = () => {
     if (isFlatView) {
@@ -1318,15 +1320,80 @@ function App() {
 
           <div 
             ref={mainContentRef}
-            className="flex-1 overflow-y-auto p-6 relative z-0 bg-[var(--color-background)] flex flex-col"
-            onClick={(e) => { if (e.target === e.currentTarget) handleDeselectAll(); }}
+            className="flex-1 overflow-y-auto relative z-0 bg-[var(--color-background)] flex flex-col"
+            onClick={() => { if (!isDraggingRef.current) handleDeselectAll(); }}
             onContextMenu={(e) => {
               // Because cards call stopPropagation(), this only fires for blank space
               showContextMenu(e, { type: 'empty', data: null });
             }}
           >
+            <SelectionArea 
+              className="min-h-full w-full flex flex-col"
+              onBeforeStart={({ event }: SelectionEvent) => {
+                if ((event?.target as Element)?.closest?.('[data-id]')) return false;
+                
+                // Smart scrollbar detection (works for both Windows physical and Mac overlay scrollbars)
+                if (event instanceof MouseEvent && mainContentRef.current) {
+                  const el = mainContentRef.current;
+                  const rect = el.getBoundingClientRect();
+                  // Calculate the exact left position of the vertical scrollbar
+                  const scrollbarLeftEdge = rect.left + el.clientLeft + el.clientWidth;
+                  // If the click is on or to the right of the scrollbar edge, ignore it
+                  if (event.clientX > scrollbarLeftEdge) {
+                    return false;
+                  }
+                }
+                
+                return true;
+              }}
+              onStart={({ event, selection }: SelectionEvent) => {
+                if (!event?.ctrlKey && !event?.metaKey && !event?.shiftKey) {
+                  selection.clearSelection();
+                  if (!selectedRepoId && !isFlatView) {
+                    setSelectedRepoIds(new Set());
+                  } else {
+                    setSelectedSkillIds(new Set());
+                  }
+                }
+              }}
+              onMove={({ store: { changed: { added, removed } } }: SelectionEvent) => {
+                isDraggingRef.current = true;
+                if (!selectedRepoId && !isFlatView) {
+                  setSelectedRepoIds(prev => {
+                    const next = new Set(prev);
+                    added.forEach((el: Element) => {
+                      const id = el.getAttribute('data-id');
+                      if (id) next.add(id);
+                    });
+                    removed.forEach((el: Element) => {
+                      const id = el.getAttribute('data-id');
+                      if (id) next.delete(id);
+                    });
+                    return next;
+                  });
+                  setInspectorSelectedType('repo');
+                } else {
+                  setSelectedSkillIds(prev => {
+                    const next = new Set(prev);
+                    added.forEach((el: Element) => {
+                      const id = el.getAttribute('data-id');
+                      if (id) next.add(id);
+                    });
+                    removed.forEach((el: Element) => {
+                      const id = el.getAttribute('data-id');
+                      if (id) next.delete(id);
+                    });
+                    return next;
+                  });
+                  setInspectorSelectedType('skill');
+                }
+              }}
+              onStop={() => { setTimeout(() => { isDraggingRef.current = false; }, 0); }}
+              selectables="[data-id]"
+              features={{ touch: false, range: true, singleTap: { allow: false } }}
+            >
 
-            {isFileDraggingOver && (
+              {isFileDraggingOver && (
               <div className="absolute inset-0 z-50 m-6 flex flex-col items-center justify-end pb-10 bg-[var(--color-primary)]/5 border-4 border-dashed border-[var(--color-primary)] rounded-xl pointer-events-none transition-all duration-200 backdrop-blur-[2px]">
                  <div className="bg-[var(--color-primary)] text-white px-6 py-3 rounded-full font-medium shadow-lg flex items-center space-x-2 animate-bounce">
                     <Folder className="w-5 h-5" />
@@ -1336,7 +1403,7 @@ function App() {
             )}
 
             {selectedWorkspaceDir?.is_missing ? (
-              <div className="flex flex-col items-center justify-center h-full text-[var(--color-muted)] animate-in fade-in duration-500">
+              <div className="flex flex-col items-center justify-center h-full text-[var(--color-muted)] animate-in fade-in duration-500 p-6">
                 <div className="w-32 h-32 mb-6 relative group">
                   <div className="relative bg-white/60 backdrop-blur-xl rounded-3xl p-8 flex items-center justify-center">
                     <FolderX className="w-12 h-12 text-red-500 drop-shadow-sm relative z-10" />
@@ -1386,7 +1453,7 @@ function App() {
                 </div>
               </div>
             ) : filteredGroupedRepos.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-[var(--color-muted)] animate-in fade-in duration-500">
+              <div className="flex flex-col items-center justify-center h-full text-[var(--color-muted)] animate-in fade-in duration-500 p-6">
                 <div className="w-32 h-32 mb-6 relative group">
                   <div className="relative bg-white/60 backdrop-blur-xl rounded-3xl p-8 flex items-center justify-center">
                     <HardDrive className="w-12 h-12 text-blue-400 drop-shadow-sm relative z-10" />
@@ -1428,39 +1495,8 @@ function App() {
                 </div>
               </div>
             ) : !selectedRepoId && !isFlatView ? (
-              <SelectionArea
-                onBeforeStart={({ event }: SelectionEvent) => {
-                  if ((event?.target as Element)?.closest?.('[data-id]')) return false;
-                  return true;
-                }}
-                onStart={({ event, selection }: SelectionEvent) => {
-                  if (!event?.ctrlKey && !event?.metaKey && !event?.shiftKey) {
-                    selection.clearSelection();
-                    setSelectedRepoIds(new Set());
-                  }
-                }}
-                onMove={({ store: { changed: { added, removed } } }: SelectionEvent) => {
-                  isDraggingRef.current = true;
-                  setSelectedRepoIds(prev => {
-                    const next = new Set(prev);
-                    added.forEach((el: Element) => {
-                      const id = el.getAttribute('data-id');
-                      if (id) next.add(id);
-                    });
-                    removed.forEach((el: Element) => {
-                      const id = el.getAttribute('data-id');
-                      if (id) next.delete(id);
-                    });
-                    return next;
-                  });
-                  setInspectorSelectedType('repo');
-                }}
-                onStop={() => { setTimeout(() => { isDraggingRef.current = false; }, 0); }}
-                selectables="[data-id]"
-                className="w-full flex-1 min-h-full"
-                features={{ touch: false, range: true, singleTap: { allow: false } }}
-              >
-                <div className="grid gap-3 content-start pb-20" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }} onClick={(e) => { if (e.target === e.currentTarget && !isDraggingRef.current) handleDeselectAll(); }}>
+              <>
+                <div className="flex-1 grid gap-3 content-start p-6 pb-20" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }}>
                   {cloningRepos.map((repo, idx) => (
                     <div key={`cloning-${idx}`} className="group bg-[var(--color-muted-bg)]/30 backdrop-blur-md rounded-xl p-4 border border-dashed border-[var(--color-border)] shadow-sm flex flex-col h-24 animate-pulse">
                       <div className="flex items-center space-x-2">
@@ -1502,41 +1538,10 @@ function App() {
                     />
                   ))}
                 </div>
-              </SelectionArea>
+              </>
             ) : (
-              <SelectionArea
-                onBeforeStart={({ event }: SelectionEvent) => {
-                  if ((event?.target as Element)?.closest?.('[data-id]')) return false;
-                  return true;
-                }}
-                onStart={({ event, selection }: SelectionEvent) => {
-                  if (!event?.ctrlKey && !event?.metaKey && !event?.shiftKey) {
-                    selection.clearSelection();
-                    setSelectedSkillIds(new Set());
-                  }
-                }}
-                onMove={({ store: { changed: { added, removed } } }: SelectionEvent) => {
-                  isDraggingRef.current = true;
-                  setSelectedSkillIds(prev => {
-                    const next = new Set(prev);
-                    added.forEach((el: Element) => {
-                      const id = el.getAttribute('data-id');
-                      if (id) next.add(id);
-                    });
-                    removed.forEach((el: Element) => {
-                      const id = el.getAttribute('data-id');
-                      if (id) next.delete(id);
-                    });
-                    return next;
-                  });
-                  setInspectorSelectedType('skill');
-                }}
-                onStop={() => { setTimeout(() => { isDraggingRef.current = false; }, 0); }}
-                selectables="[data-id]"
-                className="w-full flex-1 min-h-full"
-                features={{ touch: false, range: true, singleTap: { allow: false } }}
-              >
-                <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))' }} onClick={(e) => { if (e.target === e.currentTarget && !isDraggingRef.current) handleDeselectAll(); }}>
+              <>
+                <div className="flex-1 grid gap-3 content-start p-6 pb-20" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))' }}>
                   {(() => {
                     const skillsToRender = isFlatView 
                       ? filteredGroupedRepos.flatMap(r => r.skills)
@@ -1560,8 +1565,11 @@ function App() {
                   ));
                   })()}
                 </div>
-              </SelectionArea>
+              </>
             )}
+
+            </SelectionArea>
+
           </div>
 
           {/* Sync Progress Panel */}

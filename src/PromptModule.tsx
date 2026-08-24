@@ -352,7 +352,10 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChang
     setInspectorData(null);
   }, [filter]);
 
-  const handleSelectPrompt = (prompt: Prompt, _e?: React.MouseEvent) => {
+  const handleSelectPrompt = (prompt: Prompt, e?: React.MouseEvent) => {
+    if (e && (e.metaKey || e.ctrlKey || e.shiftKey)) {
+      return;
+    }
     setSelectedIds(new Set([prompt.id]));
     setLastSelectedId(prompt.id);
     const el = document.querySelector(`[data-prompt-id="${prompt.id}"]`);

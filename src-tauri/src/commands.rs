@@ -1,7 +1,6 @@
 use tauri::State;
 use crate::models::{Skill, SourceDirectory};
 use crate::scanner;
-use crate::git_engine;
 use std::path::Path;
 use crate::AppState;
 
@@ -515,7 +514,7 @@ pub async fn cancel_github_clone(state: State<'_, AppState>, target_dir: String)
 
 #[tauri::command]
 pub async fn import_local_skills_to_workspace(
-    app: tauri::AppHandle,
+    _app: tauri::AppHandle,
     state: State<'_, AppState>,
     path: String,
     strategy: Option<String>,
@@ -592,7 +591,7 @@ pub async fn import_local_skills_to_workspace(
 
 #[tauri::command]
 pub async fn import_github_skills_to_workspace(
-    app: tauri::AppHandle,
+    _app: tauri::AppHandle,
     state: State<'_, AppState>,
     url: String,
     target_dir: String,
