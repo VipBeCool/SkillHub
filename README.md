@@ -1,3 +1,7 @@
+<div align="right">
+  <strong>简体中文</strong> | <a href="./README.en.md">English</a>
+</div>
+
 <div align="center">
   <img src="src-tauri/icons/icon.png" width="128" height="128" alt="SkillHub Logo" />
   <h1>SkillHub</h1>
@@ -6,6 +10,7 @@
     <img src="https://img.shields.io/github/v/release/VipBeCool/SkillHub?style=flat-square" alt="release" />
     <img src="https://img.shields.io/github/license/VipBeCool/SkillHub?style=flat-square" alt="license" />
     <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-blue?style=flat-square" alt="platform" />
+    <img src="https://img.shields.io/github/downloads/VipBeCool/SkillHub/total?style=flat-square" alt="downloads" />
   </p>
 </div>
 
