@@ -38,7 +38,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEUyRTQ4OTMxQUQyODgwMjEKUldRaGdDaXRNWW5rNGlndkt3SW03QkF6cjhXVDlzY2lFQWx4WVZqVlJSdEExc0hiRUs5TlIxSmoK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDRCNUUxOTVFMEYyNjcyODEKUldTQmNpWVBYaGxlUy9aK2dDOU54SmYwbEllbHRYdWpkQWEvME56NHJmZ3pBTFRCYUVTeWpmVHIK",
       "endpoints": [
         "https://github.com/VipBeCool/SkillHub/releases/latest/download/latest.json"
       ]
