@@ -1571,35 +1571,81 @@ pub async fn translate_text(text: String, target_lang: String) -> Result<String,
     use serde_json::Value;
 
     let client = Client::new();
-    let url = format!(
-        "https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl={}&dt=t",
-        target_lang
-    );
+    let max_len = 2000;
+    
+    let mut chunks = Vec::new();
+    let mut current_chunk = String::new();
+    
+    for line in text.lines() {
+        if current_chunk.len() + line.len() + 1 > max_len {
+            if !current_chunk.is_empty() {
+                chunks.push(current_chunk.clone());
+                current_chunk.clear();
+            }
+            if line.len() > max_len {
+                chunks.push(line.to_string());
+                continue;
+            }
+        }
+        if !current_chunk.is_empty() {
+            current_chunk.push('\n');
+        }
+        current_chunk.push_str(line);
+    }
+    if !current_chunk.is_empty() {
+        chunks.push(current_chunk);
+    }
+    
+    let mut full_translated_text = String::new();
+    
+    for chunk in chunks {
+        let url = format!(
+            "https://translate.googleapis.com/translate_a/single?client=dict-chrome-ex&sl=auto&tl={}&dt=t",
+            target_lang
+        );
 
-    let body = format!("q={}", urlencoding::encode(&text));
+        let body = format!("q={}", urlencoding::encode(&chunk));
 
-    let res = client
-        .post(&url)
-        .header("Content-Type", "application/x-www-form-urlencoded")
-        .body(body)
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
+        let res = client
+            .post(&url)
+            .header("Content-Type", "application/x-www-form-urlencoded")
+            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+            .body(body)
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
 
-    let json: Value = res.json().await.map_err(|e| e.to_string())?;
+        let status = res.status();
+        let text_response = res.text().await.unwrap_or_default();
+        
+        if !status.is_success() {
+            let err_msg = format!("Translate API failed with status {}: {}", status, text_response);
+            println!("{}", err_msg);
+            return Err(err_msg);
+        }
 
-    let mut translated_text = String::new();
-    if let Some(array) = json.as_array() {
-        if let Some(sentences) = array.get(0).and_then(|v| v.as_array()) {
-            for sentence in sentences {
-                if let Some(text_part) = sentence.get(0).and_then(|v| v.as_str()) {
-                    translated_text.push_str(text_part);
+        let json: Value = serde_json::from_str(&text_response).map_err(|e| {
+            let err_msg = format!("Failed to parse translate JSON: {}\nResponse: {}", e, text_response);
+            println!("{}", err_msg);
+            e.to_string()
+        })?;
+
+        if let Some(array) = json.as_array() {
+            if let Some(sentences) = array.get(0).and_then(|v| v.as_array()) {
+                for sentence in sentences {
+                    if let Some(text_part) = sentence.get(0).and_then(|v| v.as_str()) {
+                        full_translated_text.push_str(text_part);
+                    }
                 }
             }
         }
+        full_translated_text.push('\n');
+        
+        // Sleep for 100ms to avoid Google API 429 rate limit
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
     }
 
-    Ok(translated_text)
+    Ok(full_translated_text.trim_end().to_string())
 }
 
 #[derive(serde::Serialize)]

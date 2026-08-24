@@ -1,8 +1,187 @@
 "use client";
 
-import { motion } from "framer-motion";
-import { Download, Zap, Shield, RefreshCw, Layers, ArrowRight, Monitor, Apple, Terminal } from "lucide-react";
-import { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { 
+  Download, Zap, Shield, RefreshCw, Layers, ArrowRight, Monitor, Apple, Terminal,
+  Cpu, FileText, Search, Sparkles, BookOpen, Edit3, FolderDown, CheckCircle2
+} from "lucide-react";
+import { useState, useEffect, useRef, useSyncExternalStore } from "react";
+
+const SHOWCASE_TABS = [
+  {
+    id: "skills-list",
+    title: "技能管理",
+    icon: Cpu,
+    tag: "核心功能",
+    desc: "直观的可视化卡片与列表视图，支持多选批量管理、启用/禁用、标签分类与快速过滤。",
+    image: "/screenshots/skills-list.png",
+  },
+  {
+    id: "skill-detail",
+    title: "技能详情",
+    icon: BookOpen,
+    tag: "完整解析",
+    desc: "清晰展现技能的说明、输入输出结构、版本历史与底层配置，一览无余。",
+    image: "/screenshots/skill-detail.png",
+  },
+  {
+    id: "smart-prompt",
+    title: "智能引用",
+    icon: Sparkles,
+    tag: "AI 联动",
+    desc: "支持在编写 Agent 技能时随时智能引用现有的 Prompt 库，模块化组装复杂的 AI 任务。",
+    image: "/screenshots/smart-prompt-reference.png",
+  },
+  {
+    id: "prompts-list",
+    title: "提示词库",
+    icon: FileText,
+    tag: "高效复用",
+    desc: "集中存储与分类高频 Prompt 模板，毫秒级复制与调用，彻底告别零散记录。",
+    image: "/screenshots/prompts-list.png",
+  },
+  {
+    id: "prompt-edit",
+    title: "提示词编辑",
+    icon: Edit3,
+    tag: "沉浸创作",
+    desc: "专为提示词工程打造的编辑器，支持动态变量插入、Markdown 语法与实时预览。",
+    image: "/screenshots/prompt-edit.png",
+  },
+  {
+    id: "global-search",
+    title: "全局秒搜",
+    icon: Search,
+    tag: "快捷调度",
+    desc: "支持全局快捷键唤醒，秒级模糊检索所有技能、提示词与命令，指尖即达。",
+    image: "/screenshots/global-search.png",
+  },
+  {
+    id: "import-skill",
+    title: "导入与更新",
+    icon: FolderDown,
+    tag: "生态互通",
+    desc: "支持本地文件夹拖拽导入、GitHub 仓库一键挂载与自动版本更新检测。",
+    image: "/screenshots/import-skill.png",
+  },
+];
+
+function ProductShowcase() {
+  const showcaseRef = useRef<HTMLDivElement>(null);
+  const [activeTab, setActiveTab] = useState(0);
+  const current = SHOWCASE_TABS[activeTab];
+
+  // 提前预加载所有截图，消除切图时的解码延迟与闪烁
+  useEffect(() => {
+    SHOWCASE_TABS.forEach((tab) => {
+      const img = new window.Image();
+      img.src = tab.image;
+    });
+  }, []);
+
+  const handleTabChange = (newIdx: number) => {
+    setActiveTab(newIdx);
+    // 丝滑滚动到展示区域，预留舒适的顶部间距
+    if (showcaseRef.current) {
+      const topOffset = 112; // 导航栏高度 64px + 48px 呼吸间距
+      const elementPosition = showcaseRef.current.getBoundingClientRect().top;
+      const offsetPosition = elementPosition + window.pageYOffset - topOffset;
+      window.scrollTo({
+        top: offsetPosition,
+        behavior: "smooth"
+      });
+    }
+  };
+
+  return (
+    <div ref={showcaseRef} id="showcase" className="flex flex-col items-center w-full max-w-5xl md:max-w-[1060px] mx-auto scroll-mt-28">
+      {/* Tab Switcher Pills - Apple/Linear Segmented Style (Single Row) */}
+      <div className="flex flex-wrap items-center justify-center gap-1.5 sm:gap-2 p-1.5 bg-slate-100/90 backdrop-blur-2xl border border-slate-200/80 rounded-2xl shadow-inner mb-6 max-w-full z-20">
+        {SHOWCASE_TABS.map((tab, idx) => {
+          const Icon = tab.icon;
+          const isActive = idx === activeTab;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => handleTabChange(idx)}
+              className={`relative flex items-center gap-2 px-3.5 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs sm:text-sm font-medium transition-colors duration-200 cursor-pointer ${
+                isActive
+                  ? "text-gray-900 font-semibold"
+                  : "text-gray-500 hover:text-gray-800"
+              }`}
+            >
+              {isActive && (
+                <motion.div
+                  layoutId="activeShowcaseTab"
+                  className="absolute inset-0 bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.06),0_1px_2px_rgba(0,0,0,0.04)] border border-slate-200/60 -z-10"
+                  transition={{ type: "spring", stiffness: 450, damping: 35 }}
+                />
+              )}
+              <Icon className={`w-4 h-4 transition-colors ${isActive ? "text-[#0055FF]" : "text-gray-400"}`} />
+              <span>{tab.title}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Showcase Stage Backdrop Container */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true }}
+        transition={{ duration: 0.5 }}
+        className="w-full rounded-2xl md:rounded-[2rem] bg-gradient-to-b from-white via-slate-50/80 to-slate-100/80 border border-slate-200/80 shadow-2xl backdrop-blur-xl relative flex flex-col group overflow-hidden"
+      >
+        {/* Soft, Balanced Stage Ambient Glow & Grid Background */}
+        <div className="absolute inset-0 bg-gradient-to-tr from-[#0055FF]/10 via-[#00E5FF]/08 to-purple-500/06 blur-3xl pointer-events-none" />
+        <div className="absolute inset-0 bg-[url('/grid.svg')] bg-center opacity-25 pointer-events-none" />
+
+        {/* Dynamic Height Crossfade Image Area - Guaranteed to fit on 1 screen */}
+        <div className="relative z-10 w-full p-4 sm:p-6 md:p-8 pb-4 sm:pb-6 flex items-center justify-center min-h-[300px]">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={activeTab}
+              initial={{ opacity: 0, y: 15, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -15, scale: 0.98 }}
+              transition={{ duration: 0.35, ease: "easeInOut" }}
+              className="w-full flex justify-center items-center"
+            >
+              {/* Backlight Glow exactly behind the active image */}
+              <div className="absolute inset-x-12 inset-y-8 bg-gradient-to-r from-[#0055FF]/15 via-[#00E5FF]/12 to-purple-500/10 blur-2xl -z-10 rounded-3xl pointer-events-none" />
+              
+              <img
+                src={current.image}
+                alt={current.title}
+                /* 高度限制让整卡片单屏内完整显示，w-auto 等比缩放自然留出两侧空余 */
+                className="h-auto max-h-[58vh] w-auto mx-auto block rounded-xl sm:rounded-2xl shadow-[0_8px_30px_rgba(0,0,0,0.10)]"
+                loading="eager"
+              />
+            </motion.div>
+          </AnimatePresence>
+        </div>
+
+        {/* Bottom Full-Width Docked Caption Bar */}
+        <div className="relative z-10 w-full border-t border-slate-200/80 bg-white/95 backdrop-blur-xl px-5 sm:px-8 py-3.5 sm:py-4 flex items-center justify-between gap-3 mt-auto">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-[#0055FF] text-white shadow-sm shadow-[#0055FF]/20 shrink-0">
+              <CheckCircle2 className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h4 className="text-sm sm:text-base font-bold text-gray-900">{current.title}</h4>
+                <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-[#0055FF]/10 text-[#0055FF]">
+                  {current.tag}
+                </span>
+              </div>
+              <p className="text-xs sm:text-sm text-gray-600 mt-0.5">{current.desc}</p>
+            </div>
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
 
 function GithubIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
@@ -24,30 +203,51 @@ function GithubIcon(props: React.SVGProps<SVGSVGElement>) {
   );
 }
 
-export default function Home() {
-  const [downloadUrl, setDownloadUrl] = useState("https://github.com/VipBeCool/SkillHub/releases/latest");
-  const [osName, setOsName] = useState("Download");
-  const [osIcon, setOsIcon] = useState(<Download className="w-5 h-5" />);
+type OsType = "mac" | "win" | "linux" | "default";
 
-  useEffect(() => {
-    // Detect OS
-    if (typeof window !== "undefined") {
-      const platform = window.navigator.userAgent.toLowerCase();
-      if (platform.includes("mac")) {
-        setOsName("Download for macOS");
-        setOsIcon(<Apple className="w-5 h-5" />);
-        setDownloadUrl("https://github.com/VipBeCool/SkillHub/releases/latest/download/SkillHub_0.1.0_universal.dmg");
-      } else if (platform.includes("win")) {
-        setOsName("Download for Windows");
-        setOsIcon(<Monitor className="w-5 h-5" />);
-        setDownloadUrl("https://github.com/VipBeCool/SkillHub/releases/latest/download/SkillHub_0.1.0_x64-setup.exe");
-      } else if (platform.includes("linux")) {
-        setOsName("Download for Linux");
-        setOsIcon(<Terminal className="w-5 h-5" />);
-        setDownloadUrl("https://github.com/VipBeCool/SkillHub/releases/latest/download/SkillHub_0.1.0_amd64.AppImage");
-      }
-    }
-  }, []);
+const OS_INFO: Record<OsType, { name: string; icon: React.ComponentType<{ className?: string }>; url: string }> = {
+  mac: {
+    name: "下载 macOS 版",
+    icon: Apple,
+    url: "/api/download/SkillHub_0.1.0_universal.dmg",
+  },
+  win: {
+    name: "下载 Windows 版",
+    icon: Monitor,
+    url: "/api/download/SkillHub_0.1.0_x64-setup.exe",
+  },
+  linux: {
+    name: "下载 Linux 版",
+    icon: Terminal,
+    url: "/api/download/SkillHub_0.1.0_amd64.AppImage",
+  },
+  default: {
+    name: "立即下载",
+    icon: Download,
+    url: "https://github.com/VipBeCool/SkillHub/releases/latest",
+  },
+};
+
+function getOsType(): OsType {
+  if (typeof window === "undefined") return "default";
+  const platform = window.navigator.userAgent.toLowerCase();
+  if (platform.includes("mac")) return "mac";
+  if (platform.includes("win")) return "win";
+  if (platform.includes("linux")) return "linux";
+  return "default";
+}
+
+const emptySubscribe = () => () => {};
+
+export default function Home() {
+  const osType: OsType = useSyncExternalStore<OsType>(
+    emptySubscribe,
+    getOsType,
+    () => "default"
+  );
+
+  const activeOs = OS_INFO[osType];
+  const OsIcon = activeOs.icon;
 
   return (
     <div className="min-h-screen flex flex-col selection:bg-[#00E5FF]/30 overflow-x-hidden">
@@ -66,9 +266,15 @@ export default function Home() {
             <img src="/icon.png" alt="SkillHub Logo" className="w-8 h-8 drop-shadow-md rounded-xl" />
             <span className="font-bold text-xl tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-gray-800 to-gray-600">SkillHub</span>
           </div>
-          <nav className="flex gap-6 items-center">
-            <a href="#downloads" className="text-sm font-medium text-gray-600 hover:text-[#0055FF] transition-colors hidden sm:block">Downloads</a>
-            <a href="https://github.com/VipBeCool/SkillHub" target="_blank" rel="noreferrer" className="text-gray-500 hover:text-gray-900 transition-colors flex items-center gap-2 font-medium bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-full text-sm">
+          <nav className="flex gap-3 sm:gap-4 items-center">
+            <a
+              href="#downloads"
+              className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs sm:text-sm font-semibold text-white bg-gradient-to-r from-[#0055FF] to-[#0077FF] hover:shadow-md hover:shadow-[#0055FF]/25 hover:scale-[1.02] active:scale-[0.98] transition-all"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>免费下载</span>
+            </a>
+            <a href="https://github.com/VipBeCool/SkillHub" target="_blank" rel="noopener noreferrer" className="text-gray-600 hover:text-gray-900 transition-colors flex items-center gap-2 font-medium bg-gray-100 hover:bg-gray-200/80 px-3 py-1.5 rounded-full text-xs sm:text-sm border border-gray-200/60 shadow-sm">
               <GithubIcon className="w-4 h-4" />
               <span>Star on GitHub</span>
             </a>
@@ -76,27 +282,30 @@ export default function Home() {
         </div>
       </header>
 
-      <main className="flex-grow pt-32 pb-24">
-        {/* Hero Section */}
-        <section className="max-w-7xl mx-auto px-6 pt-16 pb-24 flex flex-col items-center text-center">
-          <motion.div
+      <main className="flex-grow pt-28 pb-20">
+        {/* Hero Section - Compact & Elevated with Comfortable Breathing Room */}
+        <section className="max-w-7xl mx-auto px-6 pt-6 sm:pt-10 pb-12 sm:pb-16 md:pb-20 flex flex-col items-center text-center">
+          <motion.a
+            href="https://github.com/VipBeCool/SkillHub/releases/tag/v0.1.0"
+            target="_blank"
+            rel="noopener noreferrer"
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.5 }}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white border border-gray-200 text-[#0055FF] font-medium text-sm mb-10 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+            className="inline-flex items-center gap-2 px-4 py-1.5 sm:py-2 rounded-full bg-white border border-gray-200 text-gray-600 font-medium text-xs sm:text-sm mb-6 sm:mb-8 shadow-sm hover:shadow-md hover:border-[#FF5500]/30 transition-all cursor-pointer"
           >
             <span className="relative flex h-2.5 w-2.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#00E5FF] opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#0055FF]"></span>
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#FF5500]"></span>
             </span>
-            SkillHub v0.1.0 is now available
-          </motion.div>
+            <span className="text-[#FF5500] font-bold">SkillHub v0.1.0</span> is now available
+          </motion.a>
 
           <motion.h1 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.1 }}
-            className="text-5xl md:text-7xl font-extrabold tracking-tight mb-8 max-w-4xl leading-[1.15]"
+            className="text-4xl sm:text-6xl md:text-7xl font-extrabold tracking-tight mb-5 sm:mb-6 max-w-4xl leading-[1.12]"
           >
             你的极速本地 <br />
             <span className="text-gradient">AI 技能与 Prompt 引擎</span>
@@ -106,7 +315,7 @@ export default function Home() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.2 }}
-            className="text-xl text-gray-500 mb-12 max-w-2xl leading-relaxed"
+            className="text-base sm:text-xl text-gray-500 mb-8 sm:mb-10 max-w-2xl leading-relaxed"
           >
             基于 Tauri & Rust 打造的跨平台 AI 工作站。零配置，纯本地，毫秒级响应，轻松管理所有 Agent 技能与提示词库。
           </motion.p>
@@ -115,18 +324,18 @@ export default function Home() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.3 }}
-            className="flex flex-col sm:flex-row gap-5 items-center"
+            className="flex flex-col sm:flex-row gap-4 sm:gap-5 items-center"
           >
             <a 
-              href={downloadUrl}
-              className="px-8 py-4 rounded-2xl bg-gradient-to-r from-[#0055FF] to-[#0077FF] text-white font-bold text-lg flex items-center justify-center gap-3 btn-glow w-full sm:w-auto"
+              href={activeOs.url}
+              className="px-7 py-3.5 sm:px-8 sm:py-4 rounded-2xl bg-gradient-to-r from-[#0055FF] to-[#0077FF] text-white font-bold text-base sm:text-lg flex items-center justify-center gap-3 btn-glow w-full sm:w-auto"
             >
-              {osIcon}
-              {osName}
+              <OsIcon className="w-5 h-5" />
+              {activeOs.name}
             </a>
             <a 
               href="#downloads" 
-              className="px-8 py-4 rounded-2xl bg-white border border-gray-200 text-gray-700 font-bold text-lg flex items-center justify-center gap-2 hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm w-full sm:w-auto group"
+              className="px-7 py-3.5 sm:px-8 sm:py-4 rounded-2xl bg-white border border-gray-200 text-gray-700 font-bold text-base sm:text-lg flex items-center justify-center gap-2 hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm w-full sm:w-auto group"
             >
               其他平台
               <ArrowRight className="w-5 h-5 text-gray-400 group-hover:text-gray-700 group-hover:translate-x-1 transition-all" />
@@ -134,32 +343,9 @@ export default function Home() {
           </motion.div>
         </section>
 
-        {/* Product Mockup */}
-        <section className="max-w-6xl mx-auto px-6 pb-32">
-          <motion.div 
-            initial={{ opacity: 0, y: 40 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.5 }}
-            className="relative rounded-3xl overflow-hidden shadow-2xl border border-gray-200/60 bg-white/50 backdrop-blur-sm aspect-[16/10] flex items-center justify-center group"
-          >
-            <div className="absolute inset-0 bg-gradient-to-tr from-[#00E5FF]/5 to-[#0055FF]/5"></div>
-            
-            {/* Browser/Window Chrome */}
-            <div className="absolute top-0 left-0 right-0 h-12 bg-white/80 border-b border-gray-100 flex items-center px-4 gap-2 z-10">
-              <div className="w-3 h-3 rounded-full bg-red-400"></div>
-              <div className="w-3 h-3 rounded-full bg-amber-400"></div>
-              <div className="w-3 h-3 rounded-full bg-green-400"></div>
-            </div>
-
-            {/* Placeholder for the actual app screenshot */}
-            <div className="text-center p-8 mt-12 transform group-hover:scale-105 transition-transform duration-700">
-              <div className="w-24 h-24 mx-auto bg-gradient-to-br from-gray-50 to-gray-100 rounded-3xl flex items-center justify-center mb-6 shadow-inner border border-gray-200">
-                <img src="/icon.png" className="w-12 h-12 opacity-80" alt="Icon" />
-              </div>
-              <h3 className="text-3xl font-bold text-gray-800 mb-3 tracking-tight">令人惊艳的交互体验</h3>
-              <p className="text-gray-500 text-lg">（后期可在此替换为真实的高清应用截图）</p>
-            </div>
-          </motion.div>
+        {/* Product Mockup & Interactive Showcase */}
+        <section className="max-w-6xl mx-auto px-6 pt-4 sm:pt-8 pb-16">
+          <ProductShowcase />
         </section>
 
         {/* Features Bento Box */}
@@ -205,28 +391,39 @@ export default function Home() {
         </section>
 
         {/* Downloads Section */}
-        <section id="downloads" className="max-w-5xl mx-auto px-6 py-32">
-          <div className="bg-gray-900 rounded-[2.5rem] p-12 md:p-20 text-center relative overflow-hidden shadow-2xl">
-            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-full max-w-2xl bg-gradient-to-b from-[#0055FF]/30 to-transparent opacity-50 blur-3xl pointer-events-none"></div>
+        <section id="downloads" className="max-w-7xl mx-auto px-6 py-32">
+          <div className="relative rounded-[2.5rem] p-10 md:p-20 text-center overflow-hidden border border-[#0055FF]/15 bg-white/60 shadow-[0_20px_60px_-15px_rgba(0,85,255,0.1)] backdrop-blur-xl">
+            {/* Ambient Background Glow inside the CTA */}
+            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[600px] bg-gradient-to-b from-[#0055FF]/15 via-[#00E5FF]/5 to-transparent blur-3xl pointer-events-none -z-10 rounded-full" />
             
-            <h2 className="text-3xl md:text-5xl font-bold mb-6 text-white tracking-tight relative z-10">准备好提升效率了吗？</h2>
-            <p className="text-gray-400 text-xl mb-12 max-w-2xl mx-auto relative z-10">SkillHub 完全开源免费，提供全平台原生安装包。选择你的操作系统立即开始体验。</p>
+            <h2 className="text-3xl md:text-5xl font-bold mb-6 text-gray-900 tracking-tight relative z-10">
+              准备好提升<span className="text-[#0055FF]">效率</span>了吗？
+            </h2>
+            <p className="text-gray-500 text-lg md:text-xl mb-14 max-w-2xl mx-auto relative z-10">
+              SkillHub 完全开源免费，提供全平台原生安装包。<br className="hidden md:block"/>选择你的操作系统立即开始体验。
+            </p>
             
-            <div className="grid sm:grid-cols-3 gap-4 relative z-10">
-              <a href="https://github.com/VipBeCool/SkillHub/releases/latest/download/SkillHub_0.1.0_universal.dmg" className="flex flex-col items-center p-6 rounded-2xl bg-white/10 hover:bg-white/20 border border-white/10 transition-colors">
-                <Apple className="w-10 h-10 text-white mb-4" />
-                <span className="text-white font-semibold mb-1">macOS</span>
-                <span className="text-gray-400 text-sm">Universal (Intel & Apple Silicon)</span>
+            <div className="grid md:grid-cols-3 gap-6 relative z-10 max-w-5xl mx-auto">
+              <a href="/api/download/SkillHub_0.1.0_universal.dmg" className="group flex flex-col items-center p-8 rounded-3xl bg-white/80 hover:bg-white border border-gray-200/80 hover:border-[#0055FF]/30 hover:shadow-2xl hover:shadow-[#0055FF]/10 transition-all duration-300 transform hover:-translate-y-1">
+                <div className="w-16 h-16 rounded-2xl bg-gray-50 group-hover:bg-[#0055FF]/5 flex items-center justify-center mb-5 transition-colors border border-gray-100 group-hover:border-[#0055FF]/10">
+                  <Apple className="w-8 h-8 text-gray-700 group-hover:text-[#0055FF] transition-colors" />
+                </div>
+                <span className="text-gray-900 font-bold text-lg mb-1 group-hover:text-[#0055FF] transition-colors">macOS</span>
+                <span className="text-gray-500 text-sm">Universal (Intel & Apple Silicon)</span>
               </a>
-              <a href="https://github.com/VipBeCool/SkillHub/releases/latest/download/SkillHub_0.1.0_x64-setup.exe" className="flex flex-col items-center p-6 rounded-2xl bg-white/10 hover:bg-white/20 border border-white/10 transition-colors">
-                <Monitor className="w-10 h-10 text-white mb-4" />
-                <span className="text-white font-semibold mb-1">Windows</span>
-                <span className="text-gray-400 text-sm">Windows 10 / 11 (x64)</span>
+              <a href="/api/download/SkillHub_0.1.0_x64-setup.exe" className="group flex flex-col items-center p-8 rounded-3xl bg-white/80 hover:bg-white border border-gray-200/80 hover:border-[#0055FF]/30 hover:shadow-2xl hover:shadow-[#0055FF]/10 transition-all duration-300 transform hover:-translate-y-1">
+                <div className="w-16 h-16 rounded-2xl bg-gray-50 group-hover:bg-[#0055FF]/5 flex items-center justify-center mb-5 transition-colors border border-gray-100 group-hover:border-[#0055FF]/10">
+                  <Monitor className="w-8 h-8 text-gray-700 group-hover:text-[#0055FF] transition-colors" />
+                </div>
+                <span className="text-gray-900 font-bold text-lg mb-1 group-hover:text-[#0055FF] transition-colors">Windows</span>
+                <span className="text-gray-500 text-sm">Windows 10 / 11 (x64)</span>
               </a>
-              <a href="https://github.com/VipBeCool/SkillHub/releases/latest/download/SkillHub_0.1.0_amd64.AppImage" className="flex flex-col items-center p-6 rounded-2xl bg-white/10 hover:bg-white/20 border border-white/10 transition-colors">
-                <Terminal className="w-10 h-10 text-white mb-4" />
-                <span className="text-white font-semibold mb-1">Linux</span>
-                <span className="text-gray-400 text-sm">AppImage / DEB / RPM</span>
+              <a href="/api/download/SkillHub_0.1.0_amd64.AppImage" className="group flex flex-col items-center p-8 rounded-3xl bg-white/80 hover:bg-white border border-gray-200/80 hover:border-[#0055FF]/30 hover:shadow-2xl hover:shadow-[#0055FF]/10 transition-all duration-300 transform hover:-translate-y-1">
+                <div className="w-16 h-16 rounded-2xl bg-gray-50 group-hover:bg-[#0055FF]/5 flex items-center justify-center mb-5 transition-colors border border-gray-100 group-hover:border-[#0055FF]/10">
+                  <Terminal className="w-8 h-8 text-gray-700 group-hover:text-[#0055FF] transition-colors" />
+                </div>
+                <span className="text-gray-900 font-bold text-lg mb-1 group-hover:text-[#0055FF] transition-colors">Linux</span>
+                <span className="text-gray-500 text-sm">AppImage / DEB / RPM</span>
               </a>
             </div>
           </div>
@@ -244,7 +441,7 @@ export default function Home() {
             © {new Date().getFullYear()} VipBeCool. Open Source under GPL-3.0 License.
           </p>
           <div className="flex gap-4">
-            <a href="https://github.com/VipBeCool/SkillHub" className="text-gray-400 hover:text-gray-600 transition-colors">
+            <a href="https://github.com/VipBeCool/SkillHub" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-gray-600 transition-colors">
               <GithubIcon className="w-5 h-5" />
             </a>
           </div>
