@@ -260,7 +260,10 @@ export default function Home() {
       <div className="fixed bottom-[-10%] left-[20%] w-[400px] h-[400px] rounded-full bg-purple-400/10 blur-[100px] -z-10 animate-pulse" style={{ animationDuration: '10s' }} />
       
       {/* Grid Pattern Overlay */}
-      <div className="fixed inset-0 bg-[url('./grid.svg')] bg-center [mask-image:linear-gradient(180deg,white,rgba(255,255,255,0))] -z-20 opacity-20 pointer-events-none" />
+      <div 
+        className="fixed inset-0 bg-center [mask-image:linear-gradient(180deg,white,rgba(255,255,255,0))] -z-20 opacity-20 pointer-events-none" 
+        style={{ backgroundImage: "url('./grid.svg')" }}
+      />
 
       {/* Header */}
       <header className="fixed top-0 left-0 right-0 z-50 glass border-b border-border/50 backdrop-blur-xl">
