@@ -14,7 +14,7 @@ const SHOWCASE_TABS = [
     icon: Cpu,
     tag: "核心功能",
     desc: "直观的可视化卡片与列表视图，支持多选批量管理、启用/禁用、标签分类与快速过滤。",
-    image: "/screenshots/skills-list.png",
+    image: "./screenshots/skills-list.png",
   },
   {
     id: "skill-detail",
@@ -22,7 +22,7 @@ const SHOWCASE_TABS = [
     icon: BookOpen,
     tag: "完整解析",
     desc: "清晰展现技能的说明、输入输出结构、版本历史与底层配置，一览无余。",
-    image: "/screenshots/skill-detail.png",
+    image: "./screenshots/skill-detail.png",
   },
   {
     id: "smart-prompt",
@@ -30,7 +30,7 @@ const SHOWCASE_TABS = [
     icon: Sparkles,
     tag: "AI 联动",
     desc: "支持在编写 Agent 技能时随时智能引用现有的 Prompt 库，模块化组装复杂的 AI 任务。",
-    image: "/screenshots/smart-prompt-reference.png",
+    image: "./screenshots/smart-prompt-reference.png",
   },
   {
     id: "prompts-list",
@@ -38,7 +38,7 @@ const SHOWCASE_TABS = [
     icon: FileText,
     tag: "高效复用",
     desc: "集中存储与分类高频 Prompt 模板，毫秒级复制与调用，彻底告别零散记录。",
-    image: "/screenshots/prompts-list.png",
+    image: "./screenshots/prompts-list.png",
   },
   {
     id: "prompt-edit",
@@ -46,7 +46,7 @@ const SHOWCASE_TABS = [
     icon: Edit3,
     tag: "沉浸创作",
     desc: "专为提示词工程打造的编辑器，支持动态变量插入、Markdown 语法与实时预览。",
-    image: "/screenshots/prompt-edit.png",
+    image: "./screenshots/prompt-edit.png",
   },
   {
     id: "global-search",
@@ -54,7 +54,7 @@ const SHOWCASE_TABS = [
     icon: Search,
     tag: "快捷调度",
     desc: "支持全局快捷键唤醒，秒级模糊检索所有技能、提示词与命令，指尖即达。",
-    image: "/screenshots/global-search.png",
+    image: "./screenshots/global-search.png",
   },
   {
     id: "import-skill",
@@ -62,7 +62,7 @@ const SHOWCASE_TABS = [
     icon: FolderDown,
     tag: "生态互通",
     desc: "支持本地文件夹拖拽导入、GitHub 仓库一键挂载与自动版本更新检测。",
-    image: "/screenshots/import-skill.png",
+    image: "./screenshots/import-skill.png",
   },
 ];
 
@@ -260,13 +260,13 @@ export default function Home() {
       <div className="fixed bottom-[-10%] left-[20%] w-[400px] h-[400px] rounded-full bg-purple-400/10 blur-[100px] -z-10 animate-pulse" style={{ animationDuration: '10s' }} />
       
       {/* Grid Pattern Overlay */}
-      <div className="fixed inset-0 bg-[url('/grid.svg')] bg-center [mask-image:linear-gradient(180deg,white,rgba(255,255,255,0))] -z-20 opacity-20 pointer-events-none" />
+      <div className="fixed inset-0 bg-[url('./grid.svg')] bg-center [mask-image:linear-gradient(180deg,white,rgba(255,255,255,0))] -z-20 opacity-20 pointer-events-none" />
 
       {/* Header */}
       <header className="fixed top-0 left-0 right-0 z-50 glass border-b border-border/50 backdrop-blur-xl">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <img src="/icon.png" alt="SkillHub Logo" className="w-8 h-8 drop-shadow-md rounded-xl" />
+            <img src="./icon.png" alt="SkillHub Logo" className="w-8 h-8 drop-shadow-md rounded-xl" />
             <span className="font-bold text-xl tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-gray-800 to-gray-600">SkillHub</span>
           </div>
           <nav className="flex gap-3 sm:gap-4 items-center">
@@ -437,7 +437,7 @@ export default function Home() {
       <footer className="border-t border-gray-200/60 bg-white/80 backdrop-blur-md pt-12 pb-12 mt-auto">
         <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-6">
           <div className="flex items-center gap-3">
-            <img src="/icon.png" alt="SkillHub Logo" className="w-6 h-6" />
+            <img src="./icon.png" alt="SkillHub Logo" className="w-6 h-6" />
             <span className="font-semibold text-gray-700">SkillHub</span>
           </div>
           <p className="text-gray-400 text-sm">
