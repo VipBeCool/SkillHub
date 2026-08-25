@@ -205,7 +205,7 @@ function GithubIcon(props: React.SVGProps<SVGSVGElement>) {
 
 type OsType = "mac" | "win" | "linux" | "default";
 
-const VERSION = "0.1.0";
+const VERSION = "0.1.1";
 const BASE_DOWNLOAD_URL = `https://github.com/VipBeCool/SkillHub/releases/download/v${VERSION}`;
 
 const OS_INFO: Record<OsType, { name: string; icon: React.ComponentType<{ className?: string }>; url: string }> = {
@@ -292,7 +292,7 @@ export default function Home() {
         {/* Hero Section - Compact & Elevated with Comfortable Breathing Room */}
         <section className="max-w-7xl mx-auto px-6 pt-6 sm:pt-10 pb-12 sm:pb-16 md:pb-20 flex flex-col items-center text-center">
           <motion.a
-            href="https://github.com/VipBeCool/SkillHub/releases/tag/v0.1.0"
+            href={`https://github.com/VipBeCool/SkillHub/releases/tag/v${VERSION}`}
             target="_blank"
             rel="noopener noreferrer"
             initial={{ opacity: 0, scale: 0.9 }}
@@ -304,7 +304,7 @@ export default function Home() {
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#FF5500]"></span>
             </span>
-            <span className="text-[#FF5500] font-bold">SkillHub v0.1.0</span> is now available
+            <span className="text-[#FF5500] font-bold">SkillHub v{VERSION}</span> is now available
           </motion.a>
 
           <motion.h1 

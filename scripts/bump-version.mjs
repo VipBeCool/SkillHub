@@ -9,6 +9,8 @@
  * - package.json
  * - src-tauri/tauri.conf.json
  * - src-tauri/Cargo.toml
+ * - website/package.json
+ * - website/app/page.tsx
  */
 
 import { readFileSync, writeFileSync } from 'fs';
@@ -77,6 +79,32 @@ const files = [
         }
       }
       return { result: lines.join('\n'), old };
+    }
+  },
+  {
+    path: resolve(root, 'website/package.json'),
+    name: 'website/package.json',
+    update(content) {
+      const json = JSON.parse(content);
+      const old = json.version;
+      json.version = newVersion;
+      return { result: JSON.stringify(json, null, 2) + '\n', old };
+    }
+  },
+  {
+    path: resolve(root, 'website/app/page.tsx'),
+    name: 'website/app/page.tsx',
+    update(content) {
+      const match = content.match(/const VERSION = "([^"]+)";/);
+      if (match) {
+        const old = match[1];
+        const result = content.replace(
+          /const VERSION = "[^"]+";/g,
+          `const VERSION = "${newVersion}";`
+        );
+        return { result, old };
+      }
+      return { result: content, old: 'unknown' };
     }
   }
 ];
