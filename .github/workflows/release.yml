@@ -89,10 +89,29 @@ jobs:
           release_id: ${{ needs.create-release.outputs.release_id }}
         with:
           script: |
+            const fs = require('fs');
+            let releaseNotes = '';
+            try {
+              const changelog = fs.readFileSync('CHANGELOG.md', 'utf8');
+              const version = context.ref.replace('refs/tags/v', '');
+              // 匹配当前版本的更新日志，直到下一个大标题 (## [) 或文件结束
+              const regex = new RegExp(`## \\\\[${version}\\\\](.*?)(?=\\n## \\\\[|$)`, 's');
+              const match = changelog.match(regex);
+              if (match && match[1]) {
+                releaseNotes = match[1].trim();
+              }
+            } catch (err) {
+              console.log('读取 CHANGELOG.md 失败或无匹配版本日志', err);
+            }
+
+            const body = releaseNotes 
+              ? `${releaseNotes}\n\n---\n\n## 下载安装\n\n请根据你的操作系统选择对应的安装包：\n\n| 平台 | 安装包 |\n|------|--------|\n| macOS (Intel + Apple Silicon) | \`.dmg\` |\n| Windows (x64) | \`.exe\` 或 \`.msi\` |\n| Linux (x64) | \`.AppImage\` 或 \`.deb\` |\n\n> 已安装旧版本的用户会在应用内收到更新提示。`
+              : `## 下载安装\n\n请根据你的操作系统选择对应的安装包：\n\n| 平台 | 安装包 |\n|------|--------|\n| macOS (Intel + Apple Silicon) | \`.dmg\` |\n| Windows (x64) | \`.exe\` 或 \`.msi\` |\n| Linux (x64) | \`.AppImage\` 或 \`.deb\` |\n\n> 已安装旧版本的用户会在应用内收到更新提示。`;
+
             github.rest.repos.updateRelease({
               owner: context.repo.owner,
               repo: context.repo.repo,
               release_id: process.env.release_id,
               draft: false,
-              body: `## 下载安装\n\n请根据你的操作系统选择对应的安装包：\n\n| 平台 | 安装包 |\n|------|--------|\n| macOS (Intel + Apple Silicon) | \`.dmg\` |\n| Windows (x64) | \`.exe\` 或 \`.msi\` |\n| Linux (x64) | \`.AppImage\` 或 \`.deb\` |\n\n> 已安装旧版本的用户会在应用内收到更新提示。`
+              body: body
             })
