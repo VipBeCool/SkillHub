@@ -243,7 +243,16 @@ pub fn toggle_skill_favorite(state: State<'_, AppState>, id: String) -> Result<(
 #[tauri::command]
 pub fn add_source_directory(state: State<'_, AppState>, path: String, dir_type: String) -> Result<String, String> {
     let db = state.db.lock().unwrap();
-    crate::db::insert_source_directory(&db, &path, &dir_type)
+    let result = crate::db::insert_source_directory(&db, &path, &dir_type);
+    
+    if result.is_ok() {
+        #[cfg(target_os = "macos")]
+        {
+            set_macos_folder_icon(&path);
+        }
+    }
+    
+    result
 }
 
 use tauri::Manager;
@@ -433,6 +442,11 @@ pub async fn scan_and_add_source_directory(
     
     // 1. Insert directory using the final_path
     let dir_id = crate::db::insert_source_directory(&db, &final_path, &dir_type)?;
+    
+    #[cfg(target_os = "macos")]
+    {
+        set_macos_folder_icon(&final_path);
+    }
     
     // 2. Begin transaction and insert skills
     let tx = db.transaction().map_err(|e| e.to_string())?;

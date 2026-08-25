@@ -119,6 +119,8 @@ pub fn update_app_menu(app: &AppHandle) -> tauri::Result<()> {
     menu_builder = menu_builder.item(&help_submenu);
 
     let menu = menu_builder.build()?;
+    
+    #[cfg(target_os = "macos")]
     app.set_menu(menu)?;
 
     Ok(())

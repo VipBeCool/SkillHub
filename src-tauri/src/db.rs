@@ -301,6 +301,7 @@ pub fn get_repositories_with_skills(db: &Connection) -> Result<Vec<GroupedRepo>,
             path: repo_path.clone(),
             source_type: skill.source_type.clone(),
             source_dir_id: Some(skill.source_dir_id.clone()),
+            installed_at: skill.installed_at.clone(),
             updated_at: skill.updated_at.clone(),
             skills: Vec::new(),
             category: None,
@@ -313,6 +314,9 @@ pub fn get_repositories_with_skills(db: &Connection) -> Result<Vec<GroupedRepo>,
         }
         if skill.updated_at > repo.updated_at {
             repo.updated_at = skill.updated_at.clone();
+        }
+        if skill.installed_at < repo.installed_at {
+            repo.installed_at = skill.installed_at.clone();
         }
     }
     
@@ -327,9 +331,10 @@ pub fn get_repositories_with_skills(db: &Connection) -> Result<Vec<GroupedRepo>,
     for repo in &mut result {
         let is_official = repo.skills.iter().any(|s| s.local_path.ends_with("SKILL.md") || s.local_path.ends_with("SKILL.mdx"));
         repo.category = Some(if is_official { "正式技能".to_string() } else { "其他".to_string() });
+        repo.skills.sort_by(|a, b| a.name.cmp(&b.name));
     }
 
-    result.sort_by(|a, b| a.name.cmp(&b.name));
+    result.sort_by(|a, b| b.installed_at.cmp(&a.installed_at));
 
     Ok(result)
 }

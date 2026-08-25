@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { X, Folder, Plus, Copy, ArrowRightLeft } from 'lucide-react';
@@ -25,6 +25,15 @@ export function CreateSkillLibraryModal({ isOpen, onClose, onSuccess }: CreateSk
   const [folderName, setFolderName] = useState('');
   const [parentPath, setParentPath] = useState('');
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setName('');
+      setFolderName('');
+      setParentPath('');
+      setLoading(false);
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -74,7 +83,7 @@ export function CreateSkillLibraryModal({ isOpen, onClose, onSuccess }: CreateSk
         
         <form onSubmit={handleSubmit} className="p-5 flex flex-col space-y-4">
           <div>
-            <label className="block text-xs font-medium text-[var(--color-muted)] mb-1.5 uppercase tracking-wider">技能库名称 (SkillHub中展示)</label>
+            <label className="block text-xs font-medium text-[var(--color-muted)] mb-1.5 uppercase tracking-wider">技能库名称</label>
             <input
               type="text"
               value={name}
@@ -82,8 +91,8 @@ export function CreateSkillLibraryModal({ isOpen, onClose, onSuccess }: CreateSk
                 setName(e.target.value);
                 if (!folderName || folderName === name) setFolderName(e.target.value);
               }}
-              placeholder="例如：设计素材、我的技能库"
-              className="w-full bg-[#f8f9fa] border border-[var(--color-border)] rounded-lg px-3 py-2 text-[13px] text-[var(--foreground)] outline-none focus:border-blue-500 focus:bg-white transition-colors"
+              placeholder=""
+              className="w-full bg-[#f8f9fa] border border-[var(--color-border)] rounded-lg px-3 py-2 text-[13px] text-[var(--foreground)] placeholder:text-gray-400 outline-none focus:border-blue-500 focus:bg-white transition-colors"
               required
             />
           </div>
@@ -94,19 +103,19 @@ export function CreateSkillLibraryModal({ isOpen, onClose, onSuccess }: CreateSk
               value={folderName}
               onChange={(e) => setFolderName(e.target.value)}
               placeholder="将在磁盘上创建此文件夹"
-              className="w-full bg-[#f8f9fa] border border-[var(--color-border)] rounded-lg px-3 py-2 text-[13px] text-[var(--foreground)] outline-none focus:border-blue-500 focus:bg-white transition-colors"
+              className="w-full bg-[#f8f9fa] border border-[var(--color-border)] rounded-lg px-3 py-2 text-[13px] text-[var(--foreground)] placeholder:text-gray-400 outline-none focus:border-blue-500 focus:bg-white transition-colors"
               required
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-[var(--color-muted)] mb-1.5 uppercase tracking-wider">选择本地位置</label>
+            <label className="block text-xs font-medium text-[var(--color-muted)] mb-1.5 uppercase tracking-wider">技能库本地目录</label>
             <div className="flex space-x-2">
               <input
                 type="text"
                 value={parentPath}
                 readOnly
-                placeholder="选择父目录..."
-                className="flex-1 bg-[#f8f9fa] border border-[var(--color-border)] rounded-lg px-3 py-2 text-[13px] text-[var(--color-muted)] outline-none cursor-pointer"
+                placeholder="技能库文件夹的本地存储目录"
+                className="flex-1 bg-[#f8f9fa] border border-[var(--color-border)] rounded-lg px-3 py-2 text-[13px] text-[var(--color-muted)] placeholder:text-gray-400 outline-none cursor-pointer"
                 onClick={handleSelectPath}
                 required
               />
@@ -145,6 +154,15 @@ export function OpenSkillLibraryModal({ isOpen, onClose, onSuccess }: OpenSkillL
   const [name, setName] = useState('');
   const [localPath, setLocalPath] = useState('');
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setTab('local');
+      setName('');
+      setLocalPath('');
+      setLoading(false);
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -199,7 +217,7 @@ export function OpenSkillLibraryModal({ isOpen, onClose, onSuccess }: OpenSkillL
         <div className="flex items-center justify-between p-4 border-b border-[var(--color-border)]/60 bg-[#fafbfc]">
           <h2 className="text-[15px] font-semibold text-[var(--foreground)] flex items-center">
             <Folder className="w-4 h-4 mr-2 text-blue-500" />
-            打开其它技能库
+            以本地文件夹创建
           </h2>
           <button onClick={onClose} className="p-1.5 rounded-lg text-[var(--color-muted)] hover:bg-black/5 transition-colors">
             <X className="w-4 h-4" />
@@ -211,13 +229,13 @@ export function OpenSkillLibraryModal({ isOpen, onClose, onSuccess }: OpenSkillL
             className={`flex-1 py-2 text-[13px] font-medium text-center transition-colors ${tab === 'local' ? 'text-blue-500 border-b-2 border-blue-500' : 'text-[var(--color-muted)] hover:bg-black/5'}`}
             onClick={() => setTab('local')}
           >
-            现有本地文件夹
+            本地技能文件夹
           </button>
           <button
             className={`flex-1 py-2 text-[13px] font-medium text-center transition-colors ${tab === 'agent' ? 'text-blue-500 border-b-2 border-blue-500' : 'text-[var(--color-muted)] hover:bg-black/5'}`}
             onClick={() => setTab('agent')}
           >
-            常见 Agent 默认库
+            常见Agent技能文件夹
           </button>
         </div>
 
@@ -292,6 +310,14 @@ export function MergeSkillLibraryModal({ isOpen, onClose, onSuccess, targetLibra
   const [sourcePath, setSourcePath] = useState('');
   const [strategy, setStrategy] = useState<'move' | 'copy'>('move');
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setSourcePath('');
+      setStrategy('move');
+      setLoading(false);
+    }
+  }, [isOpen]);
 
   if (!isOpen || !targetLibrary) return null;
 

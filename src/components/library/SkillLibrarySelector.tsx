@@ -568,7 +568,7 @@ export const SkillLibrarySelector = forwardRef<SkillLibrarySelectorRef, SkillLib
               <div className="w-6 h-6 flex items-center justify-center shrink-0 mr-2 bg-black/[0.04] rounded-md group-hover:bg-black/[0.08] transition-colors">
                 <Folder className="w-3.5 h-3.5 text-[var(--color-muted)]" />
               </div>
-              打开其它技能库
+              以本地文件夹创建
             </button>
             <button
               onClick={() => { setIsOpen(false); onMergeLibrary(); }}

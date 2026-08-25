@@ -90,6 +90,7 @@ pub struct GroupedRepo {
     pub path: String,
     pub source_type: String,
     pub source_dir_id: Option<String>,
+    pub installed_at: String,
     pub updated_at: String,
     pub skills: Vec<Skill>,
     pub category: Option<String>,

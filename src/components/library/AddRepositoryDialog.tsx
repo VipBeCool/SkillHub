@@ -301,14 +301,14 @@ export function AddRepositoryDialog({
               {tab === "local" ? (
                 <>
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-[var(--foreground)]">技能目录路径</label>
+                    <label className="text-sm font-medium text-[var(--foreground)]">选择要导入的技能</label>
                     <div className="flex space-x-2">
                       <input
                         type="text"
                         required
                         readOnly
                         value={localPath}
-                        placeholder="选择一个文件夹..."
+                        placeholder="导入技能所在的文件夹"
                         className="input-field flex-1"
                       />
                       <button type="button" onClick={handleBrowseLocal} className="px-2.5 py-0.5 rounded-md border border-[var(--color-border)] bg-white text-[12px] font-medium hover:bg-black/5 transition-colors">
@@ -337,7 +337,7 @@ export function AddRepositoryDialog({
                       </button>
                     </div>
                     <div className="text-[11px] mt-2 leading-relaxed bg-blue-50/50 text-blue-800 p-2.5 rounded-md border border-blue-100">
-                      {strategy === "link" && <><span className="font-semibold text-blue-900">仅挂载读取：</span>保持你上面选择的文件夹在原地不动。开发者首选，支持热更新测试。</>}
+                      {strategy === "link" && <><span className="font-semibold text-blue-900">仅挂载读取：</span>保持你上面选择的文件夹在原地不动。</>}
                       {strategy === "copy" && <><span className="font-semibold text-blue-900">创建副本：</span>将上面选中的源文件夹安全复制到顶部的「目标技能库」中，保留双份。</>}
                       {strategy === "move" && <><span className="font-semibold text-blue-900">物理转移：</span>将上面选中的源文件夹直接剪切到顶部的「目标技能库」中，节约空间。</>}
                     </div>
