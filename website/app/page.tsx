@@ -205,29 +205,28 @@ function GithubIcon(props: React.SVGProps<SVGSVGElement>) {
 
 type OsType = "mac" | "win" | "linux" | "default";
 
-const VERSION = "0.1.3";
-const BASE_DOWNLOAD_URL = `https://github.com/VipBeCool/SkillHub/releases/download/v${VERSION}`;
+const FALLBACK_VERSION = "0.1.3";
 
-const OS_INFO: Record<OsType, { name: string; icon: React.ComponentType<{ className?: string }>; url: string }> = {
+const OS_INFO: Record<OsType, { name: string; icon: React.ComponentType<{ className?: string }>; getUrl: (v: string) => string }> = {
   mac: {
     name: "下载 macOS 版",
     icon: Apple,
-    url: `${BASE_DOWNLOAD_URL}/SkillHub_${VERSION}_universal.dmg`,
+    getUrl: (v) => `https://github.com/VipBeCool/SkillHub/releases/download/v${v}/SkillHub_${v}_universal.dmg`,
   },
   win: {
     name: "下载 Windows 版",
     icon: Monitor,
-    url: `${BASE_DOWNLOAD_URL}/SkillHub_${VERSION}_x64-setup.exe`,
+    getUrl: (v) => `https://github.com/VipBeCool/SkillHub/releases/download/v${v}/SkillHub_${v}_x64-setup.exe`,
   },
   linux: {
     name: "下载 Linux 版",
     icon: Terminal,
-    url: `${BASE_DOWNLOAD_URL}/SkillHub_${VERSION}_amd64.AppImage`,
+    getUrl: (v) => `https://github.com/VipBeCool/SkillHub/releases/download/v${v}/SkillHub_${v}_amd64.AppImage`,
   },
   default: {
     name: "立即下载",
     icon: Download,
-    url: "https://github.com/VipBeCool/SkillHub/releases/latest",
+    getUrl: () => "https://github.com/VipBeCool/SkillHub/releases/latest",
   },
 };
 
@@ -248,6 +247,20 @@ export default function Home() {
     getOsType,
     () => "default"
   );
+  
+  const [latestVersion, setLatestVersion] = useState(FALLBACK_VERSION);
+
+  useEffect(() => {
+    fetch("https://api.github.com/repos/VipBeCool/SkillHub/releases/latest")
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.tag_name) {
+          // tag_name 通常是 'v0.1.3'，我们去掉前面的 'v'
+          setLatestVersion(data.tag_name.replace(/^v/, ""));
+        }
+      })
+      .catch(err => console.error("获取最新版本失败:", err));
+  }, []);
 
   const activeOs = OS_INFO[osType];
   const OsIcon = activeOs.icon;
@@ -292,7 +305,7 @@ export default function Home() {
         {/* Hero Section - Compact & Elevated with Comfortable Breathing Room */}
         <section className="max-w-7xl mx-auto px-6 pt-6 sm:pt-10 pb-12 sm:pb-16 md:pb-20 flex flex-col items-center text-center">
           <motion.a
-            href={`https://github.com/VipBeCool/SkillHub/releases/tag/v${VERSION}`}
+            href={`https://github.com/VipBeCool/SkillHub/releases/tag/v${latestVersion}`}
             target="_blank"
             rel="noopener noreferrer"
             initial={{ opacity: 0, scale: 0.9 }}
@@ -304,7 +317,7 @@ export default function Home() {
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#FF5500]"></span>
             </span>
-            <span className="text-[#FF5500] font-bold">SkillHub v{VERSION}</span> is now available
+            <span className="text-[#FF5500] font-bold">SkillHub v{latestVersion}</span> is now available
           </motion.a>
 
           <motion.h1 
@@ -333,7 +346,7 @@ export default function Home() {
             className="flex flex-col sm:flex-row gap-4 sm:gap-5 items-center"
           >
             <a 
-              href={activeOs.url}
+              href={activeOs.getUrl(latestVersion)}
               className="px-7 py-3.5 sm:px-8 sm:py-4 rounded-2xl bg-gradient-to-r from-[#0055FF] to-[#0077FF] text-white font-bold text-base sm:text-lg flex items-center justify-center gap-3 btn-glow w-full sm:w-auto"
             >
               <OsIcon className="w-5 h-5" />
@@ -410,21 +423,21 @@ export default function Home() {
             </p>
             
             <div className="grid md:grid-cols-3 gap-6 relative z-10 max-w-5xl mx-auto">
-              <a href={`${BASE_DOWNLOAD_URL}/SkillHub_${VERSION}_universal.dmg`} className="group flex flex-col items-center p-8 rounded-3xl bg-white/80 hover:bg-white border border-gray-200/80 hover:border-[#0055FF]/30 hover:shadow-2xl hover:shadow-[#0055FF]/10 transition-all duration-300 transform hover:-translate-y-1">
+              <a href={OS_INFO.mac.getUrl(latestVersion)} className="group flex flex-col items-center p-8 rounded-3xl bg-white/80 hover:bg-white border border-gray-200/80 hover:border-[#0055FF]/30 hover:shadow-2xl hover:shadow-[#0055FF]/10 transition-all duration-300 transform hover:-translate-y-1">
                 <div className="w-16 h-16 rounded-2xl bg-gray-50 group-hover:bg-[#0055FF]/5 flex items-center justify-center mb-5 transition-colors border border-gray-100 group-hover:border-[#0055FF]/10">
                   <Apple className="w-8 h-8 text-gray-700 group-hover:text-[#0055FF] transition-colors" />
                 </div>
                 <span className="text-gray-900 font-bold text-lg mb-1 group-hover:text-[#0055FF] transition-colors">macOS</span>
                 <span className="text-gray-500 text-sm">Universal (Intel & Apple Silicon)</span>
               </a>
-              <a href={`${BASE_DOWNLOAD_URL}/SkillHub_${VERSION}_x64-setup.exe`} className="group flex flex-col items-center p-8 rounded-3xl bg-white/80 hover:bg-white border border-gray-200/80 hover:border-[#0055FF]/30 hover:shadow-2xl hover:shadow-[#0055FF]/10 transition-all duration-300 transform hover:-translate-y-1">
+              <a href={OS_INFO.win.getUrl(latestVersion)} className="group flex flex-col items-center p-8 rounded-3xl bg-white/80 hover:bg-white border border-gray-200/80 hover:border-[#0055FF]/30 hover:shadow-2xl hover:shadow-[#0055FF]/10 transition-all duration-300 transform hover:-translate-y-1">
                 <div className="w-16 h-16 rounded-2xl bg-gray-50 group-hover:bg-[#0055FF]/5 flex items-center justify-center mb-5 transition-colors border border-gray-100 group-hover:border-[#0055FF]/10">
                   <Monitor className="w-8 h-8 text-gray-700 group-hover:text-[#0055FF] transition-colors" />
                 </div>
                 <span className="text-gray-900 font-bold text-lg mb-1 group-hover:text-[#0055FF] transition-colors">Windows</span>
                 <span className="text-gray-500 text-sm">Windows 10 / 11 (x64)</span>
               </a>
-              <a href={`${BASE_DOWNLOAD_URL}/SkillHub_${VERSION}_amd64.AppImage`} className="group flex flex-col items-center p-8 rounded-3xl bg-white/80 hover:bg-white border border-gray-200/80 hover:border-[#0055FF]/30 hover:shadow-2xl hover:shadow-[#0055FF]/10 transition-all duration-300 transform hover:-translate-y-1">
+              <a href={OS_INFO.linux.getUrl(latestVersion)} className="group flex flex-col items-center p-8 rounded-3xl bg-white/80 hover:bg-white border border-gray-200/80 hover:border-[#0055FF]/30 hover:shadow-2xl hover:shadow-[#0055FF]/10 transition-all duration-300 transform hover:-translate-y-1">
                 <div className="w-16 h-16 rounded-2xl bg-gray-50 group-hover:bg-[#0055FF]/5 flex items-center justify-center mb-5 transition-colors border border-gray-100 group-hover:border-[#0055FF]/10">
                   <Terminal className="w-8 h-8 text-gray-700 group-hover:text-[#0055FF] transition-colors" />
                 </div>
