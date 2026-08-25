@@ -64,7 +64,7 @@ Select a skill and SkillHub generates a reference prompt containing the director
 
 ### Import & Sync
 
-Three ways to add skills: import a local folder, clone from GitHub, or bookmark an online link. You can also drag folders directly into the window. GitHub repos support batch sync.
+Three ways to add skills: import a local folder, clone from GitHub, or bookmark an online link. You can also drag folders directly into the window. Once imported, the tool automatically parses various types of skill formats in the background, so you don't have to worry about the file structure. GitHub repos support batch sync.
 
 <table>
   <tr>
@@ -84,11 +84,18 @@ Select multiple skill repos for batch export, update, or delete. Drag folders in
   </tr>
 </table>
 
+### Classification & Details
+
+Enjoy a flexible tag classification system and use custom Emoji icons to differentiate your skill libraries, making organization and retrieval effortless.
+
+<img src="docs/screenshots/技能分类管理.png" width="800" alt="Skill classification management" />
+
 ## Features
 
 | Feature | Description |
 |---------|-------------|
-| Multi-source management | Mount local folders, GitHub repos, and online links side by side. Sub-skills are scanned automatically. |
+| Multi-source management | Mount local folders, GitHub repos, and online links side by side. Sub-skills are automatically scanned and various skill formats are seamlessly parsed. |
+| Classification & Display | Supports flexible tag classifications and custom Emoji icons for skill libraries. |
 | Prompt management | Separate module with grouping, tags, usage stats, version history, and Markdown preview. |
 | Global search | `Cmd/Ctrl + K` to search repos and skills at once, with a live preview panel. |
 | GitHub sync | One-click pull for all GitHub repos, with per-repo status display. |
