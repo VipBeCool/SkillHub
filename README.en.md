@@ -5,7 +5,7 @@
 <div align="center">
   <img src="src-tauri/icons/icon.png" width="128" height="128" alt="SkillHub Logo" />
   <h1>SkillHub</h1>
-  <p>A Cross-Platform AI Skill & Prompt Management Workstation</p>
+  <p>Manage all your AI skills and prompts in one place</p>
   <p>
     <img src="https://img.shields.io/github/v/release/VipBeCool/SkillHub?style=flat-square" alt="release" />
     <img src="https://img.shields.io/github/license/VipBeCool/SkillHub?style=flat-square" alt="license" />
@@ -14,52 +14,123 @@
   </p>
 </div>
 
-## Introduction
+<p align="center">
+  <a href="#the-problem">Why</a> ·
+  <a href="#screenshots">Screenshots</a> ·
+  <a href="#features">Features</a> ·
+  <a href="#download">Download</a> ·
+  <a href="#development">Dev</a>
+</p>
 
-SkillHub is a desktop application built with Tauri and Rust, designed for unified management of local AI Agent skill files (like Claude Desktop Skills, Cursor Rules, etc.) and Prompt templates.
+## The Problem
 
-It supports mounting multiple local skill libraries, GitHub remote repositories, and online skill collections simultaneously. It provides visual browsing, tag categorization, full-text search, batch export, and one-click synchronization features.
+If you use AI coding tools like Claude Code, Cursor, or Codex, you've probably accumulated a pile of skill files (Skills, Rules) and prompt templates — some in local folders, some in GitHub repos, some bookmarked from the web. Finding a skill you used last week means digging through multiple places. And when a GitHub skill repo gets updated, you don't know unless you check manually.
 
-## Core Features
+SkillHub is a desktop app that brings all of these into one interface. Import local folders, clone GitHub repos, bookmark online links — then search, browse, and manage them together. When a skill repo gets updated, sync it with one click instead of running `git pull` by hand. Prompt templates get their own module with grouping, tags, and version history.
 
-- **Multi-Library Management** — Mount multiple local folders, GitHub repositories, and online skill sources simultaneously for unified browsing.
-- **Prompt Management** — An independent Prompt template management module supporting grouping, tags, and Token counting.
-- **Full-Text Search** — Quickly search all skills and Prompt contents (Cmd/Ctrl + K).
-- **GitHub Sync** — One-click pull of remote repository changes, automatically detecting additions/modifications/deletions.
-- **Batch Operations** — Select multiple skill libraries for batch exporting (ZIP/JSON) or batch deletion.
-- **In-App Updates** — Automatically checks for new versions on startup, with one-click download and installation.
-- **Lightweight & High Performance** — Rust backend + SQLite local storage, with significantly lower memory usage compared to Electron solutions.
+## Screenshots
 
-## Tech Stack
+> Screenshots are from macOS. Windows and Linux look largely the same.
 
-| Layer | Technology |
-|------|------|
-| Frontend | React 19, TypeScript, Tailwind CSS v4, Vite |
-| Backend | Rust, Tauri v2, SQLite (rusqlite) |
-| CI/CD | GitHub Actions + tauri-action |
+### Skill Library
 
-## Download & Install
+Mount multiple sources (local folders, GitHub repos, online links). Right-click to open in Finder, sync to an AI Agent, export, or update.
 
-Head over to the [Releases](https://github.com/VipBeCool/SkillHub/releases/latest) page to download the installer for your platform:
+<img src="docs/screenshots/技能管理.png" width="800" alt="Skill library management" />
+
+### Skill Detail
+
+View skill content, file count, line count, and token count. Built-in translation lets you read English skills in Chinese (or other languages).
+
+<img src="docs/screenshots/技能详情.png" width="800" alt="Skill detail view" />
+
+### Global Search
+
+`Cmd/Ctrl + K` opens search across all repos and skills. The right panel shows a live preview of the selected result.
+
+<img src="docs/screenshots/全局搜索.png" width="800" alt="Global search" />
+
+### Prompt Management
+
+A separate module for prompt templates — with grouping, tags, usage count tracking, and multi-language support.
+
+<img src="docs/screenshots/提示词管理.png" width="800" alt="Prompt management" />
+
+### Smart Reference Prompt
+
+Select a skill and SkillHub generates a reference prompt containing the directory structure, execution instructions, and repo context. Copy it into your AI conversation and the agent will follow that skill.
+
+<img src="docs/screenshots/智能引用提示词.png" width="800" alt="Smart reference prompt" />
+
+### Import & Sync
+
+Three ways to add skills: import a local folder, clone from GitHub, or bookmark an online link. You can also drag folders directly into the window. GitHub repos support batch sync.
+
+<table>
+  <tr>
+    <td><img src="docs/screenshots/导入技能.png" alt="Import options" /></td>
+    <td><img src="docs/screenshots/更新技能.png" alt="Sync progress" /></td>
+  </tr>
+</table>
+
+### Batch Operations & Drag-and-Drop
+
+Select multiple skill repos for batch export, update, or delete. Drag folders into the window to add them.
+
+<table>
+  <tr>
+    <td><img src="docs/screenshots/多选操作.png" alt="Batch operations" /></td>
+    <td><img src="docs/screenshots/拖动导入.png" alt="Drag-and-drop import" /></td>
+  </tr>
+</table>
+
+## Features
+
+| Feature | Description |
+|---------|-------------|
+| Multi-source management | Mount local folders, GitHub repos, and online links side by side. Sub-skills are scanned automatically. |
+| Prompt management | Separate module with grouping, tags, usage stats, version history, and Markdown preview. |
+| Global search | `Cmd/Ctrl + K` to search repos and skills at once, with a live preview panel. |
+| GitHub sync | One-click pull for all GitHub repos, with per-repo status display. |
+| Smart reference | Auto-generates a reference prompt with directory structure and execution instructions. |
+| Sync to Agent | Push skills directly to Antigravity, Codex, or other AI Agents. |
+| Batch operations | Select multiple repos to batch export (ZIP/JSON), update, or delete. |
+| Drag-and-drop import | Drop folders into the window to add them. |
+| Built-in translation | Translate skills between languages with one click. |
+| In-app updates | Checks for new versions on startup. One-click install. |
+
+## Download
+
+Go to [Releases](https://github.com/VipBeCool/SkillHub/releases/latest) to grab the installer for your platform:
 
 | Platform | Installer |
-|------|--------|
+|----------|-----------|
 | macOS (Intel + Apple Silicon) | `.dmg` |
 | Windows (x64) | `.exe` / `.msi` |
 | Linux (x64) | `.AppImage` / `.deb` |
 
-> Users who have already installed the app will receive an update prompt in-app and do not need to download manually.
+If you already have it installed, you'll get an update prompt inside the app.
 
-## Local Development
+## Tech Stack
+
+| Layer | Technology |
+|-------|------------|
+| Frontend | React 19, TypeScript, Tailwind CSS v4, Vite |
+| Backend | Rust, Tauri v2, SQLite (rusqlite) |
+| CI/CD | GitHub Actions + tauri-action |
+
+Built with Tauri instead of Electron — smaller bundle, lower memory usage.
+
+## Development
 
 ### Requirements
 
 - [Node.js](https://nodejs.org/) v18+
 - [Rust](https://www.rust-lang.org/tools/install) stable
-- macOS requires Xcode Command Line Tools
-- Windows requires Visual Studio C++ Build Tools
+- macOS: Xcode Command Line Tools
+- Windows: Visual Studio C++ Build Tools
 
-### Running
+### Run
 
 ```bash
 git clone https://github.com/VipBeCool/SkillHub.git
@@ -68,17 +139,17 @@ npm install
 npm run skillhub dev
 ```
 
-### Building
+### Build
 
 ```bash
 npm run skillhub build
 ```
 
-The installer will be output to the `src-tauri/target/release/bundle/` directory.
+Output goes to `src-tauri/target/release/bundle/`.
 
 ### Version Management
 
-The version number is distributed across `package.json`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.toml`. Use the script for one-click synchronization:
+The version number lives in three files: `package.json`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.toml`. Update all at once with:
 
 ```bash
 node scripts/bump-version.mjs 0.2.0
@@ -86,7 +157,7 @@ node scripts/bump-version.mjs 0.2.0
 
 ## License
 
-This project is licensed under the [GPL-3.0](./LICENSE) License. Free use and modification are permitted, but derivative projects must also be open-source. For commercial closed-source use, please contact the author for authorization.
+[GPL-3.0](./LICENSE). Free to use and modify, but derivative projects must also be open-source. Contact the author for commercial closed-source licensing.
 
 ---
 
