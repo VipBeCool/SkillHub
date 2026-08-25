@@ -1,7 +1,7 @@
 [package]
 name = "skillhub"
 version = "0.1.1"
-description = "A Tauri App"
+description = "Desktop app for managing AI Agent skill files and prompt templates"
 authors = ["you"]
 edition = "2021"
 
