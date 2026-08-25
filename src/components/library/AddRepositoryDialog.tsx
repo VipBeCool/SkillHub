@@ -227,22 +227,6 @@ export function AddRepositoryDialog({
           {/* Step 1: Selection View */}
           {step === "select" && (
             <div className="p-4 space-y-1.5 animate-in fade-in slide-in-from-bottom-4 duration-300">
-              {/* 本地导入 */}
-              <button 
-                onClick={() => handleSelectType("local")}
-                className="w-full text-left group flex items-start p-2 bg-transparent hover:bg-[var(--color-primary)]/5 rounded-md transition-all border border-transparent hover:border-[var(--color-primary)]/15"
-              >
-                <div className="w-8 h-8 rounded-md bg-black/5 group-hover:bg-[var(--color-primary)]/10 flex items-center justify-center shrink-0 transition-colors">
-                  <HardDrive className="w-4 h-4 text-[var(--color-muted)] group-hover:text-[var(--color-primary)] transition-colors" />
-                </div>
-                <div className="ml-3 flex-1">
-                  <h3 className="text-[13px] font-medium text-[var(--foreground)] group-hover:text-[var(--color-primary)] transition-colors">导入本地技能</h3>
-                  <p className="text-[11px] text-[var(--color-muted)] mt-0.5 leading-relaxed">
-                    选择一个本地文件夹，支持单项技能或包含多个子技能的根目录，系统会自动扫描并提取。
-                  </p>
-                </div>
-              </button>
-
               {/* GitHub 克隆 */}
               <button 
                 onClick={() => handleSelectType("github")}
@@ -257,6 +241,22 @@ export function AddRepositoryDialog({
                   <h3 className="text-[13px] font-medium text-[var(--foreground)] group-hover:text-[var(--color-primary)] transition-colors">克隆 GitHub 技能库</h3>
                   <p className="text-[11px] text-[var(--color-muted)] mt-0.5 leading-relaxed">
                     输入 GitHub 仓库链接，后台将自动克隆并提取仓库内所有可用技能到本地。
+                  </p>
+                </div>
+              </button>
+
+              {/* 本地导入 */}
+              <button 
+                onClick={() => handleSelectType("local")}
+                className="w-full text-left group flex items-start p-2 bg-transparent hover:bg-[var(--color-primary)]/5 rounded-md transition-all border border-transparent hover:border-[var(--color-primary)]/15"
+              >
+                <div className="w-8 h-8 rounded-md bg-black/5 group-hover:bg-[var(--color-primary)]/10 flex items-center justify-center shrink-0 transition-colors">
+                  <HardDrive className="w-4 h-4 text-[var(--color-muted)] group-hover:text-[var(--color-primary)] transition-colors" />
+                </div>
+                <div className="ml-3 flex-1">
+                  <h3 className="text-[13px] font-medium text-[var(--foreground)] group-hover:text-[var(--color-primary)] transition-colors">导入本地技能</h3>
+                  <p className="text-[11px] text-[var(--color-muted)] mt-0.5 leading-relaxed">
+                    选择一个本地文件夹，支持单项技能或包含多个子技能的根目录，系统会自动扫描并提取。
                   </p>
                 </div>
               </button>

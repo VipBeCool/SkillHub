@@ -275,7 +275,6 @@ export function SkillDetailsDrawer({ skill, isOpen, onClose, onGeneratePrompt }:
               
               {/* Tags Editor Display */}
               <div className="mt-4">
-                <span className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wide block mb-2">标签</span>
                 <div className="flex flex-wrap gap-1.5 items-center">
                   {tags.split(',').map(t => t.trim()).filter(Boolean).map(tag => (
                     <span key={tag} className="group/tag inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-md bg-[var(--color-primary)]/10 text-[var(--color-primary)] font-medium">

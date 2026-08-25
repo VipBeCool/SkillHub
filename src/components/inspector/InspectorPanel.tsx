@@ -938,7 +938,6 @@ export function InspectorPanel({
 
           {/* 标签 */}
           <div className="mb-4">
-            <h4 className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider mb-2">标签</h4>
             <div className="flex flex-wrap gap-1.5 items-center">
               {tags.split(',').map(t => t.trim()).filter(Boolean).map(tag => (
                 <span key={tag} className="group/tag inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-md bg-[var(--color-primary)]/10 text-[var(--color-primary)] font-medium">
