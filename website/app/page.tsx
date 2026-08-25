@@ -205,7 +205,7 @@ function GithubIcon(props: React.SVGProps<SVGSVGElement>) {
 
 type OsType = "mac" | "win" | "linux" | "default";
 
-const VERSION = "0.1.2";
+const VERSION = "0.1.3";
 const BASE_DOWNLOAD_URL = `https://github.com/VipBeCool/SkillHub/releases/download/v${VERSION}`;
 
 const OS_INFO: Record<OsType, { name: string; icon: React.ComponentType<{ className?: string }>; url: string }> = {
