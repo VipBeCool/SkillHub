@@ -248,7 +248,7 @@ pub fn add_source_directory(state: State<'_, AppState>, path: String, dir_type: 
     if result.is_ok() {
         #[cfg(target_os = "macos")]
         {
-            set_macos_folder_icon(&path);
+            set_folder_icon(&path);
         }
     }
     
@@ -357,7 +357,7 @@ pub async fn import_skills_to_directory(
                 
                 #[cfg(target_os = "macos")]
                 {
-                    remove_macos_folder_icon(&final_target_dir.to_string_lossy());
+                    remove_folder_icon(&final_target_dir.to_string_lossy());
                 }
             } else {
                 std::fs::copy(&src_path, &final_target_dir).map_err(|e| e.to_string())?;
@@ -445,7 +445,7 @@ pub async fn scan_and_add_source_directory(
     
     #[cfg(target_os = "macos")]
     {
-        set_macos_folder_icon(&final_path);
+        set_folder_icon(&final_path);
     }
     
     // 2. Begin transaction and insert skills
@@ -1163,7 +1163,7 @@ pub fn create_local_skill_library(state: State<'_, AppState>, name: String, path
 
     #[cfg(target_os = "macos")]
     {
-        set_macos_folder_icon(&path);
+        set_folder_icon(&path);
     }
     
     Ok(id)
@@ -1883,4 +1883,122 @@ pub async fn validate_and_copy_dropped_folders(
     } else {
         Ok(format!("成功导入 {} 个文件夹", copied_count))
     }
+}
+
+pub fn set_folder_icon(folder_path: &str) {
+    #[cfg(target_os = "macos")]
+    {
+        set_macos_folder_icon(folder_path);
+    }
+    #[cfg(target_os = "windows")]
+    {
+        set_windows_folder_icon(folder_path);
+    }
+    #[cfg(target_os = "linux")]
+    {
+        set_linux_folder_icon(folder_path);
+    }
+}
+
+pub fn remove_folder_icon(folder_path: &str) {
+    #[cfg(target_os = "macos")]
+    {
+        remove_macos_folder_icon(folder_path);
+    }
+    #[cfg(target_os = "windows")]
+    {
+        remove_windows_folder_icon(folder_path);
+    }
+    #[cfg(target_os = "linux")]
+    {
+        remove_linux_folder_icon(folder_path);
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn set_windows_folder_icon(folder_path: &str) {
+    use std::fs;
+    use std::path::Path;
+    use std::process::Command;
+
+    let folder_path = Path::new(folder_path);
+    if !folder_path.exists() {
+        return;
+    }
+
+    let icon_data = include_bytes!("../../src/assets/folder_icon.ico");
+    let icon_path = folder_path.join(".skillhub_icon.ico");
+    let ini_path = folder_path.join("desktop.ini");
+
+    if fs::write(&icon_path, icon_data).is_ok() {
+        let ini_content = "[.ShellClassInfo]\r\nIconResource=.skillhub_icon.ico,0\r\n";
+        let _ = fs::write(&ini_path, ini_content);
+
+        // Hide files and set folder as read-only
+        let _ = Command::new("attrib").args(&["+h", "+s", icon_path.to_str().unwrap_or("")]).output();
+        let _ = Command::new("attrib").args(&["+h", "+s", ini_path.to_str().unwrap_or("")]).output();
+        let _ = Command::new("attrib").args(&["+r", folder_path.to_str().unwrap_or("")]).output();
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn remove_windows_folder_icon(folder_path: &str) {
+    use std::fs;
+    use std::path::Path;
+    use std::process::Command;
+
+    let folder_path = Path::new(folder_path);
+    let _ = Command::new("attrib").args(&["-r", folder_path.to_str().unwrap_or("")]).output();
+    
+    let icon_path = folder_path.join(".skillhub_icon.ico");
+    let ini_path = folder_path.join("desktop.ini");
+    
+    let _ = Command::new("attrib").args(&["-h", "-s", icon_path.to_str().unwrap_or("")]).output();
+    let _ = Command::new("attrib").args(&["-h", "-s", ini_path.to_str().unwrap_or("")]).output();
+    
+    let _ = fs::remove_file(icon_path);
+    let _ = fs::remove_file(ini_path);
+}
+
+#[cfg(target_os = "linux")]
+fn set_linux_folder_icon(folder_path: &str) {
+    use std::fs;
+    use std::path::Path;
+    use std::process::Command;
+
+    let folder_path = Path::new(folder_path);
+    if !folder_path.exists() {
+        return;
+    }
+
+    let icon_data = include_bytes!("../../src/assets/folder_icon.png");
+    let icon_path = folder_path.join(".skillhub_icon.png");
+    
+    if fs::write(&icon_path, icon_data).is_ok() {
+        // KDE support
+        let dir_file_path = folder_path.join(".directory");
+        let dir_content = format!("[Desktop Entry]\nIcon={}\n", icon_path.to_string_lossy());
+        let _ = fs::write(&dir_file_path, dir_content);
+        
+        // GNOME/GTK support (gio)
+        let _ = Command::new("gio")
+            .args(&["set", "-t", "string", folder_path.to_str().unwrap_or(""), "metadata::custom-icon", &format!("file://{}", icon_path.to_string_lossy())])
+            .output();
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn remove_linux_folder_icon(folder_path: &str) {
+    use std::fs;
+    use std::path::Path;
+    use std::process::Command;
+
+    let folder_path = Path::new(folder_path);
+    
+    let _ = fs::remove_file(folder_path.join(".skillhub_icon.png"));
+    let _ = fs::remove_file(folder_path.join(".directory"));
+    
+    let _ = Command::new("gio")
+        .args(&["set", "-t", "unset", folder_path.to_str().unwrap_or(""), "metadata::custom-icon"])
+        .output();
 }
