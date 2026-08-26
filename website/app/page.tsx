@@ -326,8 +326,8 @@ export default function Home() {
             transition={{ duration: 0.6, delay: 0.1 }}
             className="text-4xl sm:text-6xl md:text-7xl font-extrabold tracking-tight mb-5 sm:mb-6 max-w-4xl leading-[1.12]"
           >
-            你的极速本地 <br />
-            <span className="text-gradient">AI 技能与 Prompt 引擎</span>
+            你的极速跨平台 <br />
+            <span className="text-gradient">AI 技能与 Prompt 管理工具</span>
           </motion.h1>
           
           <motion.p 
@@ -336,7 +336,7 @@ export default function Home() {
             transition={{ duration: 0.6, delay: 0.2 }}
             className="text-base sm:text-xl text-gray-500 mb-8 sm:mb-10 max-w-2xl leading-relaxed"
           >
-            基于 Tauri & Rust 打造的跨平台 AI 工作站。零配置，纯本地，毫秒级响应，轻松管理所有 Agent 技能与提示词库。
+            基于 Tauri & Rust 打造的轻量级 AI 桌面工具。多源渠道一键同步，轻松管理所有 Agent 技能与提示词库。
           </motion.p>
           
           <motion.div 
