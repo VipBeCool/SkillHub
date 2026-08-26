@@ -476,7 +476,7 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChang
   };
 
   return (
-    <div className="flex flex-1 h-full min-w-0 overflow-hidden">
+    <div className="flex flex-1 h-full min-w-0 overflow-hidden bg-white">
       {/* 主内容区 */}
       <div className="flex-1 flex flex-col h-full min-w-0 bg-[var(--color-background)]">
         {/* 顶栏 */}
@@ -639,7 +639,7 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChang
           {(() => {
             if (selectedIds.size === 0) {
               return (
-                <div className="bg-white/80 backdrop-blur-xl border-l border-[var(--color-border)] flex flex-col shrink-0 h-full overflow-hidden" style={{ width: "264px" }}>
+                <div className="bg-white border-l border-[var(--color-border)] flex flex-col shrink-0 h-full overflow-hidden" style={{ width: "264px" }}>
                   <div className="px-4 py-3 border-b border-[var(--color-border)] flex items-center justify-between shrink-0">
                     <span className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wide">检查器</span>
                   </div>
@@ -652,7 +652,7 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChang
             
             if (selectedIds.size > 1) {
               return (
-                <div className="bg-white/80 backdrop-blur-xl border-l border-[var(--color-border)] flex flex-col shrink-0 h-full overflow-hidden" style={{ width: "264px" }}>
+                <div className="bg-white border-l border-[var(--color-border)] flex flex-col shrink-0 h-full overflow-hidden" style={{ width: "264px" }}>
                   <div className="px-4 py-3 border-b border-[var(--color-border)] flex items-center justify-between shrink-0">
                     <span className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wide">多选提示词</span>
                   </div>
@@ -691,7 +691,7 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChang
             if (!p) return null;
 
             return (
-              <div className="bg-white/80 backdrop-blur-xl border-l border-[var(--color-border)] flex flex-col shrink-0 h-full overflow-hidden" style={{ width: "264px" }}>
+              <div className="bg-white border-l border-[var(--color-border)] flex flex-col shrink-0 h-full overflow-hidden" style={{ width: "264px" }}>
                 <div className="px-4 py-3 border-b border-[var(--color-border)] flex items-center justify-between shrink-0">
                   <span className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wide">概览</span>
                   <button

@@ -302,7 +302,7 @@ export function InspectorPanel({
 
   if (!isOpen) {
     return (
-      <div className="w-10 border-l border-black/[0.08] bg-white/50 flex flex-col items-center pt-3 shrink-0">
+      <div className="w-10 border-l border-black/[0.08] bg-white flex flex-col items-center pt-3 shrink-0">
         {toggleButton}
       </div>
     );
@@ -316,7 +316,7 @@ export function InspectorPanel({
     const onlineCount = allRepos.filter(r => r.source_type === 'online').length;
 
     return (
-      <div className="w-[280px] border-l border-black/[0.08] bg-white/50 backdrop-blur-sm flex flex-col shrink-0 h-full overflow-hidden">
+      <div className="w-[280px] border-l border-black/[0.08] bg-white flex flex-col shrink-0 h-full overflow-hidden">
         {/* 头部 */}
         <div className="px-4 py-3 border-b border-[var(--color-border)]/60 flex items-center justify-between shrink-0">
           <span className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider">概览</span>
@@ -412,7 +412,7 @@ export function InspectorPanel({
   // ========== 多选模式 (仓库) ==========
   if (selectedItemType === 'repo' && selectedRepos.length > 1) {
     return (
-      <div className="w-[280px] border-l border-black/[0.08] bg-white/50 backdrop-blur-sm flex flex-col shrink-0 h-full overflow-hidden">
+      <div className="w-[280px] border-l border-black/[0.08] bg-white flex flex-col shrink-0 h-full overflow-hidden">
         <div className="px-4 py-3 border-b border-[var(--color-border)]/60 flex items-center justify-between shrink-0">
           <span className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider">多选仓库</span>
           {toggleButton}
@@ -504,7 +504,7 @@ export function InspectorPanel({
     // online 就只有一个技能，取其 online_url
     const onlineUrl = isOnline ? (selectedRepo.skills[0]?.online_url || selectedRepo.path) : null;
     return (
-      <div className="w-[280px] border-l border-black/[0.08] bg-white/50 backdrop-blur-sm flex flex-col shrink-0 h-full overflow-hidden">
+      <div className="w-[280px] border-l border-black/[0.08] bg-white flex flex-col shrink-0 h-full overflow-hidden">
         {/* 头部 */}
         <div className="px-4 py-3 border-b border-[var(--color-border)]/60 flex items-center justify-between shrink-0">
           <span className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider">仓库详情</span>
@@ -798,7 +798,7 @@ export function InspectorPanel({
   // ========== 多选模式 (技能) ==========
   if (selectedItemType === 'skill' && selectedSkills.length > 1) {
     return (
-      <div className="w-[280px] border-l border-black/[0.08] bg-white/50 backdrop-blur-sm flex flex-col shrink-0 h-full overflow-hidden">
+      <div className="w-[280px] border-l border-black/[0.08] bg-white flex flex-col shrink-0 h-full overflow-hidden">
         <div className="px-4 py-3 border-b border-[var(--color-border)]/60 flex items-center justify-between shrink-0">
           <span className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider">多选技能</span>
           {toggleButton}
@@ -818,7 +818,7 @@ export function InspectorPanel({
   if (selectedItemType === 'skill' && selectedSkills.length === 1) {
     const selectedSkill = selectedSkills[0];
     return (
-      <div className="w-[280px] border-l border-black/[0.08] bg-white/50 backdrop-blur-sm flex flex-col shrink-0 h-full overflow-hidden">
+      <div className="w-[280px] border-l border-black/[0.08] bg-white flex flex-col shrink-0 h-full overflow-hidden">
         {/* 头部 */}
         <div className="px-4 py-3 border-b border-[var(--color-border)]/60 flex items-center justify-between shrink-0">
           <span className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider">技能详情</span>
@@ -1008,7 +1008,7 @@ export function InspectorPanel({
 
   // 兜底
   return (
-    <div className="w-[280px] border-l border-black/[0.08] bg-white/50 backdrop-blur-sm flex flex-col shrink-0 h-full">
+    <div className="w-[280px] border-l border-black/[0.08] bg-white flex flex-col shrink-0 h-full">
       <div className="px-4 py-3 border-b border-[var(--color-border)]/60 flex items-center justify-between">
         <span className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider">检查器</span>
         {toggleButton}

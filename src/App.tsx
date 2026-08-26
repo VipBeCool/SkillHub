@@ -4,7 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { HardDrive, Settings, Search, Plus, RefreshCw, ChevronRight, ChevronLeft, X, LayoutGrid, Sparkles, Globe, FolderX, FolderSearch, Trash2, Info, Folder, Copy, Link as LinkIcon, Check, Download, FileArchive, MessageSquareText, Store, Puzzle, CheckSquare, Star, Clock, Tag } from "lucide-react";
+import { HardDrive, Settings, Search, Plus, RefreshCw, ChevronRight, ChevronLeft, X, LayoutGrid, Sparkles, Globe, FolderX, FolderSearch, Trash2, Info, Folder, FolderPlus, Copy, Link as LinkIcon, Check, Download, FileArchive, MessageSquareText, Store, Puzzle, CheckSquare, Star, Clock, Tag } from "lucide-react";
 import { open } from '@tauri-apps/plugin-dialog';
 import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import { AddRepositoryDialog } from "./components/library/AddRepositoryDialog";
@@ -250,15 +250,20 @@ function App() {
           if (logicalX >= rect.left && logicalX <= rect.right && logicalY >= rect.top && logicalY <= rect.bottom) {
             const paths = event.payload.paths;
             const targetWorkspaceId = localStorage.getItem("skillhub_selected_workspace");
-            if (!targetWorkspaceId || targetWorkspaceId === "all") {
-              showToast("请先在左侧选择一个具体的目标资源库再进行拖入", "error");
-              return;
-            }
-            
             // Validate and copy
             setLoadingText("正在导入...");
             setIsAppStarting(true);
             invoke("get_source_directories").then((dirs: any) => {
+              if (dirs.length === 0) {
+                showToast("你还没有技能库，请先创建", "error");
+                setIsAppStarting(false);
+                return;
+              }
+              if (!targetWorkspaceId || targetWorkspaceId === "all") {
+                showToast("请先在左侧选择一个具体的目标资源库再进行拖入", "error");
+                setIsAppStarting(false);
+                return;
+              }
               const targetWorkspaceDir = dirs.find((d: any) => d.id === targetWorkspaceId)?.path;
               if (targetWorkspaceDir) {
                  invoke("validate_and_copy_dropped_folders", {
@@ -372,7 +377,11 @@ function App() {
 
   const openAddDialog = (tab: "local" | "github" | "online" | null = null) => {
     if (!selectedWorkspaceId || selectedWorkspaceId === "all") {
-      showToast("请先在左侧选择一个具体的技能库再导入", "error");
+      if (directories.length === 0) {
+        showToast("你还没有技能库，请先创建", "error");
+      } else {
+        showToast("请先在左侧选择一个具体的技能库再导入", "error");
+      }
       return;
     }
     setAddDialogTab(tab);
@@ -1118,7 +1127,7 @@ function App() {
   };
 
   return (
-    <div className="flex h-screen w-full bg-transparent text-[var(--foreground)] overflow-hidden font-sans">
+    <div className="flex h-screen w-full bg-[var(--color-background)] text-[var(--foreground)] overflow-hidden font-sans">
 
       <div className="w-64 bg-white/70 backdrop-blur-xl flex flex-col h-full shrink-0 relative z-20 text-[13px] border-r border-black/[0.05]">
         <div data-tauri-drag-region className="h-10 w-full shrink-0"></div>
@@ -1134,16 +1143,21 @@ function App() {
               <button
                 key={tab.id}
                 onClick={() => setActiveModule(tab.id)}
-                className={`flex items-center justify-center transition-all duration-200 outline-none select-none rounded-md h-[32px] ${
+                className={`flex items-center justify-center transition-colors duration-300 outline-none select-none rounded-md h-[32px] ${
                   activeModule === tab.id
-                    ? 'bg-black/[0.05] text-[var(--foreground)] font-medium px-2.5 gap-2'
+                    ? 'bg-black/[0.05] text-[var(--foreground)] font-medium px-2.5'
                     : 'text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/[0.04] px-2.5'
                 }`}
               >
                 <tab.icon className="w-4 h-4 shrink-0" />
-                {activeModule === tab.id && (
-                  <span className="text-[14px] truncate animate-in fade-in slide-in-from-left-1 duration-200">{tab.label}</span>
-                )}
+                <div 
+                  className="grid transition-all duration-300 ease-in-out ml-1"
+                  style={{ gridTemplateColumns: activeModule === tab.id ? '1fr' : '0fr' }}
+                >
+                  <span className={`overflow-hidden text-[14px] truncate leading-none transition-all duration-300 ${activeModule === tab.id ? 'opacity-100 pl-1' : 'opacity-0 pl-0'}`}>
+                    {tab.label}
+                  </span>
+                </div>
               </button>
             ))}
           </div>
@@ -1291,10 +1305,10 @@ function App() {
         </div>
       </div>
 
-      <div className="flex-1 flex h-full min-w-0 bg-transparent relative">
+      <div className="flex-1 flex h-full min-w-0 bg-[var(--color-background)] relative">
         {activeModule === 'skills' ? (
           <>
-            <div className="flex-1 flex flex-col h-full min-w-0 bg-transparent relative">
+            <div className="flex-1 flex flex-col h-full min-w-0 bg-[var(--color-background)] relative">
           <div data-tauri-drag-region className="h-16 border-b border-[var(--color-border)] bg-white/70 backdrop-blur-xl flex items-center justify-between px-8 shrink-0 relative z-0">
             <div className="flex items-center space-x-3">
               {selectedRepoId && !isFlatView && (
@@ -1451,6 +1465,25 @@ function App() {
                     移除记录
                   </button>
                 </div>
+              </div>
+            ) : directories.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-[var(--color-muted)] animate-in fade-in duration-500 p-6">
+                <div className="w-32 h-32 mb-6 relative group">
+                  <div className="relative bg-white/60 backdrop-blur-xl rounded-3xl p-8 flex items-center justify-center shadow-sm">
+                    <FolderPlus className="w-12 h-12 text-blue-400 drop-shadow-sm relative z-10" />
+                  </div>
+                </div>
+                <h2 className="text-xl font-semibold text-[var(--foreground)] mb-2 tracking-tight">欢迎使用，请先创建技能库</h2>
+                <p className="text-sm text-[var(--color-muted)] mb-8 text-center max-w-sm leading-relaxed">
+                  技能库就像是文件夹，可以帮你把不同类型的 AI 技能分门别类地存放起来。在添加技能前，请先创建你的第一个技能库。
+                </p>
+                <button 
+                  onClick={() => setIsCreateModalOpen(true)}
+                  className="flex items-center px-6 py-2.5 bg-blue-500 text-white rounded-lg font-medium hover:bg-blue-600 transition-colors shadow-sm"
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  创建第一个技能库
+                </button>
               </div>
             ) : filteredGroupedRepos.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-[var(--color-muted)] animate-in fade-in duration-500 p-6">
@@ -1675,7 +1708,7 @@ function App() {
           </div>
         ) : (
           /* 资源社区占位页面 */
-          <div className="flex-1 flex flex-col h-full min-w-0 bg-transparent relative">
+          <div className="flex-1 flex flex-col h-full min-w-0 bg-[var(--color-background)] relative">
             <div data-tauri-drag-region className="h-16 border-b border-[var(--color-border)] bg-white/70 backdrop-blur-xl flex items-center px-8 shrink-0 relative z-0">
               <h1 className="text-xl font-medium tracking-tight text-[var(--foreground)]">资源社区</h1>
             </div>

@@ -210,7 +210,7 @@ export function SkillDetailsDrawer({ skill, isOpen, onClose, onGeneratePrompt }:
 
       {/* 侧边栏 */}
       <div 
-        className={`fixed inset-y-0 right-0 w-[750px] max-w-[90vw] bg-white border-l border-[var(--color-border)] z-50 shadow-2xl flex flex-col transition-transform duration-500 ${isOpen ? "translate-x-0" : "translate-x-full"}`}
+        className={`fixed inset-y-0 right-0 w-[750px] max-w-[90vw] bg-white border-l border-[var(--color-border)] z-50 flex flex-col transition-all duration-500 ${isOpen ? "translate-x-0 shadow-2xl" : "translate-x-full shadow-none"}`}
       >
         <div className="flex items-start justify-between px-6 py-5 border-b border-[var(--color-border)] shrink-0 gap-4">
           <div className="flex items-start space-x-3 min-w-0 flex-1">

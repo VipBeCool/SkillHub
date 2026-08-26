@@ -33,6 +33,10 @@
     --foreground: var(--color-foreground);
   }
 
+  html {
+    background-color: #FFFFFF;
+  }
+
   body {
     background-color: var(--background);
     color: var(--foreground);
@@ -43,6 +47,10 @@
     padding: 0;
     overflow: hidden; /* macOS app feel */
     background-image: none; /* Removed heavy mesh background */
+  }
+
+  #root {
+    background-color: #FFFFFF;
   }
 
   /* Prevent text selection everywhere except where explicitly allowed */
