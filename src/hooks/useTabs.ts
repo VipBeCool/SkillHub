@@ -1,6 +1,19 @@
 import { useState, useCallback } from 'react';
 import { Tab, TabType, TabContext, TabHistoryEntry, createDefaultTab } from '../types/tabs';
 
+// Helper to deeply compare two plain objects
+function deepEqual(obj1: any, obj2: any): boolean {
+  if (obj1 === obj2) return true;
+  if (typeof obj1 !== 'object' || obj1 === null || typeof obj2 !== 'object' || obj2 === null) return false;
+  const keys1 = Object.keys(obj1);
+  const keys2 = Object.keys(obj2);
+  if (keys1.length !== keys2.length) return false;
+  for (const key of keys1) {
+    if (!keys2.includes(key) || !deepEqual(obj1[key], obj2[key])) return false;
+  }
+  return true;
+}
+
 // 生成唯一 ID
 let tabCounter = 0;
 const genTabId = () => `tab-${Date.now()}-${++tabCounter}`;
@@ -119,7 +132,7 @@ export function useTabs(initialWorkspaceId?: string): UseTabsReturn {
         const isIdentical = 
           currentEntry.type === type &&
           currentEntry.title === title &&
-          JSON.stringify(currentEntry.context) === JSON.stringify(context);
+          deepEqual(currentEntry.context, context);
 
         if (isIdentical) {
           return {

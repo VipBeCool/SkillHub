@@ -4,7 +4,7 @@ import { openUrl } from '@tauri-apps/plugin-opener';
 import { open } from '@tauri-apps/plugin-dialog';
 import { 
   FolderGit2, HardDrive, Folder, Copy, Link as LinkIcon, Unlink, Globe,
-  FileText, ChevronRight, Loader2, PanelRightClose, PanelRightOpen,
+  FileText, ChevronRight, Loader2, PanelRightClose,
   Database, RefreshCw, Trash2, Download, FileArchive, Sparkles, X
 } from 'lucide-react';
 import { Tooltip } from '../ui/Tooltip';
@@ -31,7 +31,6 @@ interface InspectorPanelProps {
   onUpdateRepos?: (e: React.MouseEvent, repos: GroupedRepo[]) => void;
   onDeleteRepos?: (e: React.MouseEvent, repos: GroupedRepo[]) => void;
   onGeneratePrompt: (skill: Skill) => void;
-  // 面板开关
   isOpen: boolean;
   onToggle: () => void;
 }
@@ -289,23 +288,20 @@ export function InspectorPanel({
   const isBatchExporting = selectedRepos.length > 0 && selectedRepos.some(r => !!exportingMap[r.path]);
 
   // 收起按钮
+
   const toggleButton = (
-    <Tooltip content={isOpen ? '收起面板' : '展开面板'}>
+    <Tooltip content="收起检查器 (⌘/)">
       <button
         onClick={onToggle}
-        className="p-1.5 rounded-lg text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-colors"
+        className="p-1.5 rounded-md text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/[0.06] transition-colors"
       >
-        {isOpen ? <PanelRightClose className="w-4 h-4" /> : <PanelRightOpen className="w-4 h-4" />}
+        <PanelRightClose className="w-4 h-4" />
       </button>
     </Tooltip>
   );
 
   if (!isOpen) {
-    return (
-      <div className="w-10 border-l border-[var(--color-border)] bg-transparent flex flex-col items-center pt-3 shrink-0">
-        {toggleButton}
-      </div>
-    );
+    return null;
   }
 
   // ========== 库概览模式 ==========
@@ -318,8 +314,8 @@ export function InspectorPanel({
     return (
       <div className="w-64 border-l border-[var(--color-border)] bg-transparent flex flex-col shrink-0 h-full overflow-hidden">
         {/* 头部 */}
-        <div className="px-4 py-3  flex items-center justify-between shrink-0">
-          <span className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider">概览</span>
+        <div className="px-4 py-3 flex items-center justify-between shrink-0">
+          <span className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider"></span>
           {toggleButton}
         </div>
 
@@ -413,8 +409,8 @@ export function InspectorPanel({
   if (selectedItemType === 'repo' && selectedRepos.length > 1) {
     return (
       <div className="w-64 border-l border-[var(--color-border)] bg-transparent flex flex-col shrink-0 h-full overflow-hidden">
-        <div className="px-4 py-3  flex items-center justify-between shrink-0">
-          <span className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider">多选仓库</span>
+        <div className="px-4 py-3 flex items-center justify-between shrink-0">
+          <span className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider"></span>
           {toggleButton}
         </div>
         <div className="flex-1 flex flex-col items-center justify-center p-4">
@@ -507,7 +503,7 @@ export function InspectorPanel({
       <div className="w-64 border-l border-[var(--color-border)] bg-transparent flex flex-col shrink-0 h-full overflow-hidden">
         {/* 头部 */}
         <div className="px-4 py-3  flex items-center justify-between shrink-0">
-          <span className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider">仓库详情</span>
+          <span className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider"></span>
           {toggleButton}
         </div>
 
@@ -800,7 +796,7 @@ export function InspectorPanel({
     return (
       <div className="w-64 border-l border-[var(--color-border)] bg-transparent flex flex-col shrink-0 h-full overflow-hidden">
         <div className="px-4 py-3  flex items-center justify-between shrink-0">
-          <span className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider">多选技能</span>
+          <span className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider"></span>
           {toggleButton}
         </div>
         <div className="flex-1 flex flex-col items-center justify-center p-4">
@@ -821,7 +817,7 @@ export function InspectorPanel({
       <div className="w-64 border-l border-[var(--color-border)] bg-transparent flex flex-col shrink-0 h-full overflow-hidden">
         {/* 头部 */}
         <div className="px-4 py-3  flex items-center justify-between shrink-0">
-          <span className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider">技能详情</span>
+          <span className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider"></span>
           {toggleButton}
         </div>
 
@@ -1010,7 +1006,7 @@ export function InspectorPanel({
   return (
     <div className="w-64 border-l border-[var(--color-border)] bg-transparent flex flex-col shrink-0 h-full">
       <div className="px-4 py-3  flex items-center justify-between">
-        <span className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider">检查器</span>
+        <span className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider"></span>
         {toggleButton}
       </div>
       <div className="flex-1 flex items-center justify-center p-4">

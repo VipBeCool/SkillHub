@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Plus, Download, Star, LayoutGrid, Trash2, Trash, FolderPlus, MoreHorizontal, X, Languages, Loader2, Folder, Edit2, FolderX, Tag } from "lucide-react";
+import { Plus, Download, Star, LayoutGrid, Trash2, Trash, FolderPlus, MoreHorizontal, X, Languages, Loader2, Folder, Edit2, FolderX, Tag, PanelRightClose } from "lucide-react";
 import { Prompt, PromptGroup, PromptVersion } from "./types";
 import { PromptCard } from "./components/prompt/PromptCard";
 import { SelectionArea, SelectionEvent } from "@viselect/react";
@@ -177,8 +178,9 @@ interface PromptModuleProps {
   filter: PromptFilter;
   refreshKey?: number;
   onGroupsChange: (groups: PromptGroup[]) => void;
-  onFilterChange: (f: PromptFilter) => void;
-  onTitleChange?: (title: string, icon?: string) => void;
+  onFilterChange: (filter: PromptFilter) => void;
+  onTitleChange: (title: string, icon: string) => void;
+  onToggleInspector?: () => void;
 }
 
 interface PromptInspectorData {
@@ -186,7 +188,7 @@ interface PromptInspectorData {
   versions: PromptVersion[];
 }
 
-export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChange, onTitleChange }: PromptModuleProps) {
+export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChange, onTitleChange, onToggleInspector }: PromptModuleProps) {
   const [prompts, setPrompts] = useState<Prompt[]>([]);
   const [groups, setGroups] = useState<PromptGroup[]>([]);
   const [search] = useState("");
@@ -739,12 +741,23 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChang
         </div>
 
         {/* Inspector 面板 */}
-        {(() => {
+        {document.getElementById('global-inspector-slot') ? createPortal(
+          (() => {
             if (selectedIds.size === 0) {
               return (
                 <div className="bg-transparent border-l border-[var(--color-border)] flex flex-col shrink-0 h-full overflow-hidden w-64">
                   <div className="px-4 py-3 flex items-center justify-between shrink-0">
-                    <span className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wide">检查器</span>
+                    <span className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wide"></span>
+                    {onToggleInspector && (
+                      <Tooltip content="收起检查器 (⌘/)">
+                        <button
+                          onClick={onToggleInspector}
+                          className="p-1.5 rounded-md text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/[0.06] transition-colors"
+                        >
+                          <PanelRightClose className="w-4 h-4" />
+                        </button>
+                      </Tooltip>
+                    )}
                   </div>
                   <div className="flex-1 flex items-center justify-center p-4">
                     <p className="text-[12px] text-[var(--color-muted)] text-center">选择一个提示词查看详情</p>
@@ -757,7 +770,17 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChang
               return (
                 <div className="bg-transparent border-l border-[var(--color-border)] flex flex-col shrink-0 h-full overflow-hidden w-64">
                   <div className="px-4 py-3 flex items-center justify-between shrink-0">
-                    <span className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wide">多选提示词</span>
+                    <span className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wide"></span>
+                    {onToggleInspector && (
+                      <Tooltip content="收起检查器 (⌘/)">
+                        <button
+                          onClick={onToggleInspector}
+                          className="p-1.5 rounded-md text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/[0.06] transition-colors"
+                        >
+                          <PanelRightClose className="w-4 h-4" />
+                        </button>
+                      </Tooltip>
+                    )}
                   </div>
                   <div className="flex-1 flex flex-col items-center justify-center p-4">
                     <div className="w-16 h-16 bg-[var(--color-primary)]/10 rounded-full flex items-center justify-center mb-4">
@@ -796,11 +819,23 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChang
             return (
               <div className="bg-transparent border-l border-[var(--color-border)] flex flex-col shrink-0 h-full overflow-hidden w-64">
                 <div className="px-4 py-3 flex items-center justify-between shrink-0">
-                  <span className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wide">概览</span>
-                  <button
-                    onClick={() => { setEditingPrompt(p); setIsEditorOpen(true); }}
-                    className="text-[12px] text-[var(--color-primary)] font-medium hover:text-[var(--color-primary)]/80 transition-colors"
-                  >编辑</button>
+                  <span className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wide"></span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => { setEditingPrompt(p); setIsEditorOpen(true); }}
+                      className="px-1.5 py-1 text-[12px] text-[var(--color-primary)] font-medium hover:text-[var(--color-primary)]/80 transition-colors"
+                    >编辑</button>
+                    {onToggleInspector && (
+                      <Tooltip content="收起检查器 (⌘/)">
+                        <button
+                          onClick={onToggleInspector}
+                          className="p-1.5 rounded-md text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/[0.06] transition-colors"
+                        >
+                          <PanelRightClose className="w-4 h-4" />
+                        </button>
+                      </Tooltip>
+                    )}
+                  </div>
                 </div>
                 <div className="flex-1 overflow-y-auto px-6 pt-3 pb-20 space-y-4">
                   <div>
@@ -956,7 +991,9 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChang
                 </div>
               </div>
             );
-          })()}
+          })(),
+          document.getElementById('global-inspector-slot')!
+        ) : null}
 
       {/* 弹窗 */}
       <PromptEditorDrawer

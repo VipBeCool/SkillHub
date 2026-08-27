@@ -70,8 +70,8 @@ export function CreateGroupDialog({ isOpen, group, onClose, onSave }: CreateGrou
         {/* Content */}
         <div className="p-6 space-y-5">
           {/* 名称 */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-[var(--foreground)]">分组名称</label>
+          <div className="flex flex-col gap-2.5">
+            <label className="text-[13px] font-medium text-[var(--foreground)]">分组名称</label>
             <input
               type="text"
               value={name}
@@ -84,8 +84,8 @@ export function CreateGroupDialog({ isOpen, group, onClose, onSave }: CreateGrou
           </div>
 
           {/* 颜色 */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-[var(--foreground)]">标识色</label>
+          <div className="flex flex-col gap-2.5">
+            <label className="text-[13px] font-medium text-[var(--foreground)]">标识色</label>
             <div className="flex items-center gap-2.5">
               {PRESET_COLORS.map(c => (
                 <button

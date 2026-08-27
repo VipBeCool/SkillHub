@@ -74,9 +74,9 @@ function App() {
   };
 
   const selectedTag = currentTab?.context?.selectedTag || "all";
-  const setSelectedTag = (tag: string, e?: React.MouseEvent) => handleSidebarNav('skill-home', tag, { selectedTag: tag, activeView: "all" }, 'Tag', e);
+  const setSelectedTag = (tag: string, e?: React.MouseEvent) => handleSidebarNav('skill-home', '技能库', { selectedTag: tag, activeView: "all", repoId: undefined }, 'Tag', e);
   const activeView = (currentTab?.context?.activeView as "all" | "starred" | "recent" | "untagged") || "all";
-  const setActiveView = (view: "all" | "starred" | "recent" | "untagged", title: string = "全部技能", icon: string = "LayoutGrid", e?: React.MouseEvent) => handleSidebarNav('skill-home', title, { activeView: view, selectedTag: "all" }, icon, e);
+  const setActiveView = (view: "all" | "starred" | "recent" | "untagged", _title: string = "全部技能", icon: string = "LayoutGrid", e?: React.MouseEvent) => handleSidebarNav('skill-home', '技能库', { activeView: view, selectedTag: "all", repoId: undefined }, icon, e);
   const isFlatView = activeView !== "all" || selectedTag !== "all";
   const [, setSkills] = useState<Skill[]>([]);
   const [directories, setDirectories] = useState<SourceDirectory[]>([]);
@@ -110,8 +110,8 @@ function App() {
 
   // Prompt 模块状态（提升，供 App 侧边栏和 PromptModule 共享）
   const promptFilter = (currentTab?.context?.promptFilter as PromptFilter) || "all";
-  const setPromptFilter = (filter: PromptFilter, e?: React.MouseEvent) => {
-    handleSidebarNav('prompt-home', '提示词', { promptFilter: filter }, 'MessageSquareText', e);
+  const setPromptFilter = (filter: string, e?: React.MouseEvent) => {
+    handleSidebarNav('prompt-home', '提示词', { promptFilter: filter, repoId: undefined }, 'MessageSquareText', e);
   };
   const [promptGroups, setPromptGroups] = useState<PromptGroup[]>([]);
   const [isCreateGroupOpen, setIsCreateGroupOpen] = useState(false);
@@ -185,9 +185,7 @@ function App() {
       localStorage.removeItem("skillhub_selected_workspace");
       invoke("refresh_app_menu", { selectedId: null }).catch(console.error);
     }
-    setActiveTab("all");
-    setSelectedTag("all");
-    setActiveView("all");
+    navigateTo('skill-home', '技能库', { ...currentTab?.context, filter: 'all', selectedTag: 'all', activeView: 'all', repoId: undefined });
   };
 
   const fetchData = async () => {
@@ -582,12 +580,6 @@ function App() {
     return Array.from(tags).sort();
   }, [groupedRepos, selectedWorkspaceId, activeTab]);
 
-  useEffect(() => {
-    // If selected repo is deleted, clear selection
-    if (selectedRepoId && !filteredGroupedRepos.some(r => r.id === selectedRepoId)) {
-      setSelectedRepoId(null);
-    }
-  }, [filteredGroupedRepos, selectedRepoId]);
 
   // 清除检查器选中（当过滤条件变化时）
   useEffect(() => {
@@ -1428,7 +1420,7 @@ function App() {
                   <button
                     className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none ${activeTab === "all" ? "bg-black/5 text-[var(--foreground)] font-semibold" : "text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 font-medium"
                       }`}
-                    onClick={() => handleSidebarNav('skill-home', '所有技能', { filter: 'all' }, 'FolderSearch')}
+                    onClick={() => handleSidebarNav('skill-home', '技能库', { filter: 'all', repoId: undefined }, 'FolderSearch')}
                   >
                     <FolderSearch className="w-4 h-4" />
                     <span>所有技能</span>
@@ -1436,7 +1428,7 @@ function App() {
                   <button
                     className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none ${activeTab === "local" ? "bg-black/5 text-[var(--foreground)] font-semibold" : "text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 font-medium"
                       }`}
-                    onClick={() => handleSidebarNav('skill-home', '本地技能', { filter: 'local' }, 'HardDrive')}
+                    onClick={() => handleSidebarNav('skill-home', '技能库', { filter: 'local', repoId: undefined }, 'HardDrive')}
                   >
                     <HardDrive className="w-4 h-4" />
                     <span>本地技能</span>
@@ -1444,7 +1436,7 @@ function App() {
                   <button
                     className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none ${activeTab === "github" ? "bg-black/5 text-[var(--foreground)] font-semibold" : "text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 font-medium"
                       }`}
-                    onClick={() => handleSidebarNav('skill-home', 'Github技能', { filter: 'github' }, 'Github')}
+                    onClick={() => handleSidebarNav('skill-home', '技能库', { filter: 'github', repoId: undefined }, 'Github')}
                   >
                     <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M15 22v-4a4.8 4.8 0 0 0-1-3.24c3-.3 6-1.5 6-6.76a5.5 5.5 0 0 0-1.5-3.8 5.1 5.1 0 0 0-.1-3.8s-1.2-.4-3.9 1.4a13.4 13.4 0 0 0-7 0C6.3 2.4 5.1 2.8 5.1 2.8a5.1 5.1 0 0 0-.1 3.8 5.5 5.5 0 0 0-1.5 3.8c0 5.2 3 6.4 6 6.76a4.8 4.8 0 0 0-1 3.24v4" />
@@ -1498,6 +1490,8 @@ function App() {
             onGoForward={tabGoForward}
             isSidebarOpen={isLeftSidebarOpen}
             onToggleSidebar={() => setIsLeftSidebarOpen(prev => !prev)}
+            isRightSidebarOpen={isInspectorOpen}
+            onToggleRightSidebar={['skills', 'prompts'].includes(currentTabModule) ? () => setIsInspectorOpen(prev => !prev) : undefined}
           />
           <div className="flex-1 flex flex-row min-h-0 relative">
           {currentTabModule === 'skills' ? (
@@ -1889,6 +1883,7 @@ function App() {
                     updateActiveTab({ title, icon });
                   }
                 }}
+                onToggleInspector={() => setIsInspectorOpen(!isInspectorOpen)}
               />
             </div>
           ) : (
@@ -1935,6 +1930,7 @@ function App() {
             onGeneratePrompt={handleGeneratePrompt}
           />
         )}
+        <div id="global-inspector-slot" className="shrink-0 h-full bg-transparent" style={{ display: isInspectorOpen ? 'block' : 'none' }}></div>
       </div>
 
       <ContextMenu
@@ -1984,12 +1980,19 @@ function App() {
         onDeleteRepo={(e, r) => handleDeleteRepos(e as any, [r])}
         onCopyPath={handleCopyPath}
         onSelectRepo={(repoId) => {
+          const repo = groupedRepos.find(r => r.id === repoId);
+          if (repo && repo.source_dir_id !== selectedWorkspaceId) {
+            handleWorkspaceSelect(repo.source_dir_id || null);
+          }
           setActiveModule('skills');
-          handleSidebarNav('skill-repo', '仓库', { repoId, activeView: 'all', selectedTag: 'all' });
+          handleSidebarNav('skill-repo', repo?.name || '仓库', { repoId, activeView: 'all', selectedTag: 'all' });
         }}
         onSelectSkill={(skill, repo) => {
+          if (repo && repo.source_dir_id !== selectedWorkspaceId) {
+            handleWorkspaceSelect(repo.source_dir_id || null);
+          }
           setActiveModule('skills');
-          handleSidebarNav('skill-repo', '仓库', { repoId: repo.id, activeView: 'all', selectedTag: 'all' });
+          handleSidebarNav('skill-repo', repo?.name || '仓库', { repoId: repo.id, activeView: 'all', selectedTag: 'all' });
           setSelectedSkill(skill);
           setIsDrawerOpen(true);
         }}

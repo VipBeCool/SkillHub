@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState } from 'react';
-import { ChevronLeft, ChevronRight, Plus, X, PanelLeft, PanelLeftClose } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, X, PanelLeft, PanelLeftClose, PanelRightOpen } from 'lucide-react';
 import { Tab, TabType } from '../../types/tabs';
 import { Tooltip } from './Tooltip';
 import { ContextMenu } from './ContextMenu';
@@ -32,6 +32,9 @@ interface TabBarProps {
   // 左侧边栏收起/展开
   isSidebarOpen: boolean;
   onToggleSidebar: () => void;
+  // 右侧边栏收起/展开
+  isRightSidebarOpen?: boolean;
+  onToggleRightSidebar?: () => void;
 }
 
 export function TabBar({
@@ -46,6 +49,8 @@ export function TabBar({
   onGoForward,
   isSidebarOpen,
   onToggleSidebar,
+  isRightSidebarOpen,
+  onToggleRightSidebar,
 }: TabBarProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, tabId: string } | null>(null);
@@ -192,6 +197,20 @@ export function TabBar({
           </Tooltip>
         </div>
       </div>
+
+      {/* 右侧控制区（例如右侧边栏切换） - 仅在侧边栏收起时显示在 TabBar */}
+      {onToggleRightSidebar && !isRightSidebarOpen && (
+        <div className="flex items-center gap-1 px-2 pb-1 shrink-0 h-9 ml-auto" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+          <Tooltip content="展开检查器 (⌘/)">
+            <button
+              onClick={onToggleRightSidebar}
+              className="p-1.5 rounded-md text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/[0.06] transition-colors"
+            >
+              <PanelRightOpen className="w-4 h-4" />
+            </button>
+          </Tooltip>
+        </div>
+      )}
 
       {contextMenu && (
         <ContextMenu

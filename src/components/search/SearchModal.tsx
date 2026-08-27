@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Search, FolderGit2, HardDrive, X, Command, PanelRight, Filter, Type, Globe, Plus, Copy, FolderOpen, Trash2, RefreshCw, Clock, ArrowDownAZ, Check, MessageSquareText, Star, Tag } from 'lucide-react';
+import { Search, FolderGit2, HardDrive, X, Command, PanelRight, Filter, Type, Globe, Plus, Copy, FolderOpen, Trash2, RefreshCw, Clock, ArrowDownAZ, Check, MessageSquareText, Star, Tag, Puzzle } from 'lucide-react';
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { showToast } from "../ui/Toast";
@@ -84,7 +84,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
   const [query, setQuery] = useState('');
   const [hoveredItem, setHoveredItem] = useState<HoveredItem | null>(null);
   const [showPreview, setShowPreview] = useState(true);
-  const [showFilters, setShowFilters] = useState(false);
+  const [showFilters, setShowFilters] = useState(true);
   
   // Filters state
   const [filterNameOnly, setFilterNameOnly] = useState(false);
@@ -239,7 +239,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
             ref={inputRef}
             type="text"
             className="flex-1 text-lg outline-none bg-transparent placeholder-gray-400 text-[var(--foreground)]"
-            placeholder="搜索仓库、技能或提示词..."
+            placeholder="搜索技能、子技能或提示词..."
             value={query}
             onChange={e => {
               setQuery(e.target.value);
@@ -339,7 +339,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
               className={`flex items-center px-2 py-1 text-xs font-medium rounded transition-all hover:bg-black/5 ${filterType !== 'all' ? 'bg-black/10 text-[var(--foreground)]' : 'text-[var(--color-muted)]'}`}
             >
               <FolderGit2 className="w-3.5 h-3.5 mr-1.5 opacity-70" />
-              {filterType === 'all' ? '全部类型' : filterType === 'repo' ? '仅仓库' : filterType === 'skill' ? '仅技能' : '仅提示词'}
+              {filterType === 'all' ? '全部类型' : filterType === 'repo' ? '仅技能' : filterType === 'skill' ? '仅子技能' : '仅提示词'}
             </button>
             {filterType !== 'prompt' && (
               <button 
@@ -396,6 +396,40 @@ export const SearchModal: React.FC<SearchModalProps> = ({
               <Plus className="w-3.5 h-3.5 mr-1.5" />
               添加筛选
             </button>
+            
+            <div className="flex-1"></div>
+            
+            {(matchedRepos.length > 0 || matchedSkills.length > 0 || matchedPrompts.length > 0) && (
+              <div className="flex items-center space-x-2 text-xs">
+                <span className="text-[var(--color-muted)] mr-1">
+                  搜索结果 ({(matchedRepos.length + matchedSkills.length + matchedPrompts.length) > 999 ? '999+' : (matchedRepos.length + matchedSkills.length + matchedPrompts.length)})
+                </span>
+                {matchedRepos.length > 0 && (
+                  <button 
+                    onClick={() => document.getElementById('search-group-repos')?.scrollIntoView({ behavior: 'smooth' })}
+                    className="px-2 py-1 rounded bg-black/5 hover:bg-black/10 text-[var(--foreground)] transition-colors"
+                  >
+                    技能
+                  </button>
+                )}
+                {matchedSkills.length > 0 && (
+                  <button 
+                    onClick={() => document.getElementById('search-group-skills')?.scrollIntoView({ behavior: 'smooth' })}
+                    className="px-2 py-1 rounded bg-black/5 hover:bg-black/10 text-[var(--foreground)] transition-colors"
+                  >
+                    子技能
+                  </button>
+                )}
+                {matchedPrompts.length > 0 && (
+                  <button 
+                    onClick={() => document.getElementById('search-group-prompts')?.scrollIntoView({ behavior: 'smooth' })}
+                    className="px-2 py-1 rounded bg-black/5 hover:bg-black/10 text-[var(--foreground)] transition-colors"
+                  >
+                    提示词
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -415,9 +449,9 @@ export const SearchModal: React.FC<SearchModalProps> = ({
               ) : (
                 <div className="p-2 space-y-4">
                   {matchedRepos.length > 0 && (
-                    <div>
+                    <div id="search-group-repos">
                       <h3 className="px-3 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 sticky top-0 bg-white z-10 shadow-[0_4px_10px_-10px_rgba(0,0,0,0.1)]">
-                        仓库 ({matchedRepos.length})
+                        技能 ({matchedRepos.length})
                       </h3>
                       <div className="space-y-1">
                         {matchedRepos.map(repo => {
@@ -435,9 +469,17 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                             >
                               <div className="flex items-center space-x-3 truncate">
                                 <div 
-                                  className={`w-7 h-7 rounded-md flex items-center justify-center shrink-0 ${isHovered ? 'bg-black/5 text-[var(--foreground)]' : (repo.source_type === 'github' ? 'bg-blue-50 text-blue-600' : 'bg-gray-100 text-gray-500')}`}
+                                  className={`w-7 h-7 rounded-md flex items-center justify-center shrink-0 ${
+                                    isHovered 
+                                      ? 'bg-black/5 text-[var(--foreground)]' 
+                                      : repo.source_type === 'online'
+                                        ? 'bg-emerald-500/10 text-emerald-600'
+                                        : repo.source_type === 'github' 
+                                          ? 'bg-blue-50 text-blue-600' 
+                                          : 'bg-gray-100 text-gray-500'
+                                  }`}
                                 >
-                                  <FolderGit2 className="w-4 h-4" />
+                                  <Puzzle className="w-4 h-4 stroke-[2px]" />
                                 </div>
                                 <div>
                                   <div className="text-[13px] font-medium truncate">{repo.name}</div>
@@ -460,7 +502,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                   )}
 
                   {matchedSkills.length > 0 && (
-                    <div>
+                    <div id="search-group-skills">
                       <h3 className="px-3 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider sticky top-0 bg-white z-10 shadow-[0_4px_10px_-10px_rgba(0,0,0,0.1)] pt-2 mb-1">
                         子技能 ({matchedSkills.length})
                       </h3>
@@ -509,7 +551,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                   )}
 
                   {matchedPrompts.length > 0 && (
-                    <div>
+                    <div id="search-group-prompts">
                       <h3 className="px-3 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider sticky top-0 bg-white z-10 shadow-[0_4px_10px_-10px_rgba(0,0,0,0.1)] pt-2 mb-1">
                         提示词 ({matchedPrompts.length})
                       </h3>
@@ -581,15 +623,26 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                 {hoveredItem.type === 'repo' && (
                   <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm w-full flex flex-col group relative">
                     <div className="flex items-center space-x-3 mb-4">
-                      <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
-                        <FolderGit2 className="w-5 h-5" />
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                        hoveredItem.repo.source_type === 'online'
+                          ? 'bg-emerald-500/10 text-emerald-600'
+                          : hoveredItem.repo.source_type === 'github'
+                            ? 'bg-blue-50 text-blue-600'
+                            : 'bg-gray-100 text-gray-500'
+                      }`}>
+                        <Puzzle className="w-5 h-5 stroke-[2px]" />
                       </div>
                       <div className="min-w-0 flex-1">
                         <h3 className="font-semibold text-gray-800 text-base truncate">{hoveredItem.repo.name}</h3>
                         <div className="flex items-center space-x-2 mt-1">
-                          <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded flex items-center ${hoveredItem.repo.source_type === 'github' ? 'bg-blue-50 text-blue-600' : 'bg-purple-50 text-purple-600'}`}>
-                            {hoveredItem.repo.source_type === 'github' ? <Globe className="w-3 h-3 mr-1" /> : <FolderOpen className="w-3 h-3 mr-1" />}
-                            {hoveredItem.repo.source_type === 'github' ? 'Github' : 'Local'}
+                          <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded flex items-center ${
+                            hoveredItem.repo.source_type === 'online' ? 'bg-emerald-50 text-emerald-600' :
+                            hoveredItem.repo.source_type === 'github' ? 'bg-blue-50 text-blue-600' : 'bg-gray-100 text-gray-600'
+                          }`}>
+                            {hoveredItem.repo.source_type === 'online' ? <Globe className="w-3 h-3 mr-1" /> :
+                             hoveredItem.repo.source_type === 'github' ? <Globe className="w-3 h-3 mr-1" /> : <FolderOpen className="w-3 h-3 mr-1" />}
+                            {hoveredItem.repo.source_type === 'online' ? '线上技能' :
+                             hoveredItem.repo.source_type === 'github' ? 'Github' : '本地'}
                           </span>
                           <span className="text-[10px] text-gray-500 font-medium px-1.5 py-0.5 bg-gray-100 rounded">
                             {hoveredItem.repo.skills.length} 技能
@@ -630,7 +683,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                             <Copy className="w-4 h-4" />
                           </button>
                         </Tooltip>
-                        <Tooltip content="刷新当前仓库">
+                        <Tooltip content="刷新当前内容">
                           <button onClick={(e) => { 
                             e.stopPropagation(); 
                             if (hoveredItem.repo.source_dir_id) {
@@ -687,7 +740,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                     
                     <div className="space-y-3 text-sm text-gray-600 flex-1">
                       <div className="flex flex-col">
-                        <span className="text-gray-400 text-[10px] uppercase tracking-wider mb-1">所属仓库</span>
+                        <span className="text-gray-400 text-[10px] uppercase tracking-wider mb-1">所属技能</span>
                         <span className="font-medium text-[12px] flex items-center">
                           <FolderGit2 className="w-3.5 h-3.5 mr-1.5 text-blue-500" />
                           {hoveredItem.repo.name}
