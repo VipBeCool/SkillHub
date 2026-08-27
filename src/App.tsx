@@ -4,7 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { HardDrive, Settings, Search, Plus, RefreshCw, ChevronRight, ChevronLeft, X, LayoutGrid, Sparkles, Globe, FolderX, FolderSearch, Trash2, Info, Folder, FolderPlus, Copy, Link as LinkIcon, Check, Download, FileArchive, MessageSquareText, Store, Puzzle, CheckSquare, Star, Clock, Tag } from "lucide-react";
+import { HardDrive, Settings, Search, Plus, RefreshCw, ChevronRight, X, LayoutGrid, Sparkles, Globe, FolderX, FolderSearch, Trash2, Info, Folder, FolderPlus, Copy, Link as LinkIcon, Check, Download, FileArchive, MessageSquareText, Store, Puzzle, CheckSquare, Star, Clock, Tag } from "lucide-react";
 import { open } from '@tauri-apps/plugin-dialog';
 import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import { AddRepositoryDialog } from "./components/library/AddRepositoryDialog";
@@ -27,6 +27,9 @@ import type { ContextMenuItem } from "./components/ui/ContextMenu";
 import { getNextElement } from "./utils/navigation";
 import { Skill, SourceDirectory, AgentConfig, SyncRecord, GroupedRepo, PromptGroup } from "./types";
 import { PromptModule, PromptSidebarNav, PromptFilter } from "./PromptModule";
+import { useTabs } from "./hooks/useTabs";
+import { TabType } from "./types/tabs";
+import { TabBar } from "./components/ui/TabBar";
 
 const isMac = navigator.userAgent.toLowerCase().includes('mac');
 const fileManagerName = isMac ? '访达' : '文件管理器';
@@ -36,10 +39,44 @@ const getExportTimeStr = () => new Date().toISOString().replace(/[:.]/g, '-');
 type AppModule = 'skills' | 'prompts' | 'resources';
 
 function App() {
-  const [activeModule, setActiveModule] = useState<AppModule>('skills');
-  const [activeTab, setActiveTab] = useState("all");
-  const [selectedTag, setSelectedTag] = useState<string>("all");
-  const [activeView, setActiveView] = useState<"all" | "starred" | "recent" | "untagged">("all");
+  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(() => {
+    return localStorage.getItem("skillhub_selected_workspace");
+  });
+  
+  const { tabs, activeTabId, activeTab: currentTab, openTab, closeTab, switchTab, navigateTo, goBack: tabGoBack, goForward: tabGoForward, canGoBack, canGoForward, updateActiveTab } = useTabs(selectedWorkspaceId || undefined);
+  const [activeModule, setActiveModuleState] = useState<AppModule>('skills');
+  const currentTabModule = (currentTab?.type?.startsWith('prompt') ? 'prompts' : (currentTab?.type?.startsWith('resource') ? 'resources' : 'skills')) as AppModule;
+  
+  useEffect(() => {
+    if (currentTabModule) {
+      setActiveModuleState(currentTabModule);
+    }
+  }, [currentTabModule]);
+  
+  const isSidebarMatch = activeModule === currentTabModule;
+  const activeTab = currentTab?.context?.filter || "all";
+
+  const setActiveTab = (filter: string) => {
+    updateActiveTab({ context: { ...currentTab?.context, filter } });
+  };
+  const setActiveModule = (mod: AppModule) => {
+    setActiveModuleState(mod);
+  };
+  
+  const handleSidebarNav = (type: TabType, title: string, updates: Partial<import('./types/tabs').TabContext>, e?: React.MouseEvent) => {
+    if (e && (e.button === 1 || e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      e.stopPropagation();
+      openTab(type, title, { ...currentTab?.context, ...updates, workspaceId: selectedWorkspaceId || undefined });
+      return;
+    }
+    navigateTo(type, title, { ...currentTab?.context, ...updates });
+  };
+
+  const selectedTag = currentTab?.context?.selectedTag || "all";
+  const setSelectedTag = (tag: string, e?: React.MouseEvent) => handleSidebarNav('skill-home', '技能库', { selectedTag: tag, activeView: "all" }, e);
+  const activeView = (currentTab?.context?.activeView as "all" | "starred" | "recent" | "untagged") || "all";
+  const setActiveView = (view: "all" | "starred" | "recent" | "untagged", e?: React.MouseEvent) => handleSidebarNav('skill-home', '技能库', { activeView: view, selectedTag: "all" }, e);
   const isFlatView = activeView !== "all" || selectedTag !== "all";
   const [, setSkills] = useState<Skill[]>([]);
   const [directories, setDirectories] = useState<SourceDirectory[]>([]);
@@ -49,11 +86,19 @@ function App() {
   const [groupedRepos, setGroupedRepos] = useState<GroupedRepo[]>([]);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(true);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isAboutOpen, setIsAboutOpen] = useState(false);
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
   const [selectedSkill, setSelectedSkill] = useState<Skill | null>(null);
-  const [selectedRepoId, setSelectedRepoId] = useState<string | null>(null);
+  const selectedRepoId = currentTab?.context?.repoId || null;
+  const setSelectedRepoId = (id: string | null) => {
+    if (id) {
+      navigateTo('skill-repo', '仓库', { ...currentTab?.context, repoId: id });
+    } else {
+      navigateTo('skill-home', '技能库', { ...currentTab?.context, repoId: undefined });
+    }
+  };
 
   // Eagle 风格交互：选中状态
   const [inspectorSelectedType, setInspectorSelectedType] = useState<'repo' | 'skill' | null>(null);
@@ -64,16 +109,16 @@ function App() {
   const [isInspectorOpen, setIsInspectorOpen] = useState(true);
 
   // Prompt 模块状态（提升，供 App 侧边栏和 PromptModule 共享）
-  const [promptFilter, setPromptFilter] = useState<PromptFilter>("all");
+  const promptFilter = (currentTab?.context?.promptFilter as PromptFilter) || "all";
+  const setPromptFilter = (filter: PromptFilter, e?: React.MouseEvent) => {
+    handleSidebarNav('prompt-home', '提示词', { promptFilter: filter }, e);
+  };
   const [promptGroups, setPromptGroups] = useState<PromptGroup[]>([]);
   const [isCreateGroupOpen, setIsCreateGroupOpen] = useState(false);
   const [promptRefreshKey, setPromptRefreshKey] = useState(0);
 
   // 右键菜单
   const { menuPosition, menuTarget, showContextMenu, hideContextMenu } = useContextMenu();
-  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(() => {
-    return localStorage.getItem("skillhub_selected_workspace");
-  });
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isOpenModalOpen, setIsOpenModalOpen] = useState(false);
   const [isMergeModalOpen, setIsMergeModalOpen] = useState(false);
@@ -97,14 +142,17 @@ function App() {
     isOpen: false, skillName: '', content: '', loading: false,
   });
 
-  const [confirmData, setConfirmData] = useState<{ title: string, message: string, onConfirm: () => void, onClose: () => void } | null>(null);
+  const [confirmData, setConfirmData] = useState<{ title: string, message: string, isOpen: boolean, showCancel?: boolean, confirmText?: string, onConfirm: () => void, onCancel: () => void } | null>(null);
 
-  const waitConfirm = (message: string) => new Promise<boolean>(resolve => {
+  const waitConfirm = (message: string, title: string = "确认操作", showCancel: boolean = true, confirmText: string = "确认") => new Promise<boolean>(resolve => {
     setConfirmData({
-      title: '确认操作',
+      title,
       message,
+      isOpen: true,
+      showCancel,
+      confirmText,
       onConfirm: () => { setConfirmData(null); resolve(true); },
-      onClose: () => { setConfirmData(null); resolve(false); }
+      onCancel: () => { setConfirmData(null); resolve(false); }
     });
   });
 
@@ -628,12 +676,18 @@ function App() {
     }
   };
 
-  const handleGoBack = useCallback(() => {
-    setSelectedRepoId(null);
+  const handleGoBack = useCallback((e?: React.MouseEvent) => {
+    if (e && (e.button === 1 || e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      e.stopPropagation();
+      openTab('skill-home', '技能库', { ...currentTab?.context, repoId: undefined, workspaceId: selectedWorkspaceId || undefined });
+      return;
+    }
+    navigateTo('skill-home', '技能库', { ...currentTab?.context, repoId: undefined });
     setInspectorSelectedType(null);
     setSelectedRepoIds(new Set());
     setSelectedSkillIds(new Set());
-  }, []);
+  }, [currentTab, navigateTo, openTab, selectedWorkspaceId]);
 
   // 点击空白取消选中
   const handleDeselectAll = useCallback(() => {
@@ -654,6 +708,11 @@ function App() {
     const targetRepos = isMulti ? filteredGroupedRepos.filter(r => selectedRepoIds.has(r.id)) : [repo];
 
     return [
+      {
+        id: 'open_new_tab', label: isMulti ? `在 ${targetRepos.length} 个新标签页中打开` : `在新标签页中打开`, icon: <Plus size={14} />, onClick: () => {
+          targetRepos.forEach(r => openTab('skill-repo', r.name, { repoId: r.id }));
+        }
+      },
       {
         id: 'open_folder', label: isMulti ? `在${fileManagerName}中打开` : `在${fileManagerName}中打开`, icon: <Folder size={14} />, onClick: () => {
           targetRepos.forEach(r => invoke('open_local_folder', { path: r.path }).catch(console.error));
@@ -950,9 +1009,23 @@ function App() {
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
       const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault();
-        setIsSearchModalOpen(true);
+      if ((e.metaKey || e.ctrlKey)) {
+        if (e.key === 'k') {
+          e.preventDefault();
+          setIsSearchModalOpen(true);
+        } else if (e.key === 't') {
+          e.preventDefault();
+          openTab('skill-home', '技能库', { workspaceId: selectedWorkspaceId || undefined }, 'home');
+        } else if (e.key === '[') {
+          e.preventDefault();
+          if (canGoBack) tabGoBack();
+        } else if (e.key === ']') {
+          e.preventDefault();
+          if (canGoForward) tabGoForward();
+        } else if (e.key === '\\') {
+          e.preventDefault();
+          setIsLeftSidebarOpen(prev => !prev);
+        }
       }
       if (activeModule !== 'skills') return;
       // Esc 取消选中或取消删除对话框
@@ -1100,36 +1173,106 @@ function App() {
     filteredGroupedRepos,
     deleteConfirmRepos,
     confirmDeleteRepos,
-    selectedSkillIds
+    selectedSkillIds,
+    lastSelectedSkillId,
+    lastSelectedRepoId,
+    activeModule,
+    fetchData,
+    openTab,
+    canGoBack,
+    canGoForward,
+    tabGoBack,
+    tabGoForward,
+    selectedWorkspaceId
   ]);
 
 
-  const getHeaderTitle = () => {
+  const getHeaderTitleStr = useCallback(() => {
     if (isFlatView) {
       if (selectedTag !== "all") return `标签: ${selectedTag}`;
       if (activeView === "starred") return "星标技能";
       if (activeView === "recent") return "最近使用";
       if (activeView === "untagged") return "未标签技能";
+      return "全部技能";
+    }
+    const wsLabel = directories.find(d => d.id === selectedWorkspaceId)?.label || "未知技能库";
+    if (selectedRepoId && !isFlatView) {
+      return filteredGroupedRepos.find(r => r.id === selectedRepoId)?.name || wsLabel;
+    }
+    return wsLabel;
+  }, [isFlatView, selectedTag, activeView, selectedRepoId, filteredGroupedRepos, directories, selectedWorkspaceId]);
+
+  const getHeaderCount = useCallback(() => {
+    if (isFlatView) {
+      return filteredGroupedRepos.flatMap(r => r.skills).length;
+    }
+    if (selectedRepoId) {
+      return filteredGroupedRepos.find(r => r.id === selectedRepoId)?.skills?.length || 0;
+    }
+    return filteredGroupedRepos.length;
+  }, [isFlatView, filteredGroupedRepos, selectedRepoId]);
+
+  const getHeaderIconStr = useCallback(() => {
+    if (isFlatView) {
+      if (selectedTag !== "all") return 'Tag';
+      if (activeView === "starred") return 'Star';
+      if (activeView === "recent") return 'Clock';
+      if (activeView === "untagged") return 'Tag';
+      return 'LayoutGrid';
+    }
+    if (selectedRepoId) {
+      const repo = filteredGroupedRepos.find(r => r.id === selectedRepoId);
+      if (repo) {
+        return repo.source_type === 'online' ? 'Github' : 'Folder';
+      }
+    }
+    return 'Library';
+  }, [isFlatView, selectedTag, activeView, selectedRepoId, filteredGroupedRepos]);
+
+  useEffect(() => {
+    if (activeModule === 'skills') {
+      const title = getHeaderTitleStr();
+      const icon = getHeaderIconStr();
+      if (currentTab?.title !== title || currentTab?.icon !== icon) {
+        updateActiveTab({ title, icon });
+      }
+    }
+  }, [activeModule, getHeaderTitleStr, getHeaderIconStr, currentTab?.title, currentTab?.icon, updateActiveTab]);
+
+  const getHeaderTitle = () => {
+    const countBadge = <span className="bg-black/5 text-[var(--color-muted)] text-[11px] px-2 py-0.5 rounded-full font-medium ml-2">{getHeaderCount()}</span>;
+    if (isFlatView) {
+      const title = selectedTag !== "all" ? `标签: ${selectedTag}`
+                  : activeView === "starred" ? "星标技能"
+                  : activeView === "recent" ? "最近使用"
+                  : activeView === "untagged" ? "未标签技能"
+                  : "全部技能";
+      return <>{title}{countBadge}</>;
     }
     const wsLabel = directories.find(d => d.id === selectedWorkspaceId)?.label || "未知技能库";
     if (selectedRepoId && !isFlatView) {
       return (
         <>
-          <span className="text-[var(--color-muted)] cursor-pointer hover:text-[var(--foreground)] transition-colors" onClick={handleGoBack}>
+          <span className="text-[var(--color-muted)] cursor-pointer hover:text-[var(--foreground)] transition-colors" 
+            onClick={(e) => handleGoBack(e)}
+            onAuxClick={(e) => { if (e.button === 1) handleGoBack(e); }}
+          >
             {wsLabel}
           </span>
           <ChevronRight className="w-4 h-4 mx-2 text-[var(--color-muted)] opacity-50" />
           <span>{filteredGroupedRepos.find(r => r.id === selectedRepoId)?.name}</span>
+          {countBadge}
         </>
       );
     }
-    return wsLabel;
+    return <>{wsLabel}{countBadge}</>;
   };
 
   return (
     <div className="flex h-screen w-full bg-[var(--color-background)] text-[var(--foreground)] overflow-hidden font-sans">
 
-      <div className="w-64 bg-white/70 backdrop-blur-xl flex flex-col h-full shrink-0 relative z-20 text-[13px] border-r border-black/[0.05]">
+      {isLeftSidebarOpen && (
+      <div className="w-64 bg-transparent flex flex-col h-full shrink-0 relative z-20 text-[13px] border-r border-[var(--color-border)]">
         <div data-tauri-drag-region className="h-10 w-full shrink-0"></div>
 
         {/* 模块 Tab 导航与全局搜索 */}
@@ -1142,7 +1285,13 @@ function App() {
             ]).map(tab => (
               <button
                 key={tab.id}
-                onClick={() => setActiveModule(tab.id)}
+                onClick={() => {
+                  if (tab.id === 'resources') {
+                    waitConfirm('功能正在建设中，敬请期待～', '提示', false, '知道了');
+                    return;
+                  }
+                  setActiveModule(tab.id);
+                }}
                 className={`flex items-center justify-center transition-colors duration-300 outline-none select-none rounded-md h-[32px] ${
                   activeModule === tab.id
                     ? 'bg-black/[0.05] text-[var(--foreground)] font-medium px-2.5'
@@ -1187,31 +1336,38 @@ function App() {
 
 
             <div className="flex-1 overflow-y-auto">
-              <div className="px-3 mb-5 mt-2 space-y-0.5">
+              <div className="px-3 mt-1 mb-5 space-y-0.5">
+                <h3 className="text-[11px] font-semibold text-[var(--color-muted)]/60 mb-1 px-2 uppercase tracking-wide">
+                  快捷筛选
+                </h3>
                 <button
-                  onClick={() => { setActiveView("all"); setSelectedTag("all"); }}
-                  className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none ${activeView === "all" && selectedTag === "all" ? "bg-black/5 text-[var(--foreground)] font-semibold" : "text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] font-medium"}`}
+                  onClick={(e) => setActiveView("all", e)}
+                  onAuxClick={(e) => { if (e.button === 1) setActiveView("all", e); }}
+                  className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none ${isSidebarMatch && activeView === "all" && selectedTag === "all" ? "bg-black/5 text-[var(--foreground)] font-semibold" : "text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] font-medium"}`}
                 >
                   <LayoutGrid className="w-4 h-4" />
                   <span>全部技能</span>
                 </button>
                 <button
-                  onClick={() => { setActiveView("starred"); setSelectedTag("all"); }}
-                  className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none ${activeView === "starred" ? "bg-black/5 text-[var(--foreground)] font-semibold" : "text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] font-medium"}`}
+                  onClick={(e) => setActiveView("starred", e)}
+                  onAuxClick={(e) => { if (e.button === 1) setActiveView("starred", e); }}
+                  className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none ${isSidebarMatch && activeView === "starred" ? "bg-black/5 text-[var(--foreground)] font-semibold" : "text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] font-medium"}`}
                 >
                   <Star className="w-4 h-4" />
                   <span>星标</span>
                 </button>
                 <button
-                  onClick={() => { setActiveView("recent"); setSelectedTag("all"); }}
-                  className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none ${activeView === "recent" ? "bg-black/5 text-[var(--foreground)] font-semibold" : "text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] font-medium"}`}
+                  onClick={(e) => setActiveView("recent", e)}
+                  onAuxClick={(e) => { if (e.button === 1) setActiveView("recent", e); }}
+                  className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none ${isSidebarMatch && activeView === "recent" ? "bg-black/5 text-[var(--foreground)] font-semibold" : "text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] font-medium"}`}
                 >
                   <Clock className="w-4 h-4" />
                   <span>最近使用</span>
                 </button>
                 <button
-                  onClick={() => { setActiveView("untagged"); setSelectedTag("all"); }}
-                  className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none ${activeView === "untagged" ? "bg-black/5 text-[var(--foreground)] font-semibold" : "text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] font-medium"}`}
+                  onClick={(e) => setActiveView("untagged", e)}
+                  onAuxClick={(e) => { if (e.button === 1) setActiveView("untagged", e); }}
+                  className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none ${isSidebarMatch && activeView === "untagged" ? "bg-black/5 text-[var(--foreground)] font-semibold" : "text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] font-medium"}`}
                 >
                   <Tag className="w-4 h-4" />
                   <span>未标签</span>
@@ -1226,8 +1382,9 @@ function App() {
                   {allTags.map(tag => (
                     <button
                       key={tag}
-                      onClick={() => { setSelectedTag(tag); setActiveView("all"); }}
-                      className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none ${selectedTag === tag && activeView === "all"
+                      onClick={(e) => setSelectedTag(tag, e)}
+                      onAuxClick={(e) => { if (e.button === 1) setSelectedTag(tag, e); }}
+                      className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none ${isSidebarMatch && selectedTag === tag && activeView === "all"
                           ? "bg-black/5 text-[var(--foreground)] font-semibold"
                           : "text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] font-medium"
                         }`}
@@ -1281,7 +1438,7 @@ function App() {
           <div className="flex-1 overflow-y-auto px-0">
             {activeModule === 'prompts' && (
               <PromptSidebarNav
-                filter={promptFilter}
+                filter={isSidebarMatch ? promptFilter : null as any}
                 groups={promptGroups}
                 onFilterChange={setPromptFilter}
                 onCreateGroup={() => setIsCreateGroupOpen(true)}
@@ -1304,29 +1461,40 @@ function App() {
           </button>
         </div>
       </div>
+      )}
 
-      <div className="flex-1 flex h-full min-w-0 bg-[var(--color-background)] relative">
-        {activeModule === 'skills' ? (
+      <div className="flex-1 flex flex-col h-full min-w-0 bg-[var(--color-background)] relative z-10">
+        <TabBar
+          tabs={tabs}
+          activeTabId={activeTabId}
+          canGoBack={canGoBack}
+          canGoForward={canGoForward}
+          onSwitchTab={switchTab}
+          onCloseTab={closeTab}
+          onNewTab={() => openTab('skill-home', '技能库', { workspaceId: selectedWorkspaceId || undefined }, 'home')}
+          onGoBack={tabGoBack}
+          onGoForward={tabGoForward}
+          isSidebarOpen={isLeftSidebarOpen}
+          onToggleSidebar={() => setIsLeftSidebarOpen(prev => !prev)}
+        />
+        <div className="flex-1 flex flex-row min-h-0 relative">
+        {currentTabModule === 'skills' ? (
           <>
             <div className="flex-1 flex flex-col h-full min-w-0 bg-[var(--color-background)] relative">
-          <div data-tauri-drag-region className="h-16 border-b border-[var(--color-border)] bg-white/70 backdrop-blur-xl flex items-center justify-between px-8 shrink-0 relative z-0">
+          <div data-tauri-drag-region className="py-3 px-8 bg-white flex items-center justify-between shrink-0 relative z-0">
             <div className="flex items-center space-x-3">
-              {selectedRepoId && !isFlatView && (
-                <button onClick={handleGoBack} className="p-1.5 rounded-lg text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] transition-colors mr-1">
-                  <ChevronLeft className="w-5 h-5 text-[var(--color-muted)]" />
-                </button>
-              )}
-              <h1 className="text-xl font-medium tracking-tight text-[var(--foreground)] flex items-center">
+
+              <h1 className="text-[15px] font-medium tracking-tight text-[var(--foreground)] flex items-center">
                 {getHeaderTitle()}
               </h1>
             </div>
             <div className="flex items-center space-x-3">
-              <button onClick={() => handleSyncAll(true, directories.filter(d => d.id === selectedWorkspaceId))} disabled={isSyncingAll} className="flex items-center space-x-1.5 px-2.5 py-1 rounded-md font-medium text-[13px] text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-all disabled:opacity-50">
-                <RefreshCw className={`w-4 h-4 ${isSyncingAll ? 'animate-spin text-[var(--color-primary)]' : ''}`} />
+              <button onClick={() => handleSyncAll(true, directories.filter(d => d.id === selectedWorkspaceId))} disabled={isSyncingAll} className="flex items-center space-x-1 px-2 py-1 rounded-md font-medium text-[12px] text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-all disabled:opacity-50">
+                <RefreshCw className={`w-3.5 h-3.5 ${isSyncingAll ? 'animate-spin text-[var(--color-primary)]' : ''}`} />
                 <span>{isSyncingAll ? '正在同步...' : '同步当前库'}</span>
               </button>
-              <button onClick={handleAddRepo} className="flex items-center space-x-1.5 bg-blue-500 text-white px-3 py-1.5 rounded-md text-[13px] font-medium hover:bg-blue-600 shadow-sm shadow-blue-500/20 transition-all ml-2">
-                <Plus className="w-4 h-4" />
+              <button onClick={handleAddRepo} className="flex items-center space-x-1 bg-blue-500 text-white px-2.5 py-1 rounded-md text-[12px] font-medium hover:bg-blue-600 shadow-sm shadow-blue-500/20 transition-all ml-1">
+                <Plus className="w-3.5 h-3.5" />
                 <span>添加技能</span>
               </button>
             </div>
@@ -1334,7 +1502,7 @@ function App() {
 
           <div 
             ref={mainContentRef}
-            className="flex-1 overflow-y-auto relative z-0 bg-[var(--color-background)] flex flex-col"
+            className="flex-1 overflow-y-auto relative z-0 bg-white flex flex-col"
             onClick={() => { if (!isDraggingRef.current) handleDeselectAll(); }}
             onContextMenu={(e) => {
               // Because cards call stopPropagation(), this only fires for blank space
@@ -1529,7 +1697,7 @@ function App() {
               </div>
             ) : !selectedRepoId && !isFlatView ? (
               <>
-                <div className="flex-1 grid gap-3 content-start p-6 pb-20" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }}>
+                <div className="flex-1 grid gap-3 content-start px-6 pt-3 pb-20" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }}>
                   {cloningRepos.map((repo, idx) => (
                     <div key={`cloning-${idx}`} className="group bg-[var(--color-muted-bg)]/30 backdrop-blur-md rounded-xl p-4 border border-dashed border-[var(--color-border)] shadow-sm flex flex-col h-24 animate-pulse">
                       <div className="flex items-center space-x-2">
@@ -1556,11 +1724,21 @@ function App() {
                       agents={agents}
                       isSelected={inspectorSelectedType === 'repo' && selectedRepoIds.has(repo.id)}
                       onClick={(e) => handleSelectRepo(repo, e)}
-                      onDoubleClick={() => {
+                      onDoubleClick={(e) => {
+                        if (e.metaKey || e.ctrlKey) {
+                          handleSidebarNav('skill-repo', '仓库', { repoId: repo.id }, e);
+                          return;
+                        }
                         setSelectedRepoId(repo.id);
                         setInspectorSelectedType('repo');
                         setSelectedRepoIds(new Set([repo.id]));
                         setSelectedSkillIds(new Set());
+                      }}
+                      onAuxClick={(e) => {
+                        if (e.button === 1) {
+                          e.stopPropagation();
+                          handleSidebarNav('skill-repo', '仓库', { repoId: repo.id }, e);
+                        }
                       }}
                       onContextMenu={(e) => {
                         if (!selectedRepoIds.has(repo.id)) handleSelectRepo(repo, e);
@@ -1574,7 +1752,7 @@ function App() {
               </>
             ) : (
               <>
-                <div className="flex-1 grid gap-3 content-start p-6 pb-20" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))' }}>
+                <div className="flex-1 grid gap-3 content-start px-6 pt-3 pb-20" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))' }}>
                   {(() => {
                     const skillsToRender = isFlatView 
                       ? filteredGroupedRepos.flatMap(r => r.skills)
@@ -1696,7 +1874,7 @@ function App() {
           onGeneratePrompt={handleGeneratePrompt}
         />
           </>
-        ) : activeModule === 'prompts' ? (
+        ) : currentTabModule === 'prompts' ? (
           /* 提示词管理模块 */
           <div className="flex-1 flex h-full min-w-0 overflow-hidden">
             <PromptModule
@@ -1704,6 +1882,11 @@ function App() {
               filter={promptFilter}
               onGroupsChange={setPromptGroups}
               onFilterChange={setPromptFilter}
+              onTitleChange={(title, icon) => {
+                if (activeModule === 'prompts' && (currentTab?.title !== title || currentTab?.icon !== icon)) {
+                  updateActiveTab({ title, icon });
+                }
+              }}
             />
           </div>
         ) : (
@@ -1727,6 +1910,7 @@ function App() {
             </div>
           </div>
         )}
+        </div>
       </div>
 
       <ContextMenu
@@ -1777,15 +1961,12 @@ function App() {
         onSelectRepo={(repoId) => {
           const repo = groupedRepos.find(r => r.id === repoId);
           if (repo) {
-            if (activeTab !== "all" && repo.source_type !== activeTab) setActiveTab("all");
-            if (activeView !== "all" || selectedTag !== "all") { setActiveView("all"); setSelectedTag("all"); }
+            // Wait, we don't need activeTab filter anymore, but keeping it is fine.
           }
-          setSelectedRepoId(repoId);
+          handleSidebarNav('skill-repo', '仓库', { repoId });
         }}
         onSelectSkill={(skill, repo) => {
-          if (activeTab !== "all" && repo.source_type !== activeTab) setActiveTab("all");
-          if (activeView !== "all" || selectedTag !== "all") { setActiveView("all"); setSelectedTag("all"); }
-          setSelectedRepoId(repo.id);
+          handleSidebarNav('skill-repo', '仓库', { repoId: repo.id });
           setSelectedSkill(skill);
           setIsDrawerOpen(true);
         }}

@@ -103,6 +103,10 @@ pub fn get_prompts(state: State<AppState>, group_id: Option<String>, search: Opt
                 conditions.push("p.group_id IS NULL".to_string());
                 conditions.push("p.deleted_at IS NULL".to_string());
             }
+            "untagged" => {
+                conditions.push("(p.tags IS NULL OR p.tags = '[]' OR p.tags = '')".to_string());
+                conditions.push("p.deleted_at IS NULL".to_string());
+            }
             "trash" => conditions.push("p.deleted_at IS NOT NULL".to_string()),
             _ => {
                 conditions.push(format!("p.group_id = '{}'", gid.replace('\'', "''")));

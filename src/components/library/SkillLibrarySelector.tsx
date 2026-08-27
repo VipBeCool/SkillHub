@@ -593,16 +593,16 @@ export const SkillLibrarySelector = forwardRef<SkillLibrarySelectorRef, SkillLib
         const menuWidth = isIconPicker ? 320 : 160;
         const menuHeight = isIconPicker ? 360 : 180;
 
-        let left = menuPos.right - menuWidth;
-        if (left < 10) left = 10;
+        let left = menuPos.right + 8;
+        // If it doesn't fit on the right, show it on the left of the button
         if (left + menuWidth > window.innerWidth - 10) {
-          left = window.innerWidth - menuWidth - 10;
+          left = menuPos.left - menuWidth - 8;
         }
 
-        const spaceBelow = window.innerHeight - menuPos.bottom;
-        const top = spaceBelow >= menuHeight + 10
-          ? menuPos.bottom + 4
-          : Math.max(10, menuPos.top - menuHeight - 4);
+        let top = menuPos.top - 4; // Align slightly above the button for better visual connection
+        if (top + menuHeight > window.innerHeight - 10) {
+          top = window.innerHeight - menuHeight - 10;
+        }
 
         return createPortal(
           <div 

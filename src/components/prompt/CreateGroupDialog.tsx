@@ -1,11 +1,11 @@
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { X } from "lucide-react";
 import { PromptGroup } from "../../types";
 import { showToast } from "../ui/Toast";
 
-const PRESET_ICONS = ["💡", "💻", "✍️", "🎨", "📊", "🔍", "🤖", "📝", "🔬", "🌐", "🎯", "⚡", "📖", "🛠️", "🎭"];
-const PRESET_COLORS = ["#6366f1", "#8b5cf6", "#06b6d4", "#10b981", "#f59e0b", "#ef4444", "#ec4899", "#64748b"];
+const PRESET_COLORS = ["#64748b", "#3b82f6", "#06b6d4", "#10b981", "#f59e0b", "#ef4444", "#ec4899", "#8b5cf6"];
 
 interface CreateGroupDialogProps {
   isOpen: boolean;
@@ -16,20 +16,17 @@ interface CreateGroupDialogProps {
 
 export function CreateGroupDialog({ isOpen, group, onClose, onSave }: CreateGroupDialogProps) {
   const [name, setName] = useState("");
-  const [icon, setIcon] = useState("📁");
-  const [color, setColor] = useState("#6366f1");
+  const [color, setColor] = useState("#64748b");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
       if (group) {
         setName(group.name);
-        setIcon(group.icon || "📁");
-        setColor(group.color || "#6366f1");
+        setColor(group.color || "#64748b");
       } else {
         setName("");
-        setIcon("📁");
-        setColor("#6366f1");
+        setColor("#64748b");
       }
     }
   }, [isOpen, group]);
@@ -39,10 +36,10 @@ export function CreateGroupDialog({ isOpen, group, onClose, onSave }: CreateGrou
     setSaving(true);
     try {
       if (group) {
-        await invoke("update_prompt_group", { id: group.id, name: name.trim(), icon, color });
+        await invoke("update_prompt_group", { id: group.id, name: name.trim(), icon: "Folder", color });
         showToast("分组已更新", "success");
       } else {
-        await invoke("create_prompt_group", { name: name.trim(), icon, color });
+        await invoke("create_prompt_group", { name: name.trim(), icon: "Folder", color });
         showToast("分组已创建", "success");
       }
       onSave();
@@ -56,31 +53,25 @@ export function CreateGroupDialog({ isOpen, group, onClose, onSave }: CreateGrou
 
   if (!isOpen) return null;
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/10 backdrop-blur-sm p-4">
-      <div className="bg-white/95 backdrop-blur-xl border border-[var(--color-border)] rounded-2xl w-full max-w-sm shadow-2xl animate-in zoom-in-95 fade-in duration-150">
-        {/* 顶栏 */}
-        <div className="px-5 py-4 border-b border-[var(--color-border)] flex items-center justify-between">
-          <h2 className="text-[15px] font-semibold text-[var(--foreground)]">
-            {group ? "编辑分组" : "新建分组"}
+      <div className="bg-white/95 backdrop-blur-xl border border-[var(--color-border)] rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden flex flex-col relative transition-all duration-300 animate-in zoom-in-95 fade-in">
+        
+        {/* Header */}
+        <div className="px-6 py-4 border-b border-[var(--color-border)] flex items-center justify-between relative">
+          <h2 className="text-lg font-medium text-[var(--foreground)] flex-1 text-left">
+            {group ? "编辑分组" : "新增分组"}
           </h2>
-          <button onClick={onClose} className="p-1.5 rounded-lg text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-colors">
-            <X className="w-4 h-4" />
+          <button onClick={onClose} className="p-1.5 rounded-lg text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-colors absolute right-4">
+            <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="p-5 space-y-5">
-          {/* 预览 */}
-          <div className="flex items-center justify-center">
-            <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 border-dashed border-[var(--color-border)]" style={{ borderColor: color + "60" }}>
-              <span className="text-2xl">{icon}</span>
-              <span className="text-[14px] font-semibold" style={{ color }}>{name || "分组名称"}</span>
-            </div>
-          </div>
-
+        {/* Content */}
+        <div className="p-6 space-y-5">
           {/* 名称 */}
-          <div className="space-y-1.5">
-            <label className="text-[12px] font-semibold text-[var(--color-muted)]">分组名称</label>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-[var(--foreground)]">分组名称</label>
             <input
               type="text"
               value={name}
@@ -92,52 +83,46 @@ export function CreateGroupDialog({ isOpen, group, onClose, onSave }: CreateGrou
             />
           </div>
 
-          {/* 图标 */}
-          <div className="space-y-1.5">
-            <label className="text-[12px] font-semibold text-[var(--color-muted)]">图标</label>
-            <div className="flex flex-wrap gap-1.5">
-              {PRESET_ICONS.map(i => (
-                <button
-                  key={i}
-                  onClick={() => setIcon(i)}
-                  className={`w-9 h-9 text-lg rounded-lg border-2 transition-all ${icon === i ? "border-[var(--color-primary)] bg-[var(--color-primary)]/5" : "border-transparent hover:border-[var(--color-border)]"}`}
-                >
-                  {i}
-                </button>
-              ))}
-            </div>
-          </div>
-
           {/* 颜色 */}
-          <div className="space-y-1.5">
-            <label className="text-[12px] font-semibold text-[var(--color-muted)]">标识色</label>
-            <div className="flex items-center gap-2">
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-[var(--foreground)]">标识色</label>
+            <div className="flex items-center gap-2.5">
               {PRESET_COLORS.map(c => (
                 <button
                   key={c}
                   onClick={() => setColor(c)}
-                  className={`w-7 h-7 rounded-full border-2 transition-transform ${color === c ? "border-white scale-110 shadow-md" : "border-transparent hover:scale-105"}`}
-                  style={{ backgroundColor: c }}
+                  className={`w-7 h-7 rounded-full border-2 transition-transform ${color === c ? "border-white scale-110 shadow-md ring-2 ring-offset-1" : "border-transparent hover:scale-105"} focus:outline-none`}
+                  style={{ backgroundColor: c, '--tw-ring-color': c } as React.CSSProperties}
                 />
               ))}
             </div>
           </div>
-        </div>
 
-        {/* 底栏 */}
-        <div className="px-5 py-4 border-t border-[var(--color-border)] flex items-center justify-end gap-2">
-          <button onClick={onClose} className="px-4 py-2 text-[13px] font-medium text-[var(--color-muted)] hover:text-[var(--foreground)] transition-colors">
-            取消
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={saving || !name.trim()}
-            className="px-4 py-2 text-[13px] font-semibold rounded-lg bg-[var(--color-primary)] text-white hover:bg-[var(--color-primary)]/90 transition-colors disabled:opacity-50"
-          >
-            {saving ? "保存中..." : group ? "保存" : "创建"}
-          </button>
+          {/* Footer Actions */}
+          <div className="pt-2 flex justify-end space-x-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-2.5 py-1 rounded-md text-[13px] font-medium text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-all"
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving || !name.trim()}
+              className="flex items-center justify-center space-x-1.5 bg-[var(--color-primary)] text-white px-3 py-1.5 rounded-md text-[13px] font-medium hover:bg-[var(--color-primary)]/90 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+            >
+              {saving ? (
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              ) : (
+                <span>{group ? "保存修改" : "确认创建"}</span>
+              )}
+            </button>
+          </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

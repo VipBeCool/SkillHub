@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Plus, Download, Star, LayoutGrid, Trash2, Trash, FolderPlus, MoreHorizontal, X, Languages, Loader2 } from "lucide-react";
+import { Plus, Download, Star, LayoutGrid, Trash2, Trash, FolderPlus, MoreHorizontal, X, Languages, Loader2, Folder, Edit2, FolderX, Tag } from "lucide-react";
 import { Prompt, PromptGroup, PromptVersion } from "./types";
 import { PromptCard } from "./components/prompt/PromptCard";
 import { SelectionArea, SelectionEvent } from "@viselect/react";
@@ -19,7 +19,7 @@ export type PromptFilter = "all" | "favorites" | string;
 interface PromptSidebarNavProps {
   filter: PromptFilter;
   groups: PromptGroup[];
-  onFilterChange: (f: PromptFilter) => void;
+  onFilterChange: (filter: PromptFilter, e?: React.MouseEvent) => void;
   onCreateGroup: () => void;
   onGroupSaved: () => void;
   isCreateGroupOpen: boolean;
@@ -30,20 +30,39 @@ export function PromptSidebarNav({
   filter, groups, onFilterChange, onCreateGroup,
   isCreateGroupOpen, onCreateGroupClose, onGroupSaved,
 }: PromptSidebarNavProps) {
+  const { menuPosition, showContextMenu, hideContextMenu } = useContextMenu();
+  const [contextMenuGroup, setContextMenuGroup] = useState<PromptGroup | null>(null);
+  const [editGroup, setEditGroup] = useState<PromptGroup | null>(null);
+  const [deleteGroup, setDeleteGroup] = useState<PromptGroup | null>(null);
+
+  const handleDeleteGroup = async () => {
+    if (!deleteGroup) return;
+    try {
+      await invoke("delete_prompt_group", { id: deleteGroup.id });
+      onGroupSaved();
+      setDeleteGroup(null);
+    } catch (e) {
+      showToast(`删除失败: ${e}`, "error");
+    }
+  };
+
   return (
     <>
       {/* 快捷筛选 */}
-      <div className="px-3 mb-3">
+      <div className="px-3 mt-1 mb-5">
         <h3 className="text-[11px] font-semibold text-[var(--color-muted)]/60 mb-1 px-2 uppercase tracking-wide">快捷筛选</h3>
         <div className="space-y-0.5">
           {[
             { id: "all", label: "全部提示词", icon: LayoutGrid },
             { id: "favorites", label: "收藏", icon: Star },
+            { id: "ungrouped", label: "未分组", icon: FolderX },
+            { id: "untagged", label: "未标签", icon: Tag },
             { id: "trash", label: "回收站", icon: Trash },
           ].map(item => (
             <button
               key={item.id}
-              onClick={() => onFilterChange(item.id)}
+              onClick={(e) => onFilterChange(item.id as PromptFilter, e)}
+              onAuxClick={(e) => { if (e.button === 1) onFilterChange(item.id as PromptFilter, e); }}
               className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none text-[13px] ${
                 filter === item.id
                   ? "bg-black/5 text-[var(--foreground)] font-semibold"
@@ -74,15 +93,21 @@ export function PromptSidebarNav({
           {groups.map(group => (
             <button
               key={group.id}
-              onClick={() => onFilterChange(group.id)}
+              onClick={(e) => onFilterChange(`group:${group.id}` as PromptFilter, e)}
+              onAuxClick={(e) => { if (e.button === 1) onFilterChange(`group:${group.id}` as PromptFilter, e); }}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setContextMenuGroup(group);
+                showContextMenu(e);
+              }}
               className={`w-full flex items-center justify-between px-2 py-1 rounded-md transition-colors outline-none select-none text-[13px] ${
-                filter === group.id
+                filter === `group:${group.id}`
                   ? "bg-black/5 text-[var(--foreground)] font-semibold"
                   : "text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] font-medium"
               }`}
             >
               <span className="flex items-center gap-1.5 truncate min-w-0">
-                <span className="shrink-0">{group.icon || "📁"}</span>
+                <Folder className="w-3.5 h-3.5 shrink-0" style={{ color: group.color || "var(--color-muted)" }} />
                 <span className="truncate">{group.name}</span>
               </span>
               <span className="text-[11px] text-[var(--color-muted)] shrink-0 ml-1">{group.prompt_count}</span>
@@ -94,12 +119,54 @@ export function PromptSidebarNav({
         </div>
       </div>
 
-      {/* 创建分组弹窗 */}
+      {/* 创建/编辑分组弹窗 */}
       <CreateGroupDialog
-        isOpen={isCreateGroupOpen}
-        group={null}
-        onClose={onCreateGroupClose}
+        isOpen={isCreateGroupOpen || !!editGroup}
+        group={editGroup}
+        onClose={() => {
+          onCreateGroupClose();
+          setEditGroup(null);
+        }}
         onSave={onGroupSaved}
+      />
+
+      <ContextMenu
+        position={menuPosition}
+        onClose={hideContextMenu}
+        items={[
+          {
+            id: 'edit-group',
+            label: '编辑分组',
+            icon: <Edit2 className="w-3.5 h-3.5" />,
+            onClick: () => {
+              if (contextMenuGroup) setEditGroup(contextMenuGroup);
+              hideContextMenu();
+            }
+          },
+          {
+            id: 'delete-group-separator',
+            label: '',
+            separator: true
+          },
+          {
+            id: 'delete-group',
+            label: '删除分组',
+            icon: <Trash2 className="w-3.5 h-3.5" />,
+            danger: true,
+            onClick: () => {
+              if (contextMenuGroup) setDeleteGroup(contextMenuGroup);
+              hideContextMenu();
+            }
+          }
+        ]}
+      />
+
+      <ConfirmDialog
+        isOpen={!!deleteGroup}
+        title="确认删除分组？"
+        message={deleteGroup ? `您正在删除分组“${deleteGroup.name}”。\n删除分组不会删除提示词本身，它们将被移回“全部提示词”状态。` : ""}
+        onConfirm={handleDeleteGroup}
+        onCancel={() => setDeleteGroup(null)}
       />
     </>
   );
@@ -111,6 +178,7 @@ interface PromptModuleProps {
   refreshKey?: number;
   onGroupsChange: (groups: PromptGroup[]) => void;
   onFilterChange: (f: PromptFilter) => void;
+  onTitleChange?: (title: string, icon?: string) => void;
 }
 
 interface PromptInspectorData {
@@ -118,7 +186,7 @@ interface PromptInspectorData {
   versions: PromptVersion[];
 }
 
-export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChange }: PromptModuleProps) {
+export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChange, onTitleChange }: PromptModuleProps) {
   const [prompts, setPrompts] = useState<Prompt[]>([]);
   const [groups, setGroups] = useState<PromptGroup[]>([]);
   const [search] = useState("");
@@ -324,8 +392,12 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChang
 
   const fetchData = useCallback(async () => {
     try {
+      const backendGroupId = filter === "all" || filter === "favorites" ? null 
+        : filter.startsWith("group:") ? filter.split(":")[1] 
+        : filter;
+      
       const [ps, gs] = await Promise.all([
-        invoke<Prompt[]>("get_prompts", { groupId: filter === "all" ? null : filter === "favorites" ? null : filter, search: search || null }),
+        invoke<Prompt[]>("get_prompts", { groupId: backendGroupId, search: search || null }),
         invoke<PromptGroup[]>("get_prompt_groups"),
       ]);
       // 收藏筛选在前端做
@@ -447,8 +519,27 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChang
 
   const filterLabel = filter === "all" ? "全部提示词"
     : filter === "favorites" ? "收藏"
+    : filter === "ungrouped" ? "未分组"
+    : filter === "untagged" ? "未标签"
     : filter === "trash" ? "回收站"
-    : groups.find(g => g.id === filter)?.name || "";
+    : filter.startsWith("group:") ? groups.find(g => g.id === filter.split(":")[1])?.name || "未知分组"
+    : "提示词";
+
+  const getFilterIconStr = () => {
+    if (filter === "all") return 'LayoutGrid';
+    if (filter === "favorites") return 'Star';
+    if (filter === "ungrouped") return 'FolderMinus';
+    if (filter === "untagged") return 'Tag';
+    if (filter === "trash") return 'Trash2';
+    if (filter.startsWith("group:")) return 'Folder';
+    return 'MessageSquareText';
+  };
+
+  useEffect(() => {
+    if (onTitleChange) {
+      onTitleChange(filterLabel, getFilterIconStr());
+    }
+  }, [filterLabel, filter, groups, onTitleChange]);
 
   const selectedPrompts = prompts.filter(p => selectedIds.has(p.id));
 
@@ -476,54 +567,53 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChang
   };
 
   return (
-    <div className="flex flex-1 h-full min-w-0 overflow-hidden bg-white">
+    <div className="flex flex-1 h-full min-w-0 overflow-hidden bg-transparent">
       {/* 主内容区 */}
-      <div className="flex-1 flex flex-col h-full min-w-0 bg-[var(--color-background)]">
+      <div className="flex-1 flex flex-col h-full min-w-0 bg-white">
         {/* 顶栏 */}
         <div 
           data-tauri-drag-region 
           onPointerDown={(e) => {
             if (e.target === e.currentTarget) getCurrentWindow().startDragging();
           }}
-          className="h-16 border-b border-[var(--color-border)] bg-white/70 backdrop-blur-xl flex items-center justify-between px-6 shrink-0 relative z-0"
+          className="py-3 px-6 bg-white flex items-center justify-between shrink-0 relative z-0"
         >
           <div className="flex items-center gap-3">
-            <h1 className="text-lg font-semibold text-[var(--foreground)]">{filterLabel}</h1>
-            <span className="text-[12px] text-[var(--color-muted)] bg-black/5 px-2 py-0.5 rounded-full">{prompts.length}</span>
+            <h1 className="text-[15px] font-medium text-[var(--foreground)]">{filterLabel}</h1>
+            <span className="bg-black/5 text-[var(--color-muted)] text-[11px] px-2 py-0.5 rounded-full font-medium ml-2">{prompts.length}</span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
             {prompts.length > 0 && filter === "trash" && (
               <button
                 onClick={handleEmptyTrash}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                className="flex items-center space-x-1 px-2 py-1 rounded-md font-medium text-[12px] text-red-500 hover:text-red-600 hover:bg-red-50 transition-all"
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 清空回收站
               </button>
             )}
             {prompts.length > 0 && filter !== "trash" && (
-              <button
-                onClick={() => { setExportingPrompts(prompts); setIsExportDialogOpen(true); }}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 rounded-lg transition-colors"
+              <button 
+                onClick={() => setIsExportDialogOpen(true)}
+                className="flex items-center space-x-1 px-2 py-1 rounded-md font-medium text-[12px] text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-all"
               >
                 <Download className="w-3.5 h-3.5" />
-                导出全部
+                <span>导出全部</span>
               </button>
             )}
             {filter !== "trash" && (
               <button
                 onClick={() => { setEditingPrompt(null); setIsEditorOpen(true); }}
-                className="flex items-center gap-1.5 px-4 py-1.5 text-[13px] font-semibold rounded-lg bg-[var(--color-primary)] text-white hover:bg-[var(--color-primary)]/90 transition-colors"
+                className="flex items-center space-x-1 bg-blue-500 text-white px-2.5 py-1 rounded-md text-[12px] font-medium hover:bg-blue-600 shadow-sm shadow-blue-500/20 transition-all ml-1"
               >
                 <Plus className="w-3.5 h-3.5" />
-                新建提示词
+                <span>添加提示词</span>
               </button>
             )}
           </div>
         </div>
 
-        {/* 内容 + Inspector */}
-        <div className="flex flex-1 min-h-0 overflow-hidden">
+        {/* 内容 */}
           {/* 卡片网格 */}
           <div 
             className="flex-1 overflow-y-auto"
@@ -549,14 +639,14 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChang
                 </div>
                 <h3 className="text-[15px] font-semibold text-[var(--foreground)] mb-2">还没有提示词</h3>
                 <p className="text-[13px] text-[var(--color-muted)] mb-4 text-center max-w-xs">
-                  点击「新建提示词」开始收集你常用的 AI Prompt，随时快速复用
+                  点击「添加提示词」开始收集你常用的 AI Prompt，随时快速复用
                 </p>
-                <button
+                <button 
                   onClick={() => { setEditingPrompt(null); setIsEditorOpen(true); }}
-                  className="flex items-center gap-2 px-4 py-2 text-[13px] font-semibold rounded-lg bg-[var(--color-primary)] text-white hover:bg-[var(--color-primary)]/90 transition-colors"
+                  className="flex items-center gap-2 px-6 py-2.5 bg-blue-500 text-white text-[14px] font-medium rounded-xl hover:bg-blue-600 transition-colors shadow-sm shadow-blue-500/20"
                 >
                   <Plus className="w-4 h-4" />
-                  新建提示词
+                  添加提示词
                 </button>
               </div>
             ) : (
@@ -568,7 +658,7 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChang
             features={{ touch: false, range: true, singleTap: { allow: false } }}
           >
             <div 
-              className="prompt-grid p-6 grid grid-cols-2 xl:grid-cols-3 gap-4 min-h-full items-stretch content-start"
+              className="prompt-grid px-6 pt-3 pb-20 grid grid-cols-2 xl:grid-cols-3 gap-4 min-h-full items-stretch content-start"
                 onPointerDown={(e) => {
                   if (e.target === e.currentTarget) {
                     setSelectedIds(new Set());
@@ -634,13 +724,14 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChang
             </SelectionArea>
             )}
           </div>
+        </div>
 
-          {/* Inspector 面板 */}
-          {(() => {
+        {/* Inspector 面板 */}
+        {(() => {
             if (selectedIds.size === 0) {
               return (
-                <div className="bg-white border-l border-[var(--color-border)] flex flex-col shrink-0 h-full overflow-hidden" style={{ width: "264px" }}>
-                  <div className="px-4 py-3 border-b border-[var(--color-border)] flex items-center justify-between shrink-0">
+                <div className="bg-transparent border-l border-[var(--color-border)] flex flex-col shrink-0 h-full overflow-hidden w-64">
+                  <div className="px-4 py-3 flex items-center justify-between shrink-0">
                     <span className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wide">检查器</span>
                   </div>
                   <div className="flex-1 flex items-center justify-center p-4">
@@ -652,8 +743,8 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChang
             
             if (selectedIds.size > 1) {
               return (
-                <div className="bg-white border-l border-[var(--color-border)] flex flex-col shrink-0 h-full overflow-hidden" style={{ width: "264px" }}>
-                  <div className="px-4 py-3 border-b border-[var(--color-border)] flex items-center justify-between shrink-0">
+                <div className="bg-transparent border-l border-[var(--color-border)] flex flex-col shrink-0 h-full overflow-hidden w-64">
+                  <div className="px-4 py-3 flex items-center justify-between shrink-0">
                     <span className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wide">多选提示词</span>
                   </div>
                   <div className="flex-1 flex flex-col items-center justify-center p-4">
@@ -691,15 +782,15 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChang
             if (!p) return null;
 
             return (
-              <div className="bg-white border-l border-[var(--color-border)] flex flex-col shrink-0 h-full overflow-hidden" style={{ width: "264px" }}>
-                <div className="px-4 py-3 border-b border-[var(--color-border)] flex items-center justify-between shrink-0">
+              <div className="bg-transparent border-l border-[var(--color-border)] flex flex-col shrink-0 h-full overflow-hidden w-64">
+                <div className="px-4 py-3 flex items-center justify-between shrink-0">
                   <span className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wide">概览</span>
                   <button
                     onClick={() => { setEditingPrompt(p); setIsEditorOpen(true); }}
                     className="text-[12px] text-[var(--color-primary)] font-medium hover:text-[var(--color-primary)]/80 transition-colors"
                   >编辑</button>
                 </div>
-                <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                <div className="flex-1 overflow-y-auto px-6 pt-3 pb-20 space-y-4">
                   <div>
                     <h3 className="text-[14px] font-semibold text-[var(--foreground)] mb-1">{p.title}</h3>
                     {p.description && (
@@ -854,8 +945,6 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChang
               </div>
             );
           })()}
-        </div>
-      </div>
 
       {/* 弹窗 */}
       <PromptEditorDrawer

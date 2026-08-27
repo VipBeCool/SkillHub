@@ -6,6 +6,10 @@ interface ConfirmDialogProps {
   isOpen: boolean;
   message: string;
   title?: string;
+  confirmText?: string;
+  cancelText?: string;
+  confirmButtonClassName?: string;
+  showCancel?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -13,7 +17,11 @@ interface ConfirmDialogProps {
 export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   isOpen,
   message,
-  title = "文件已经存在",
+  title = "确认",
+  confirmText = "确认",
+  cancelText = "取消",
+  confirmButtonClassName = "bg-[var(--color-primary)] hover:bg-blue-600",
+  showCancel = true,
   onConfirm,
   onCancel
 }) => {
@@ -38,17 +46,19 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
           </div>
         </div>
         <div className="px-6 py-4 bg-gray-50/50 border-t border-[var(--color-border)]/60 flex items-center justify-end gap-3">
-          <button
-            onClick={onCancel}
-            className="px-4 py-2 rounded-xl text-[13px] font-medium text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-colors"
-          >
-            取消
-          </button>
+          {showCancel && (
+            <button
+              onClick={onCancel}
+              className="px-4 py-2 rounded-xl text-[13px] font-medium text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-colors"
+            >
+              {cancelText}
+            </button>
+          )}
           <button
             onClick={onConfirm}
-            className="px-6 py-2 rounded-xl text-[13px] font-medium text-white bg-[var(--color-primary)] hover:bg-blue-600 transition-colors shadow-sm"
+            className={`px-6 py-2 rounded-xl text-[13px] font-medium text-white transition-colors shadow-sm ${confirmButtonClassName}`}
           >
-            覆盖重复文件
+            {confirmText}
           </button>
         </div>
       </div>

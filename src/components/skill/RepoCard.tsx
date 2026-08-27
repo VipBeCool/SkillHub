@@ -9,7 +9,8 @@ export interface RepoCardProps {
   agents: AgentConfig[];
   isSelected?: boolean;
   onClick: (e: React.MouseEvent) => void;
-  onDoubleClick: () => void;
+  onDoubleClick: (e: React.MouseEvent) => void;
+  onAuxClick?: (e: React.MouseEvent) => void;
   onContextMenu: (e: React.MouseEvent) => void;
   onUpdateRepo: (e: React.MouseEvent, repo: GroupedRepo) => void;
   onDeleteRepo: (e: React.MouseEvent, repo: GroupedRepo) => void;
@@ -22,6 +23,7 @@ export const RepoCard: React.FC<RepoCardProps> = ({
   isSelected = false,
   onClick,
   onDoubleClick,
+  onAuxClick,
   onContextMenu,
 }) => {
   const repoSyncs = syncRecords.filter(r => repo.skills.some(s => s.id === r.skill_id));
@@ -31,7 +33,8 @@ export const RepoCard: React.FC<RepoCardProps> = ({
     <div 
       data-id={repo.id}
       onClick={(e) => { e.stopPropagation(); onClick(e); }}
-      onDoubleClick={(e) => { e.stopPropagation(); onDoubleClick(); }}
+      onDoubleClick={(e) => { e.stopPropagation(); onDoubleClick(e); }}
+      onAuxClick={onAuxClick}
       onContextMenu={onContextMenu}
       className={`bg-white border rounded-xl p-3.5 transition-all duration-200 cursor-pointer group relative flex flex-col select-none ${
         isSelected 

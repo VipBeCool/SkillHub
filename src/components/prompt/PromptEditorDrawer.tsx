@@ -126,7 +126,7 @@ export function PromptEditorDrawer({ isOpen, prompt, groups, allTags, onClose, o
         <div className="px-6 py-4 border-b border-[var(--color-border)] flex items-center justify-between shrink-0">
           <div>
             <h2 className="text-[15px] font-semibold text-[var(--foreground)]">
-              {prompt ? "编辑提示词" : "新建提示词"}
+              {prompt ? "编辑提示词" : "添加提示词"}
             </h2>
             {prompt && <p className="text-[12px] text-[var(--color-muted)] mt-0.5">当前版本 v{prompt.version} · 保存后生成新版本</p>}
           </div>
@@ -219,8 +219,15 @@ export function PromptEditorDrawer({ isOpen, prompt, groups, allTags, onClose, o
                     onClick={() => setShowGroupDropdown(!showGroupDropdown)}
                     className="w-full px-3 py-2 text-[13px] border border-[var(--color-border)] rounded-lg bg-white flex items-center justify-between hover:border-[var(--color-primary)]/40 transition-colors"
                   >
-                    <span className={selectedGroup ? "text-[var(--foreground)]" : "text-[var(--color-muted)]"}>
-                      {selectedGroup ? `${selectedGroup.icon || "📁"} ${selectedGroup.name}` : "未分组"}
+                    <span className={`flex items-center gap-2 ${selectedGroup ? "text-[var(--foreground)]" : "text-[var(--color-muted)]"}`}>
+                      {selectedGroup ? (
+                        <>
+                          <Folder className="w-3.5 h-3.5" style={{ color: selectedGroup.color || 'var(--color-primary)' }} />
+                          {selectedGroup.name}
+                        </>
+                      ) : (
+                        "未分组"
+                      )}
                     </span>
                     <ChevronDown className="w-3.5 h-3.5 text-[var(--color-muted)]" />
                   </button>
@@ -234,9 +241,10 @@ export function PromptEditorDrawer({ isOpen, prompt, groups, allTags, onClose, o
                         <button
                           key={g.id}
                           onClick={() => { setGroupId(g.id); setShowGroupDropdown(false); }}
-                          className={`w-full px-3 py-2 text-[13px] text-left hover:bg-black/5 ${groupId === g.id ? "text-[var(--color-primary)] font-medium" : "text-[var(--foreground)]"}`}
+                          className={`w-full px-3 py-2 text-[13px] hover:bg-black/5 flex items-center gap-2 ${groupId === g.id ? "text-[var(--color-primary)] font-medium" : "text-[var(--foreground)]"}`}
                         >
-                          {g.icon || "📁"} {g.name}
+                          <Folder className="w-3.5 h-3.5" style={{ color: g.color || 'var(--color-primary)' }} />
+                          {g.name}
                         </button>
                       ))}
                     </div>
@@ -329,19 +337,7 @@ export function PromptEditorDrawer({ isOpen, prompt, groups, allTags, onClose, o
               </div>
             </div>
 
-            {/* 版本说明（仅编辑模式） */}
-            {prompt && (
-              <div className="space-y-1.5">
-                <label className="text-[12px] font-semibold text-[var(--color-muted)] uppercase tracking-wide">版本说明 <span className="font-normal normal-case">(可选)</span></label>
-                <input
-                  type="text"
-                  value={changeNote}
-                  onChange={e => setChangeNote(e.target.value)}
-                  placeholder="例如：修改了角色定义，加强了输出格式约束"
-                  className="w-full px-3 py-2 text-[13px] border border-[var(--color-border)] rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/30 focus:border-[var(--color-primary)] transition-all"
-                />
-              </div>
-            )}
+
           </div>
         </div>
 
