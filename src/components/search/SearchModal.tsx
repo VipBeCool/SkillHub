@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Search, FolderGit2, HardDrive, X, Command, PanelRight, Filter, Type, Globe, Plus, Copy, FolderOpen, Trash2, RefreshCw, Clock, ArrowDownAZ, Check } from 'lucide-react';
+import { Search, FolderGit2, HardDrive, X, Command, PanelRight, Filter, Type, Globe, Plus, Copy, FolderOpen, Trash2, RefreshCw, Clock, ArrowDownAZ, Check, MessageSquareText, Star, Tag } from 'lucide-react';
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { showToast } from "../ui/Toast";
-import { GroupedRepo, Skill } from '../../types';
+import { GroupedRepo, Skill, Prompt } from '../../types';
 import { Tooltip } from "../ui/Tooltip";
 
 interface SearchModalProps {
@@ -15,6 +15,8 @@ interface SearchModalProps {
   onSelectSkill: (skill: Skill, repo: GroupedRepo) => void;
   onDeleteRepo: (e: React.MouseEvent, repo: GroupedRepo) => void;
   onCopyPath: (e: React.MouseEvent, skill: Skill) => void;
+  prompts: Prompt[];
+  onSelectPrompt: (prompt: Prompt) => void;
 }
 
 const formatDateTime = (dateStr: string) => {
@@ -72,11 +74,12 @@ const SmartTooltipText: React.FC<{ text: string, className?: string, tooltipCont
 
 type HoveredItem = 
   | { type: 'repo', repo: GroupedRepo }
-  | { type: 'skill', skill: Skill, repo: GroupedRepo };
+  | { type: 'skill', skill: Skill, repo: GroupedRepo }
+  | { type: 'prompt', prompt: Prompt };
 
 export const SearchModal: React.FC<SearchModalProps> = ({ 
-  isOpen, onClose, repos, 
-  onSelectRepo, onSelectSkill, onDeleteRepo, onCopyPath
+  isOpen, onClose, repos, prompts,
+  onSelectRepo, onSelectSkill, onSelectPrompt, onDeleteRepo, onCopyPath
 }) => {
   const [query, setQuery] = useState('');
   const [hoveredItem, setHoveredItem] = useState<HoveredItem | null>(null);
@@ -85,7 +88,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
   
   // Filters state
   const [filterNameOnly, setFilterNameOnly] = useState(false);
-  const [filterType, setFilterType] = useState<'all' | 'repo' | 'skill'>('all');
+  const [filterType, setFilterType] = useState<'all' | 'repo' | 'skill' | 'prompt'>('all');
   const [filterSource, setFilterSource] = useState<'all' | 'github' | 'local'>('all');
   const [sortOrder, setSortOrder] = useState<'best_match' | 'updated_desc' | 'updated_asc'>('best_match');
   const [showSortDropdown, setShowSortDropdown] = useState(false);
@@ -95,14 +98,19 @@ export const SearchModal: React.FC<SearchModalProps> = ({
   // Focus input when modal opens
   useEffect(() => {
     if (isOpen) {
-      setQuery('');
+      const lastSearch = localStorage.getItem('skillhub_last_search') || '';
+      setQuery(lastSearch);
       setHoveredItem(null);
-      setTimeout(() => inputRef.current?.focus(), 100);
+      setTimeout(() => inputRef.current?.select(), 100);
     }
   }, [isOpen]);
 
-  const { matchedRepos, matchedSkills } = useMemo(() => {
-    if (!query.trim()) return { matchedRepos: [], matchedSkills: [] };
+  useEffect(() => {
+    localStorage.setItem('skillhub_last_search', query);
+  }, [query]);
+
+  const { matchedRepos, matchedSkills, matchedPrompts } = useMemo(() => {
+    if (!query.trim()) return { matchedRepos: [], matchedSkills: [], matchedPrompts: [] };
 
     const lowerQuery = query.toLowerCase();
     
@@ -170,21 +178,52 @@ export const SearchModal: React.FC<SearchModalProps> = ({
       }
     });
 
-    return { matchedRepos, matchedSkills };
-  }, [query, repos, filterType, filterSource, filterNameOnly, sortOrder]);
+    let matchedPrompts: Prompt[] = [];
+    if (filterType !== 'repo' && filterType !== 'skill') {
+      matchedPrompts = prompts.filter(p => {
+        if (p.deleted_at) return false;
+        const nameMatch = p.title?.toLowerCase().includes(lowerQuery);
+        if (filterNameOnly) return !!nameMatch;
+        return !!nameMatch || 
+               (p.content?.toLowerCase().includes(lowerQuery)) ||
+               (p.description?.toLowerCase().includes(lowerQuery));
+      });
+
+      matchedPrompts.sort((a, b) => {
+        const aName = (a.title || '').toLowerCase();
+        const bName = (b.title || '').toLowerCase();
+        if (sortOrder === 'best_match') {
+          if (aName === lowerQuery && bName !== lowerQuery) return -1;
+          if (bName === lowerQuery && aName !== lowerQuery) return 1;
+          if (aName.startsWith(lowerQuery) && !bName.startsWith(lowerQuery)) return -1;
+          if (bName.startsWith(lowerQuery) && !aName.startsWith(lowerQuery)) return 1;
+          return aName.localeCompare(bName);
+        } else {
+          const timeA = a.updated_at ? new Date(a.updated_at).getTime() : 0;
+          const timeB = b.updated_at ? new Date(b.updated_at).getTime() : 0;
+          if (timeA === timeB) return aName.localeCompare(bName);
+          return sortOrder === 'updated_desc' ? timeB - timeA : timeA - timeB;
+        }
+      });
+    }
+
+    return { matchedRepos, matchedSkills, matchedPrompts };
+  }, [query, repos, prompts, filterType, filterSource, filterNameOnly, sortOrder]);
 
   // Select first item automatically when search results change
   useEffect(() => {
-    if (query.trim() && (matchedRepos.length > 0 || matchedSkills.length > 0)) {
+    if (query.trim() && (matchedRepos.length > 0 || matchedSkills.length > 0 || matchedPrompts.length > 0)) {
       if (matchedRepos.length > 0) {
         setHoveredItem({ type: 'repo', repo: matchedRepos[0] });
       } else if (matchedSkills.length > 0) {
         setHoveredItem({ type: 'skill', skill: matchedSkills[0].skill, repo: matchedSkills[0].repo });
+      } else if (matchedPrompts.length > 0) {
+        setHoveredItem({ type: 'prompt', prompt: matchedPrompts[0] });
       }
     } else {
       setHoveredItem(null);
     }
-  }, [query, matchedRepos, matchedSkills]);
+  }, [query, matchedRepos, matchedSkills, matchedPrompts]);
 
   if (!isOpen) return null;
 
@@ -200,9 +239,12 @@ export const SearchModal: React.FC<SearchModalProps> = ({
             ref={inputRef}
             type="text"
             className="flex-1 text-lg outline-none bg-transparent placeholder-gray-400 text-[var(--foreground)]"
-            placeholder="搜索仓库或技能..."
+            placeholder="搜索仓库、技能或提示词..."
             value={query}
-            onChange={e => setQuery(e.target.value)}
+            onChange={e => {
+              setQuery(e.target.value);
+              localStorage.setItem('skillhub_last_search', e.target.value);
+            }}
             onKeyDown={e => {
               if (e.nativeEvent.isComposing || e.keyCode === 229) return;
               if (e.key === 'Escape') onClose();
@@ -210,8 +252,11 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                 if (hoveredItem.type === 'repo') {
                   onSelectRepo(hoveredItem.repo.id);
                   onClose();
-                } else {
+                } else if (hoveredItem.type === 'skill') {
                   onSelectSkill(hoveredItem.skill, hoveredItem.repo);
+                  onClose();
+                } else if (hoveredItem.type === 'prompt') {
+                  onSelectPrompt(hoveredItem.prompt);
                   onClose();
                 }
               }
@@ -219,15 +264,19 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                 e.preventDefault();
                 const allItems = [
                   ...matchedRepos.map(repo => ({ type: 'repo' as const, repo })),
-                  ...matchedSkills.map(s => ({ type: 'skill' as const, skill: s.skill, repo: s.repo }))
+                  ...matchedSkills.map(s => ({ type: 'skill' as const, skill: s.skill, repo: s.repo })),
+                  ...matchedPrompts.map(p => ({ type: 'prompt' as const, prompt: p }))
                 ];
                 if (allItems.length === 0) return;
                 
-                const currentIndex = allItems.findIndex(item => 
-                  item.type === hoveredItem?.type && 
-                  item.repo.id === hoveredItem.repo.id && 
-                  (item.type === 'skill' ? item.skill.id === (hoveredItem as any).skill.id : true)
-                );
+                const currentIndex = allItems.findIndex(item => {
+                  if (!hoveredItem) return false;
+                  if (item.type !== hoveredItem.type) return false;
+                  if (item.type === 'repo' && hoveredItem.type === 'repo') return item.repo.id === hoveredItem.repo.id;
+                  if (item.type === 'skill' && hoveredItem.type === 'skill') return item.skill.id === hoveredItem.skill.id;
+                  if (item.type === 'prompt' && hoveredItem.type === 'prompt') return item.prompt.id === hoveredItem.prompt.id;
+                  return false;
+                });
                 
                 let nextIndex = currentIndex;
                 if (e.key === 'ArrowDown') {
@@ -240,7 +289,9 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                 setHoveredItem(nextItem);
                 
                 setTimeout(() => {
-                  const id = nextItem.type === 'repo' ? `search-item-repo-${nextItem.repo.id}` : `search-item-skill-${(nextItem as any).skill.id}`;
+                  const id = nextItem.type === 'repo' ? `search-item-repo-${nextItem.repo.id}` 
+                           : nextItem.type === 'skill' ? `search-item-skill-${nextItem.skill.id}`
+                           : `search-item-prompt-${nextItem.prompt.id}`;
                   const el = document.getElementById(id);
                   if (el) el.scrollIntoView({ block: 'nearest' });
                 }, 0);
@@ -284,19 +335,21 @@ export const SearchModal: React.FC<SearchModalProps> = ({
               仅搜索名称
             </button>
             <button 
-              onClick={() => setFilterType(filterType === 'all' ? 'repo' : filterType === 'repo' ? 'skill' : 'all')}
+              onClick={() => setFilterType(filterType === 'all' ? 'repo' : filterType === 'repo' ? 'skill' : filterType === 'skill' ? 'prompt' : 'all')}
               className={`flex items-center px-2 py-1 text-xs font-medium rounded transition-all hover:bg-black/5 ${filterType !== 'all' ? 'bg-black/10 text-[var(--foreground)]' : 'text-[var(--color-muted)]'}`}
             >
               <FolderGit2 className="w-3.5 h-3.5 mr-1.5 opacity-70" />
-              {filterType === 'all' ? '全部类型' : filterType === 'repo' ? '仅仓库' : '仅技能'}
+              {filterType === 'all' ? '全部类型' : filterType === 'repo' ? '仅仓库' : filterType === 'skill' ? '仅技能' : '仅提示词'}
             </button>
-            <button 
-              onClick={() => setFilterSource(filterSource === 'all' ? 'github' : filterSource === 'github' ? 'local' : 'all')}
-              className={`flex items-center px-2 py-1 text-xs font-medium rounded transition-all hover:bg-black/5 ${filterSource !== 'all' ? 'bg-black/10 text-[var(--foreground)]' : 'text-[var(--color-muted)]'}`}
-            >
-              <Globe className="w-3.5 h-3.5 mr-1.5 opacity-70" />
-              {filterSource === 'all' ? '所有来源' : filterSource === 'github' ? '仅 Github' : '仅本地'}
-            </button>
+            {filterType !== 'prompt' && (
+              <button 
+                onClick={() => setFilterSource(filterSource === 'all' ? 'github' : filterSource === 'github' ? 'local' : 'all')}
+                className={`flex items-center px-2 py-1 text-xs font-medium rounded transition-all hover:bg-black/5 ${filterSource !== 'all' ? 'bg-black/10 text-[var(--foreground)]' : 'text-[var(--color-muted)]'}`}
+              >
+                <Globe className="w-3.5 h-3.5 mr-1.5 opacity-70" />
+                {filterSource === 'all' ? '所有来源' : filterSource === 'github' ? '仅 Github' : '仅本地'}
+              </button>
+            )}
             
             <div className="w-px h-3.5 bg-gray-200 mx-1"></div>
             
@@ -355,7 +408,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                   <Command className="w-12 h-12 mb-4 opacity-20" />
                   <p>输入关键词进行搜索</p>
                 </div>
-              ) : matchedRepos.length === 0 && matchedSkills.length === 0 ? (
+              ) : matchedRepos.length === 0 && matchedSkills.length === 0 && matchedPrompts.length === 0 ? (
                 <div className="px-6 py-12 text-center text-gray-500 text-sm flex items-center justify-center h-full">
                   未找到匹配项 "{query}"
                 </div>
@@ -447,6 +500,55 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                               >
                                 <Clock className="w-3 h-3 mr-1 opacity-50" />
                                 {skill.updated_at ? formatDateTime(skill.updated_at) : ''}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {matchedPrompts.length > 0 && (
+                    <div>
+                      <h3 className="px-3 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider sticky top-0 bg-white z-10 shadow-[0_4px_10px_-10px_rgba(0,0,0,0.1)] pt-2 mb-1">
+                        提示词 ({matchedPrompts.length})
+                      </h3>
+                      <div className="space-y-1">
+                        {matchedPrompts.map((prompt) => {
+                          const isHovered = hoveredItem?.type === 'prompt' && hoveredItem.prompt.id === prompt.id;
+                          return (
+                            <button
+                              id={`search-item-prompt-${prompt.id}`}
+                              key={`prompt-${prompt.id}`}
+                              onMouseEnter={() => setHoveredItem({ type: 'prompt', prompt })}
+                              onClick={() => {
+                                onSelectPrompt(prompt);
+                                onClose();
+                              }}
+                              className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-md transition-all text-left outline-none border-none ${isHovered ? 'bg-purple-50/60 ring-1 ring-purple-500/50 text-purple-900 shadow-sm' : 'hover:bg-black/5 text-gray-800'}`}
+                            >
+                              <div className="flex items-center space-x-3 truncate">
+                                <div 
+                                  className={`w-7 h-7 rounded-md flex items-center justify-center shrink-0 ${isHovered ? 'bg-purple-100 text-purple-600' : 'bg-purple-50 text-purple-500'}`}
+                                >
+                                  <MessageSquareText className="w-4 h-4" />
+                                </div>
+                                <div className="truncate pr-3">
+                                  <div className="text-[13px] font-medium truncate">
+                                    {prompt.title}
+                                  </div>
+                                  <div className={`text-[11px] mt-0.5 flex items-center space-x-1.5 text-[var(--color-muted)] min-w-0`}>
+                                    <span className="shrink-0">{prompt.group_name || '未分组'}</span>
+                                    <span className={isHovered ? 'opacity-70' : 'opacity-50'}>/</span>
+                                    <span className="truncate min-w-0">{prompt.content}</span>
+                                  </div>
+                                </div>
+                              </div>
+                              <span 
+                                className={`flex items-center text-[10px] px-2 py-1 rounded-sm shrink-0 ml-3 font-medium transition-colors ${isHovered ? 'bg-white/60 text-gray-500' : 'bg-gray-50 text-gray-400'}`}
+                              >
+                                <Clock className="w-3 h-3 mr-1 opacity-50" />
+                                {prompt.updated_at ? formatDateTime(prompt.updated_at) : ''}
                               </span>
                             </button>
                           );
@@ -620,6 +722,75 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                         <Tooltip content="在文件管理器中打开">
                           <button onClick={(e) => { e.stopPropagation(); invoke('reveal_in_finder', { path: hoveredItem.skill.local_path }).catch(console.error); }} className="p-1.5 text-gray-400 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors">
                             <FolderOpen className="w-4 h-4" />
+                          </button>
+                        </Tooltip>
+                      </div>
+                      <kbd className="px-1.5 py-0.5 bg-gray-50 border border-gray-200 rounded text-[10px] text-gray-400 font-sans shadow-sm flex items-center">
+                        ↵ Enter 打开
+                      </kbd>
+                    </div>
+                  </div>
+                )}
+                {hoveredItem.type === 'prompt' && (
+                  <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm w-full flex flex-col">
+                    <div className="flex items-center space-x-3 mb-4">
+                      <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
+                        <MessageSquareText className="w-5 h-5" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <h3 className="font-semibold text-gray-800 text-base truncate flex items-center gap-2">
+                          {hoveredItem.prompt.title}
+                          {hoveredItem.prompt.is_favorite && <Star className="w-3.5 h-3.5 text-yellow-500 fill-yellow-500 shrink-0" />}
+                        </h3>
+                        <div className="flex items-center space-x-2 mt-1">
+                          <span className="text-[10px] text-gray-500 font-medium px-1.5 py-0.5 bg-gray-100 rounded flex items-center">
+                            <FolderOpen className="w-3 h-3 mr-1" />
+                            {hoveredItem.prompt.group_name || '未分组'}
+                          </span>
+                          {hoveredItem.prompt.tags && hoveredItem.prompt.tags.split(',').map((tag, idx) => (
+                            <span key={idx} className="text-[10px] text-blue-600 font-medium px-1.5 py-0.5 bg-blue-50 rounded flex items-center">
+                              <Tag className="w-3 h-3 mr-1" />
+                              {tag.trim()}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-3 text-sm text-gray-600 flex-1">
+                      <div className="flex flex-col py-2 border-t border-gray-50">
+                        <span className="text-gray-400 text-[10px] uppercase tracking-wider mb-2">内容预览</span>
+                        <div className="bg-gray-50 p-2.5 rounded-lg text-[12px] leading-relaxed text-[var(--color-muted)] whitespace-pre-wrap line-clamp-6">
+                          {hoveredItem.prompt.content}
+                        </div>
+                      </div>
+                      {hoveredItem.prompt.variables && (() => {
+                        try {
+                          const vars = JSON.parse(hoveredItem.prompt.variables);
+                          if (vars.length > 0) {
+                            return (
+                              <div className="flex flex-col py-2 border-t border-gray-50">
+                                <span className="text-gray-400 text-[10px] uppercase tracking-wider mb-2">变量 ({vars.length})</span>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {vars.map((v: any, idx: number) => (
+                                    <span key={idx} className="text-[10px] font-mono px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded">
+                                      {v.name}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          }
+                        } catch (e) {}
+                        return null;
+                      })()}
+                    </div>
+
+                    <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between">
+                      <div className="flex items-center space-x-1.5">
+                        <Tooltip content="复制内容">
+                          <button onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(hoveredItem.prompt.content); showToast('内容已复制'); }} className="p-1.5 text-gray-400 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors">
+                            <Copy className="w-4 h-4" />
                           </button>
                         </Tooltip>
                       </div>

@@ -30,6 +30,7 @@ export interface TabHistoryEntry {
   type: TabType;
   title: string;
   context: TabContext;
+  icon?: string;
 }
 
 export interface Tab {

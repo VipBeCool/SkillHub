@@ -14,7 +14,7 @@ interface UseTabsReturn {
   closeTab: (tabId: string) => void;
   switchTab: (tabId: string) => void;
   // 当前标签页内导航（压历史栈）
-  navigateTo: (type: TabType, title: string, context: TabContext) => void;
+  navigateTo: (type: TabType, title: string, context: TabContext, icon?: string) => void;
   goBack: () => void;
   goForward: () => void;
   canGoBack: boolean;
@@ -67,7 +67,7 @@ export function useTabs(initialWorkspaceId?: string): UseTabsReturn {
       type,
       title,
       icon,
-      historyStack: [{ type, title, context }],
+      historyStack: [{ type, title, context, icon }],
       historyIndex: 0,
       context,
     };
@@ -110,20 +110,35 @@ export function useTabs(initialWorkspaceId?: string): UseTabsReturn {
   }, []);
 
   // 在当前标签页内导航（压历史栈）
-  const navigateTo = useCallback((type: TabType, title: string, context: TabContext) => {
+  const navigateTo = useCallback((type: TabType, title: string, context: TabContext, icon?: string) => {
     setTabs(prev => {
       const next = prev.map(tab => {
         if (tab.id !== activeTabId) return tab;
+        
+        const currentEntry = tab.historyStack[tab.historyIndex];
+        const isIdentical = 
+          currentEntry.type === type &&
+          currentEntry.title === title &&
+          JSON.stringify(currentEntry.context) === JSON.stringify(context);
+
+        if (isIdentical) {
+          return {
+            ...tab,
+            icon: icon !== undefined ? icon : tab.icon,
+          };
+        }
+
         // 截断前进历史并追加新状态
         const newStack: TabHistoryEntry[] = [
           ...tab.historyStack.slice(0, tab.historyIndex + 1),
-          { type, title, context },
+          { type, title, context, icon },
         ];
         return {
           ...tab,
           type,
           title,
           context,
+          icon: icon !== undefined ? icon : tab.icon,
           historyStack: newStack,
           historyIndex: newStack.length - 1,
         };
@@ -146,6 +161,7 @@ export function useTabs(initialWorkspaceId?: string): UseTabsReturn {
           type: entry.type,
           title: entry.title,
           context: entry.context,
+          icon: entry.icon !== undefined ? entry.icon : tab.icon,
           historyIndex: targetIdx,
         };
       });
@@ -167,6 +183,7 @@ export function useTabs(initialWorkspaceId?: string): UseTabsReturn {
           type: entry.type,
           title: entry.title,
           context: entry.context,
+          icon: entry.icon !== undefined ? entry.icon : tab.icon,
           historyIndex: targetIdx,
         };
       });

@@ -1,7 +1,8 @@
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import { ChevronLeft, ChevronRight, Plus, X, PanelLeft, PanelLeftClose } from 'lucide-react';
 import { Tab, TabType } from '../../types/tabs';
 import { Tooltip } from './Tooltip';
+import { ContextMenu } from './ContextMenu';
 
 import * as LucideIcons from 'lucide-react';
 
@@ -47,6 +48,7 @@ export function TabBar({
   onToggleSidebar,
 }: TabBarProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number, y: number, tabId: string } | null>(null);
 
   // 激活标签页切换时，滚动到可视范围
   useEffect(() => {
@@ -118,8 +120,7 @@ export function TabBar({
         </Tooltip>
       </div>
 
-      {/* 分隔线 */}
-      <div className="w-px h-5 bg-black/[0.1] mb-2.5 mx-1 shrink-0" />
+      {/* 分隔线 (已移除) */}
 
       {/* 标签页与新建按钮区域（适应内容宽度，超出时内部滚动） */}
       <div className="flex items-end min-w-0 h-full" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
@@ -136,8 +137,12 @@ export function TabBar({
                 key={tab.id}
                 data-tab-id={tab.id}
                 onClick={() => onSwitchTab(tab.id)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  setContextMenu({ x: e.clientX, y: e.clientY, tabId: tab.id });
+                }}
                 className={`
-                  group relative flex items-center gap-1.5 px-3 h-9 min-w-[120px] max-w-[200px] shrink-0
+                  group relative flex items-center gap-1.5 px-3 h-9 w-[200px] min-w-[90px] shrink
                   cursor-pointer select-none rounded-t-md transition-all duration-150
                   ${isActive
                     ? 'bg-white text-[var(--foreground)] font-medium rounded-t-[10px]'
@@ -148,7 +153,10 @@ export function TabBar({
                 {/* 激活指示线 */}
                 <TabIcon type={tab.type} iconName={tab.icon} />
 
-                <span className="flex-1 truncate text-[12.5px]">
+                <span 
+                  className="flex-1 text-[12.5px] whitespace-nowrap overflow-hidden"
+                  style={{ WebkitMaskImage: 'linear-gradient(to right, black calc(100% - 20px), transparent 100%)', maskImage: 'linear-gradient(to right, black calc(100% - 20px), transparent 100%)' }}
+                >
                   {tab.title}
                 </span>
 
@@ -184,6 +192,54 @@ export function TabBar({
           </Tooltip>
         </div>
       </div>
+
+      {contextMenu && (
+        <ContextMenu
+          position={{ x: contextMenu.x, y: contextMenu.y }}
+          onClose={() => setContextMenu(null)}
+          items={[
+            {
+              id: 'close',
+              label: '关闭选项卡',
+              onClick: () => onCloseTab(contextMenu.tabId),
+              disabled: tabs.length <= 1
+            },
+            {
+              id: 'close-others',
+              label: '关闭其他选项卡',
+              onClick: () => {
+                const others = tabs.filter(t => t.id !== contextMenu.tabId);
+                others.forEach(t => onCloseTab(t.id));
+              },
+              disabled: tabs.length <= 1
+            },
+            {
+              id: 'close-left',
+              label: '关闭左侧的选项卡',
+              onClick: () => {
+                const tabIndex = tabs.findIndex(t => t.id === contextMenu.tabId);
+                if (tabIndex > 0) {
+                  const leftTabs = tabs.slice(0, tabIndex);
+                  leftTabs.forEach(t => onCloseTab(t.id));
+                }
+              },
+              disabled: tabs.findIndex(t => t.id === contextMenu.tabId) <= 0
+            },
+            {
+              id: 'close-right',
+              label: '关闭右侧的选项卡',
+              onClick: () => {
+                const tabIndex = tabs.findIndex(t => t.id === contextMenu.tabId);
+                if (tabIndex >= 0 && tabIndex < tabs.length - 1) {
+                  const rightTabs = tabs.slice(tabIndex + 1);
+                  rightTabs.forEach(t => onCloseTab(t.id));
+                }
+              },
+              disabled: tabs.findIndex(t => t.id === contextMenu.tabId) >= tabs.length - 1
+            }
+          ]}
+        />
+      )}
 
       {/* 1处：标题栏空白处，用于拖动窗口和双击缩放 */}
       <div className="flex-1 h-full min-w-0" data-tauri-drag-region />

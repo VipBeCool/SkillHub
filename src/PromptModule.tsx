@@ -436,6 +436,18 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChang
     }
   };
 
+  useEffect(() => {
+    const handleSelectPromptEvent = (e: CustomEvent<string>) => {
+      const id = e.detail;
+      const prompt = prompts.find(p => p.id === id);
+      if (prompt) {
+        handleSelectPrompt(prompt);
+      }
+    };
+    window.addEventListener('select-prompt', handleSelectPromptEvent as EventListener);
+    return () => window.removeEventListener('select-prompt', handleSelectPromptEvent as EventListener);
+  }, [prompts]);
+
   const handleCardSelect = (id: string, e: React.MouseEvent) => {
     if (e.button === 2) return; // 忽略右键点击，避免在多选时右键清空选中状态
     if (e.metaKey || e.ctrlKey) {
