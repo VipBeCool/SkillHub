@@ -198,9 +198,12 @@ export function TabBar({
         </div>
       </div>
 
+      {/* 1处：标题栏空白处，用于拖动窗口和双击缩放 */}
+      <div className="flex-1 h-full min-w-0" data-tauri-drag-region />
+
       {/* 右侧控制区（例如右侧边栏切换） - 仅在侧边栏收起时显示在 TabBar */}
       {onToggleRightSidebar && !isRightSidebarOpen && (
-        <div className="flex items-center gap-1 px-2 pb-1 shrink-0 h-9 ml-auto" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+        <div className="flex items-center gap-1 px-2 pb-1 shrink-0 h-9" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
           <Tooltip content="展开检查器 (⌘/)">
             <button
               onClick={onToggleRightSidebar}
@@ -259,9 +262,6 @@ export function TabBar({
           ]}
         />
       )}
-
-      {/* 1处：标题栏空白处，用于拖动窗口和双击缩放 */}
-      <div className="flex-1 h-full min-w-0" data-tauri-drag-region />
     </div>
   );
 }

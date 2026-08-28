@@ -226,20 +226,20 @@ export function AddRepositoryDialog({
           
           {/* Step 1: Selection View */}
           {step === "select" && (
-            <div className="p-4 space-y-1.5 animate-in fade-in slide-in-from-bottom-4 duration-300">
+            <div className="p-4 space-y-2 animate-in fade-in slide-in-from-bottom-4 duration-300">
               {/* GitHub 克隆 */}
               <button 
                 onClick={() => handleSelectType("github")}
-                className="w-full text-left group flex items-start p-2 bg-transparent hover:bg-[var(--color-primary)]/5 rounded-md transition-all border border-transparent hover:border-[var(--color-primary)]/15"
+                className="w-full text-left group flex items-start p-3 bg-transparent hover:bg-black/[0.02] dark:hover:bg-white/[0.02] rounded-xl transition-all border border-transparent hover:border-black/5 dark:hover:border-white/10"
               >
-                <div className="w-8 h-8 rounded-md bg-black/5 group-hover:bg-[var(--color-primary)]/10 flex items-center justify-center shrink-0 transition-colors">
-                  <svg className="w-4 h-4 text-[var(--color-muted)] group-hover:text-[var(--color-primary)] transition-colors" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center shrink-0 transition-transform duration-300 group-hover:scale-105 group-hover:shadow-sm group-hover:shadow-blue-500/20">
+                  <svg className="w-5 h-5 text-blue-600 dark:text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M15 22v-4a4.8 4.8 0 0 0-1-3.24c3-.3 6-1.5 6-6.76a5.5 5.5 0 0 0-1.5-3.8 5.1 5.1 0 0 0-.1-3.8s-1.2-.4-3.9 1.4a13.4 13.4 0 0 0-7 0C6.3 2.4 5.1 2.8 5.1 2.8a5.1 5.1 0 0 0-.1 3.8 5.5 5.5 0 0 0-1.5 3.8c0 5.2 3 6.4 6 6.76a4.8 4.8 0 0 0-1 3.24v4" />
                   </svg>
                 </div>
-                <div className="ml-3 flex-1">
-                  <h3 className="text-[13px] font-medium text-[var(--foreground)] group-hover:text-[var(--color-primary)] transition-colors">克隆 GitHub 技能库</h3>
-                  <p className="text-[11px] text-[var(--color-muted)] mt-0.5 leading-relaxed">
+                <div className="ml-3.5 flex-1">
+                  <h3 className="text-sm font-medium text-[var(--foreground)] group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">克隆 GitHub 技能库</h3>
+                  <p className="text-xs text-[var(--color-muted)] mt-1 leading-relaxed">
                     输入 GitHub 仓库链接，后台将自动克隆并提取仓库内所有可用技能到本地。
                   </p>
                 </div>
@@ -248,14 +248,14 @@ export function AddRepositoryDialog({
               {/* 本地导入 */}
               <button 
                 onClick={() => handleSelectType("local")}
-                className="w-full text-left group flex items-start p-2 bg-transparent hover:bg-[var(--color-primary)]/5 rounded-md transition-all border border-transparent hover:border-[var(--color-primary)]/15"
+                className="w-full text-left group flex items-start p-3 bg-transparent hover:bg-black/[0.02] dark:hover:bg-white/[0.02] rounded-xl transition-all border border-transparent hover:border-black/5 dark:hover:border-white/10"
               >
-                <div className="w-8 h-8 rounded-md bg-black/5 group-hover:bg-[var(--color-primary)]/10 flex items-center justify-center shrink-0 transition-colors">
-                  <HardDrive className="w-4 h-4 text-[var(--color-muted)] group-hover:text-[var(--color-primary)] transition-colors" />
+                <div className="w-10 h-10 rounded-xl bg-purple-500/10 flex items-center justify-center shrink-0 transition-transform duration-300 group-hover:scale-105 group-hover:shadow-sm group-hover:shadow-purple-500/20">
+                  <HardDrive className="w-5 h-5 text-purple-600 dark:text-purple-400" />
                 </div>
-                <div className="ml-3 flex-1">
-                  <h3 className="text-[13px] font-medium text-[var(--foreground)] group-hover:text-[var(--color-primary)] transition-colors">导入本地技能</h3>
-                  <p className="text-[11px] text-[var(--color-muted)] mt-0.5 leading-relaxed">
+                <div className="ml-3.5 flex-1">
+                  <h3 className="text-sm font-medium text-[var(--foreground)] group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors">导入本地技能</h3>
+                  <p className="text-xs text-[var(--color-muted)] mt-1 leading-relaxed">
                     选择一个本地文件夹，支持单项技能或包含多个子技能的根目录，系统会自动扫描并提取。
                   </p>
                 </div>
@@ -264,14 +264,14 @@ export function AddRepositoryDialog({
               {/* 线上地址收藏 */}
               <button 
                 onClick={() => handleSelectType("online")}
-                className="w-full text-left group flex items-start p-2 bg-transparent hover:bg-[var(--color-primary)]/5 rounded-md transition-all border border-transparent hover:border-[var(--color-primary)]/15"
+                className="w-full text-left group flex items-start p-3 bg-transparent hover:bg-black/[0.02] dark:hover:bg-white/[0.02] rounded-xl transition-all border border-transparent hover:border-black/5 dark:hover:border-white/10"
               >
-                <div className="w-8 h-8 rounded-md bg-black/5 group-hover:bg-[var(--color-primary)]/10 flex items-center justify-center shrink-0 transition-colors">
-                  <Globe className="w-4 h-4 text-[var(--color-muted)] group-hover:text-[var(--color-primary)] transition-colors" />
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center shrink-0 transition-transform duration-300 group-hover:scale-105 group-hover:shadow-sm group-hover:shadow-emerald-500/20">
+                  <Globe className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                 </div>
-                <div className="ml-3 flex-1">
-                  <h3 className="text-[13px] font-medium text-[var(--foreground)] group-hover:text-[var(--color-primary)] transition-colors">收藏线上地址</h3>
-                  <p className="text-[11px] text-[var(--color-muted)] mt-0.5 leading-relaxed">
+                <div className="ml-3.5 flex-1">
+                  <h3 className="text-sm font-medium text-[var(--foreground)] group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">收藏线上地址</h3>
+                  <p className="text-xs text-[var(--color-muted)] mt-1 leading-relaxed">
                     保存任意公开链接（GitHub 文件/目录/仓库等），零磁盘占用，随时生成引用提示词。
                   </p>
                 </div>

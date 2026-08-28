@@ -378,7 +378,7 @@ pub async fn scan_and_add_source_directory(
     dir_type: String,
     strategy: Option<String>,
     target_dir: Option<String>
-) -> Result<(), String> {
+) -> Result<String, String> {
     let mut final_path = path.clone();
 
     if let Some(strat) = strategy {
@@ -456,7 +456,7 @@ pub async fn scan_and_add_source_directory(
     tx.commit().map_err(|e| e.to_string())?;
 
     
-    Ok(())
+    Ok(dir_id)
 }
 
 #[cfg(target_os = "macos")]
@@ -511,7 +511,7 @@ pub async fn add_github_repository(app: tauri::AppHandle, state: State<'_, AppSt
     
     res?;
     
-    scan_and_add_source_directory(app, state, parent_dir, "github".to_string(), None, None).await?;
+    let _ = scan_and_add_source_directory(app, state, parent_dir, "github".to_string(), None, None).await?;
     
     Ok(())
 }

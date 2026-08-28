@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Plus, Download, Star, LayoutGrid, Trash2, Trash, FolderPlus, MoreHorizontal, X, Languages, Loader2, Folder, Edit2, FolderX, Tag, PanelRightClose } from "lucide-react";
+import { Plus, Download, Star, LayoutGrid, Trash2, Trash, FolderPlus, MoreHorizontal, X, Languages, Loader2, Folder, Edit2, FolderX, Tag, PanelRightClose, ChevronRight } from "lucide-react";
 import { Prompt, PromptGroup, PromptVersion } from "./types";
 import { PromptCard } from "./components/prompt/PromptCard";
 import { SelectionArea, SelectionEvent } from "@viselect/react";
@@ -181,6 +181,8 @@ interface PromptModuleProps {
   onFilterChange: (filter: PromptFilter) => void;
   onTitleChange: (title: string, icon: string) => void;
   onToggleInspector?: () => void;
+  onOpenPromptTab?: (title: string, promptId: string) => void;
+  initialPromptId?: string;
 }
 
 interface PromptInspectorData {
@@ -188,7 +190,7 @@ interface PromptInspectorData {
   versions: PromptVersion[];
 }
 
-export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChange, onTitleChange, onToggleInspector }: PromptModuleProps) {
+export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChange, onTitleChange, onToggleInspector, onOpenPromptTab, initialPromptId }: PromptModuleProps) {
   const [prompts, setPrompts] = useState<Prompt[]>([]);
   const [groups, setGroups] = useState<PromptGroup[]>([]);
   const [search] = useState("");
@@ -308,6 +310,20 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChang
     return null;
   };
 
+  // 监听 initialPromptId
+  const initialPromptOpenedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (initialPromptId && prompts.length > 0 && initialPromptOpenedRef.current !== initialPromptId) {
+      const p = prompts.find(p => p.id === initialPromptId);
+      if (p) {
+        setEditingPrompt(p);
+        setIsEditorOpen(true);
+        initialPromptOpenedRef.current = initialPromptId;
+      }
+    }
+  }, [initialPromptId, prompts]);
+
+  // 从本地加载分组（仅前端缓存或读取真实数据）
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
@@ -558,6 +574,11 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChang
   const selectedPrompts = prompts.filter(p => selectedIds.has(p.id));
 
   const handleSelectionStart = ({ event, selection }: SelectionEvent) => {
+    // Fix z-index for the clipping container (viselect sets inline z-index:1)
+    const area = selection.getSelectionArea();
+    if (area?.parentElement) {
+      area.parentElement.style.zIndex = '10000';
+    }
     if (!event?.ctrlKey && !event?.metaKey && !event?.shiftKey) {
       selection.clearSelection();
       setSelectedIds(new Set());
@@ -664,8 +685,8 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChang
                 </button>
               </div>
             ) : (
-              <SelectionArea
-            className="min-h-full"
+              <div className="min-h-full">
+                <SelectionArea
             onStart={handleSelectionStart}
             onMove={handleSelectionMove}
             selectables=".prompt-card"
@@ -736,6 +757,7 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChang
                 ))}
               </div>
             </SelectionArea>
+            </div>
             )}
           </div>
         </div>
@@ -1093,6 +1115,8 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChang
                 }
               }
             ] : [
+              { id: 'open', label: '打开', icon: <ChevronRight size={14} />, onClick: () => { setEditingPrompt(contextPrompt); setIsEditorOpen(true); hideContextMenu(); } },
+              ...(onOpenPromptTab ? [{ id: 'open_new_tab', label: '在新标签页中打开', icon: <Plus size={14} />, onClick: () => { onOpenPromptTab(contextPrompt.title || '无标题提示词', contextPrompt.id); hideContextMenu(); } }] : []),
               { id: 'edit', label: '编辑', onClick: () => { setEditingPrompt(contextPrompt); setIsEditorOpen(true); hideContextMenu(); } },
               { id: 'copy', label: '复制内容', onClick: async () => { 
                   await navigator.clipboard.writeText(contextPrompt.content); 

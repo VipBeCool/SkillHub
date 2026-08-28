@@ -4,13 +4,14 @@ import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { HardDrive, Settings, Search, Plus, RefreshCw, ChevronRight, X, LayoutGrid, Sparkles, Globe, FolderX, FolderSearch, Trash2, Info, Folder, FolderPlus, Copy, Link as LinkIcon, Check, Download, FileArchive, MessageSquareText, Store, Puzzle, CheckSquare, Star, Clock, Tag } from "lucide-react";
+import { HardDrive, Settings, Search, Plus, RefreshCw, ChevronRight, X, LayoutGrid, Sparkles, Globe, FolderX, FolderSearch, Trash2, Info, Folder, FolderPlus, Copy, Link as LinkIcon, Check, Download, FileArchive, MessageSquareText, Store, Puzzle, CheckSquare, Star, Clock, Tag, ExternalLink } from "lucide-react";
 import { open } from '@tauri-apps/plugin-dialog';
 import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import { AddRepositoryDialog } from "./components/library/AddRepositoryDialog";
 import { SkillLibrarySelector, SkillLibrarySelectorRef } from './components/library/SkillLibrarySelector';
 import { CreateSkillLibraryModal, OpenSkillLibraryModal, MergeSkillLibraryModal } from "./components/library/LibraryManagementModals";
-import { SkillDetailsDrawer } from "./components/skill/SkillDetailsDrawer";
+
+import { SkillDetailPage } from "./components/skill/SkillDetailPage";
 import { PromptPreviewModal } from "./components/skill/PromptPreviewModal";
 import { AgentSettingsDialog } from "./components/agent/AgentSettingsDialog";
 import { ConfirmDialog } from './components/ui/ConfirmDialog';
@@ -56,9 +57,7 @@ function App() {
   const isSidebarMatch = activeModule === currentTabModule;
   const activeTab = currentTab?.context?.filter || "all";
 
-  const setActiveTab = (filter: string) => {
-    updateActiveTab({ context: { ...currentTab?.context, filter } });
-  };
+
   const setActiveModule = (mod: AppModule) => {
     setActiveModuleState(mod);
   };
@@ -85,12 +84,11 @@ function App() {
   const [openWithApps, setOpenWithApps] = useState<{name: string, path: string, icon_base64?: string}[]>([]);
   const [groupedRepos, setGroupedRepos] = useState<GroupedRepo[]>([]);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(true);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isAboutOpen, setIsAboutOpen] = useState(false);
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
-  const [selectedSkill, setSelectedSkill] = useState<Skill | null>(null);
+
   const selectedRepoId = currentTab?.context?.repoId || null;
   const setSelectedRepoId = (id: string | null) => {
     if (id) {
@@ -132,6 +130,7 @@ function App() {
   const [isOpenModalOpen, setIsOpenModalOpen] = useState(false);
   const [isMergeModalOpen, setIsMergeModalOpen] = useState(false);
   const [addDialogTab, setAddDialogTab] = useState<"local" | "github" | "online" | null>(null);
+  const [isLinking, setIsLinking] = useState(false);
 
   const [isSyncingAll, setIsSyncingAll] = useState(false);
   const [isRetryingMissing, setIsRetryingMissing] = useState(false);
@@ -710,6 +709,16 @@ function App() {
 
     return [
       {
+        id: 'open_current_tab', label: isMulti ? `无法批量打开` : `打开`, icon: <ChevronRight size={14} />, onClick: () => {
+          if (!isMulti) {
+            setSelectedRepoId(repo.id);
+            setInspectorSelectedType('repo');
+            setSelectedRepoIds(new Set([repo.id]));
+            setSelectedSkillIds(new Set());
+          }
+        }
+      },
+      {
         id: 'open_new_tab', label: isMulti ? `在 ${targetRepos.length} 个新标签页中打开` : `在新标签页中打开`, icon: <Plus size={14} />, onClick: () => {
           targetRepos.forEach(r => openTab('skill-repo', r.name, { repoId: r.id }));
         }
@@ -863,7 +872,9 @@ function App() {
     const targetSkills = isMulti ? visibleSkills.filter(s => selectedSkillIds.has(s.id)) : [skill];
 
     return [
-      { id: 'view_doc', label: isMulti ? `无法批量查看文档` : '查看文档', icon: <Search size={14} />, onClick: () => { if (!isMulti) { setSelectedSkill(skill); setIsDrawerOpen(true); } } },
+      { id: 'open_in_current_tab', label: isMulti ? `无法批量打开` : '打开', icon: <ChevronRight size={14} />, onClick: () => { if (!isMulti) { navigateTo('skill-detail', skill.name, { ...currentTab?.context, skillId: skill.id }, 'FileText'); } } },
+      { id: 'view_doc_new_tab', label: isMulti ? `无法批量在新标签页打开` : '在新标签页打开', icon: <ExternalLink size={14} />, onClick: () => { if (!isMulti) { openTab('skill-detail', skill.name, { ...currentTab?.context, skillId: skill.id }, 'FileText'); } } },
+      { id: 'view_doc', label: isMulti ? `无法批量查看文档` : '查看文档', icon: <Search size={14} />, onClick: () => { if (!isMulti) { navigateTo('skill-detail', skill.name, { ...currentTab?.context, skillId: skill.id }, 'FileText'); } } },
       {
         id: 'generate_prompt', label: isMulti ? `无法批量生成提示词` : '智能引用提示词', icon: <Sparkles size={14} />, onClick: () => {
           if (!isMulti) handleGeneratePrompt(skill);
@@ -1036,7 +1047,7 @@ function App() {
           setDeleteConfirmRepos(null);
           return;
         }
-        if (!isDrawerOpen && !isAddDialogOpen && !isSettingsOpen && !isSearchModalOpen) {
+        if (!isAddDialogOpen && !isSettingsOpen && !isSearchModalOpen) {
           if (inspectorSelectedType) {
             handleDeselectAll();
           } else if (selectedRepoId) {
@@ -1046,7 +1057,7 @@ function App() {
       }
 
       // 方向键导航
-      if ((e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !isDrawerOpen && !isAddDialogOpen && !isSettingsOpen && !isSearchModalOpen && !isInput) {
+      if ((e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !isAddDialogOpen && !isSettingsOpen && !isSearchModalOpen && !isInput) {
         if (inspectorSelectedType === 'skill' && selectedSkillIds.size === 1) {
           e.preventDefault();
           const currentId = Array.from(selectedSkillIds)[0];
@@ -1095,14 +1106,13 @@ function App() {
           confirmDeleteRepos();
           return;
         }
-        if (!isDrawerOpen && !isAddDialogOpen && !isSettingsOpen && !isSearchModalOpen && !isInput) {
+        if (!isAddDialogOpen && !isSettingsOpen && !isSearchModalOpen && !isInput) {
           if (inspectorSelectedType === 'skill' && selectedSkillIds.size === 1) {
              e.preventDefault();
              const currentId = Array.from(selectedSkillIds)[0];
              const skill = filteredGroupedRepos.flatMap(r => r.skills).find(s => s.id === currentId);
              if (skill) {
-               setSelectedSkill(skill);
-               setIsDrawerOpen(true);
+               navigateTo('skill-detail', skill.name, { ...currentTab?.context, skillId: skill.id }, 'FileText');
              }
           } else if (inspectorSelectedType === 'repo' && selectedRepoIds.size === 1) {
              e.preventDefault();
@@ -1120,7 +1130,7 @@ function App() {
 
       // Delete / Backspace 删除选中项
       if (e.key === 'Delete' || e.key === 'Backspace') {
-        if (!isInput && !isDrawerOpen && !isAddDialogOpen && !isSettingsOpen && !isSearchModalOpen && !deleteConfirmRepos) {
+        if (!isInput && !isAddDialogOpen && !isSettingsOpen && !isSearchModalOpen && !deleteConfirmRepos) {
           if (selectedRepoIds.size > 0 && inspectorSelectedType === 'repo') {
             e.preventDefault();
             const reposToDelete = filteredGroupedRepos.filter(r => selectedRepoIds.has(r.id));
@@ -1165,10 +1175,7 @@ function App() {
   }, [
     inspectorSelectedType, 
     selectedRepoId, 
-    isDrawerOpen, 
-    isAddDialogOpen, 
-    isSettingsOpen, 
-    isSearchModalOpen, 
+    isAddDialogOpen, isSettingsOpen, isSearchModalOpen, 
     handleDeselectAll,
     selectedRepoIds,
     filteredGroupedRepos,
@@ -1495,25 +1502,30 @@ function App() {
           />
           <div className="flex-1 flex flex-row min-h-0 relative">
           {currentTabModule === 'skills' ? (
+            currentTab?.type === 'skill-detail' && currentTab.context.skillId ? (
+              <SkillDetailPage skillId={currentTab.context.skillId} onGeneratePrompt={handleGeneratePrompt} />
+            ) : (
             <div className="flex-1 flex flex-col h-full min-w-0 bg-[var(--color-background)] relative">
-          <div data-tauri-drag-region className="py-3 px-8 bg-white flex items-center justify-between shrink-0 relative z-0">
-            <div className="flex items-center space-x-3">
+          {directories.length > 0 && (
+            <div data-tauri-drag-region className="py-3 px-8 bg-white flex items-center justify-between shrink-0 relative z-0">
+              <div className="flex items-center space-x-3">
 
-              <h1 className="text-[15px] font-medium tracking-tight text-[var(--foreground)] flex items-center">
-                {getHeaderTitle()}
-              </h1>
+                <h1 className="text-[15px] font-medium tracking-tight text-[var(--foreground)] flex items-center">
+                  {getHeaderTitle()}
+                </h1>
+              </div>
+              <div className="flex items-center space-x-3">
+                <button onClick={() => handleSyncAll(true, directories.filter(d => d.id === selectedWorkspaceId))} disabled={isSyncingAll} className="flex items-center space-x-1 px-2 py-1 rounded-md font-medium text-[12px] text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-all disabled:opacity-50">
+                  <RefreshCw className={`w-3.5 h-3.5 ${isSyncingAll ? 'animate-spin text-[var(--color-primary)]' : ''}`} />
+                  <span>{isSyncingAll ? '正在同步...' : '同步当前库'}</span>
+                </button>
+                <button onClick={handleAddRepo} className="flex items-center space-x-1 bg-blue-500 text-white px-2.5 py-1 rounded-md text-[12px] font-medium hover:bg-blue-600 shadow-sm shadow-blue-500/20 transition-all ml-1">
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>添加技能</span>
+                </button>
+              </div>
             </div>
-            <div className="flex items-center space-x-3">
-              <button onClick={() => handleSyncAll(true, directories.filter(d => d.id === selectedWorkspaceId))} disabled={isSyncingAll} className="flex items-center space-x-1 px-2 py-1 rounded-md font-medium text-[12px] text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-all disabled:opacity-50">
-                <RefreshCw className={`w-3.5 h-3.5 ${isSyncingAll ? 'animate-spin text-[var(--color-primary)]' : ''}`} />
-                <span>{isSyncingAll ? '正在同步...' : '同步当前库'}</span>
-              </button>
-              <button onClick={handleAddRepo} className="flex items-center space-x-1 bg-blue-500 text-white px-2.5 py-1 rounded-md text-[12px] font-medium hover:bg-blue-600 shadow-sm shadow-blue-500/20 transition-all ml-1">
-                <Plus className="w-3.5 h-3.5" />
-                <span>添加技能</span>
-              </button>
-            </div>
-          </div>
+          )}
 
           <div 
             ref={mainContentRef}
@@ -1524,9 +1536,9 @@ function App() {
               showContextMenu(e, { type: 'empty', data: null });
             }}
           >
-            <SelectionArea 
-              className="min-h-full w-full flex flex-col"
-              onBeforeStart={({ event }: SelectionEvent) => {
+            <div className="min-h-full w-full flex flex-col">
+              <SelectionArea 
+                onBeforeStart={({ event }: SelectionEvent) => {
                 if ((event?.target as Element)?.closest?.('[data-id]')) return false;
                 
                 // Smart scrollbar detection (works for both Windows physical and Mac overlay scrollbars)
@@ -1544,6 +1556,11 @@ function App() {
                 return true;
               }}
               onStart={({ event, selection }: SelectionEvent) => {
+                // Fix z-index for the clipping container (viselect sets inline z-index:1)
+                const area = selection.getSelectionArea();
+                if (area?.parentElement) {
+                  area.parentElement.style.zIndex = '10000';
+                }
                 if (!event?.ctrlKey && !event?.metaKey && !event?.shiftKey) {
                   selection.clearSelection();
                   if (!selectedRepoId && !isFlatView) {
@@ -1588,6 +1605,7 @@ function App() {
               onStop={() => { setTimeout(() => { isDraggingRef.current = false; }, 0); }}
               selectables="[data-id]"
               features={{ touch: false, range: true, singleTap: { allow: false } }}
+              className="flex-1 flex flex-col min-h-0"
             >
 
               {isFileDraggingOver && (
@@ -1660,13 +1678,52 @@ function App() {
                 <p className="text-sm text-[var(--color-muted)] mb-8 text-center max-w-sm leading-relaxed">
                   技能库就像是文件夹，可以帮你把不同类型的 AI 技能分门别类地存放起来。在添加技能前，请先创建你的第一个技能库。
                 </p>
-                <button 
-                  onClick={() => setIsCreateModalOpen(true)}
-                  className="flex items-center px-6 py-2.5 bg-blue-500 text-white rounded-lg font-medium hover:bg-blue-600 transition-colors shadow-sm"
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  创建第一个技能库
-                </button>
+                <div className="flex flex-col items-center gap-3">
+                  <button 
+                    onClick={() => setIsCreateModalOpen(true)}
+                    className="flex items-center justify-center w-64 px-6 py-2.5 bg-blue-500 text-white rounded-lg font-medium hover:bg-blue-600 transition-colors shadow-sm"
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    创建第一个技能库
+                  </button>
+                  <button
+                    disabled={isLinking}
+                    onClick={async () => {
+                      try {
+                        const { open: openDialog } = await import('@tauri-apps/plugin-dialog');
+                        const selected = await openDialog({ directory: true, multiple: false, title: '选择已有技能文件夹' });
+                        if (selected && typeof selected === 'string') {
+                          setIsLinking(true);
+                          const dirId = await invoke<string>('scan_and_add_source_directory', {
+                            path: selected,
+                            dirType: 'local',
+                            strategy: null,
+                            targetDir: null,
+                          });
+                          await fetchData();
+                          setSelectedWorkspaceId(dirId);
+                          showToast('技能库关联成功', 'success');
+                          setIsLinking(false);
+                        }
+                      } catch (e: any) {
+                        console.error(e);
+                        showToast('关联失败：' + (e?.message || String(e)), 'error');
+                        setIsLinking(false);
+                      }
+                    }}
+                    className="flex items-center justify-center w-64 px-6 py-2.5 bg-white border border-[var(--color-border)] text-[var(--foreground)] rounded-lg font-medium hover:border-blue-400 hover:text-blue-500 transition-colors disabled:opacity-70 disabled:pointer-events-none"
+                  >
+                    {isLinking ? (
+                      <RefreshCw className="w-4 h-4 mr-2 text-blue-400 animate-spin" />
+                    ) : (
+                      <Folder className="w-4 h-4 mr-2 text-blue-400" />
+                    )}
+                    {isLinking ? '正在关联...' : '关联现有技能文件夹'}
+                  </button>
+                  <p className="text-xs text-[var(--color-muted)] mt-1 text-center max-w-xs">
+                    已有 GitHub 仓库或本地技能文件夹？直接选择关联进来，不会移动或复制文件。
+                  </p>
+                </div>
               </div>
             ) : filteredGroupedRepos.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-[var(--color-muted)] animate-in fade-in duration-500 p-6">
@@ -1781,7 +1838,7 @@ function App() {
                       agents={agents}
                       isSelected={inspectorSelectedType === 'skill' && selectedSkillIds.has(skill.id)}
                       onClick={(e) => handleSelectSkill(skill, e)}
-                      onDoubleClick={() => { setSelectedSkill(skill); setIsDrawerOpen(true); }}
+                      onDoubleClick={() => { navigateTo('skill-detail', skill.name, { ...currentTab?.context, skillId: skill.id }, 'FileText'); }}
                       onContextMenu={(e) => {
                         if (!selectedSkillIds.has(skill.id)) handleSelectSkill(skill, e);
                         showContextMenu(e, { type: 'skill', data: skill });
@@ -1795,6 +1852,7 @@ function App() {
             )}
 
             </SelectionArea>
+            </div>
 
           </div>
 
@@ -1870,7 +1928,7 @@ function App() {
             </div>
           )}
         </div>
-          ) : currentTabModule === 'prompts' ? (
+        )) : currentTabModule === 'prompts' ? (
             /* 提示词管理模块 */
             <div className="flex-1 flex h-full min-w-0 overflow-hidden">
               <PromptModule
@@ -1884,6 +1942,8 @@ function App() {
                   }
                 }}
                 onToggleInspector={() => setIsInspectorOpen(!isInspectorOpen)}
+                onOpenPromptTab={(title, promptId) => openTab('prompt-home', title, { promptId }, 'FileText')}
+                initialPromptId={currentTab?.context?.promptId}
               />
             </div>
           ) : (
@@ -1920,7 +1980,7 @@ function App() {
             syncRecords={syncRecords}
             currentLibrary={selectedWorkspaceDir || null}
             allRepos={filteredGroupedRepos}
-            onOpenDrawer={(skill) => { setSelectedSkill(skill); setIsDrawerOpen(true); }}
+            onOpenDrawer={(skill) => { navigateTo('skill-detail', skill.name, { ...currentTab?.context, skillId: skill.id }, 'FileText'); }}
             onSelectRepo={(repoId) => setSelectedRepoId(repoId)}
             onRefreshData={fetchData}
             onUpdateRepos={handleUpdateRepos}
@@ -1952,12 +2012,6 @@ function App() {
         defaultSourceDirId={selectedWorkspaceId !== "all" ? (selectedWorkspaceId || undefined) : undefined}
       />
 
-      <SkillDetailsDrawer
-        isOpen={isDrawerOpen}
-        skill={selectedSkill}
-        onClose={() => { setIsDrawerOpen(false); fetchData(); }}
-        onGeneratePrompt={handleGeneratePrompt}
-      />
 
       <PromptPreviewModal
         isOpen={promptModal.isOpen}
@@ -1992,9 +2046,7 @@ function App() {
             handleWorkspaceSelect(repo.source_dir_id || null);
           }
           setActiveModule('skills');
-          handleSidebarNav('skill-repo', repo?.name || '仓库', { repoId: repo.id, activeView: 'all', selectedTag: 'all' });
-          setSelectedSkill(skill);
-          setIsDrawerOpen(true);
+          navigateTo('skill-detail', skill.name, { repoId: repo.id, activeView: 'all', selectedTag: 'all', skillId: skill.id }, 'FileText');
         }}
         onSelectPrompt={(prompt) => {
           setActiveModule('prompts');

@@ -99,10 +99,18 @@
   }
 }
 
+/* viselect selection area - the inner colored rectangle */
 .selection-area {
   background: rgba(0, 85, 255, 0.1);
-  border: 1px solid rgba(0, 85, 255, 0.3);
+  border: 1px solid rgba(0, 85, 255, 0.4);
   border-radius: 4px;
+  z-index: 10000 !important;
+}
+
+/* viselect clipping container - needs high z-index override (inline style is z-index:1) */
+.selection-area ~ *,
+body > div[style*="overflow: hidden"][style*="position: fixed"] {
+  z-index: 10000 !important;
 }
 
 /* Global Scrollbar */
