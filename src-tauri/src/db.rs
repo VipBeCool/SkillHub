@@ -1,8 +1,50 @@
 use rusqlite::{Connection, Result};
 use std::path::PathBuf;
 
+pub fn backup_database(db_path: &PathBuf) -> std::result::Result<(), String> {
+    if !db_path.exists() {
+        return Ok(());
+    }
+    
+    let parent_dir = db_path.parent().unwrap_or(std::path::Path::new(""));
+    let backups_dir = parent_dir.join("backups");
+    std::fs::create_dir_all(&backups_dir).map_err(|e| e.to_string())?;
+    
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let backup_filename = format!("skillhub_{}.sqlite.bak", today);
+    let backup_path = backups_dir.join(&backup_filename);
+    
+    // 只有今天没有备份过才备份
+    if !backup_path.exists() {
+        std::fs::copy(db_path, &backup_path).map_err(|e| e.to_string())?;
+    }
+    
+    // 清理超过7天的备份
+    let mut backups = vec![];
+    if let Ok(entries) = std::fs::read_dir(&backups_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("bak") {
+                backups.push(path);
+            }
+        }
+    }
+    
+    // 按照文件名排序 (因为包含日期 YYYY-MM-DD，所以字典序即可)
+    backups.sort();
+    
+    if backups.len() > 7 {
+        let count_to_remove = backups.len() - 7;
+        for path in backups.into_iter().take(count_to_remove) {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+    
+    Ok(())
+}
+
 pub fn init_db(db_path: &PathBuf) -> Result<Connection> {
-    let conn = Connection::open(db_path)?;
+    let mut conn = Connection::open(db_path)?;
 
     // Create tables if they don't exist
     conn.execute(
@@ -53,92 +95,15 @@ pub fn init_db(db_path: &PathBuf) -> Result<Connection> {
             is_active BOOLEAN NOT NULL DEFAULT 1,
             category TEXT NOT NULL DEFAULT 'Other',
             tags TEXT,
+            skill_scope TEXT NOT NULL DEFAULT 'repo',
+            online_url TEXT,
+            is_favorite BOOLEAN NOT NULL DEFAULT 0,
+            use_count INTEGER NOT NULL DEFAULT 0,
             FOREIGN KEY (repo_id) REFERENCES repositories(id),
             FOREIGN KEY (source_dir_id) REFERENCES source_directories(id)
         )",
         [],
     )?;
-
-    // Migrations for existing databases
-    {
-        let mut stmt = conn.prepare("PRAGMA table_info(skills)")?;
-        let mut has_category = false;
-        let mut has_tags = false;
-        let rows = stmt.query_map([], |row| {
-            let name: String = row.get(1)?;
-            Ok(name)
-        })?;
-        for name in rows {
-            if let Ok(n) = name {
-                if n == "category" { has_category = true; }
-                if n == "tags" { has_tags = true; }
-            }
-        }
-        if !has_category {
-            let _ = conn.execute("ALTER TABLE skills ADD COLUMN category TEXT NOT NULL DEFAULT 'Other'", []);
-        }
-        if !has_tags {
-            let _ = conn.execute("ALTER TABLE skills ADD COLUMN tags TEXT", []);
-        }
-        // skill_scope 迁移
-        let mut has_skill_scope = false;
-        let mut has_online_url = false;
-        let rows2 = {
-            let mut stmt2 = conn.prepare("PRAGMA table_info(skills)").unwrap();
-            stmt2.query_map([], |row| { let name: String = row.get(1)?; Ok(name) }).unwrap()
-                .filter_map(|r| r.ok()).collect::<Vec<_>>()
-        };
-        for col in &rows2 {
-            if col == "skill_scope" { has_skill_scope = true; }
-            if col == "online_url" { has_online_url = true; }
-        }
-        if !has_skill_scope {
-            let _ = conn.execute("ALTER TABLE skills ADD COLUMN skill_scope TEXT NOT NULL DEFAULT 'repo'", []);
-        }
-        if !has_online_url {
-            let _ = conn.execute("ALTER TABLE skills ADD COLUMN online_url TEXT", []);
-        }
-        
-        let mut has_is_favorite = false;
-        let mut has_use_count = false;
-        for col in &rows2 {
-            if col == "is_favorite" { has_is_favorite = true; }
-            if col == "use_count" { has_use_count = true; }
-        }
-        if !has_is_favorite {
-            let _ = conn.execute("ALTER TABLE skills ADD COLUMN is_favorite BOOLEAN NOT NULL DEFAULT 0", []);
-        }
-        if !has_use_count {
-            let _ = conn.execute("ALTER TABLE skills ADD COLUMN use_count INTEGER NOT NULL DEFAULT 0", []);
-        }
-    }
-
-    {
-        let mut stmt = conn.prepare("PRAGMA table_info(source_directories)")?;
-        let mut has_icon = false;
-        let mut has_sort_order = false;
-        let mut has_is_protected = false;
-        let rows = stmt.query_map([], |row| {
-            let name: String = row.get(1)?;
-            Ok(name)
-        })?;
-        for name in rows {
-            if let Ok(n) = name {
-                if n == "icon" { has_icon = true; }
-                if n == "sort_order" { has_sort_order = true; }
-                if n == "is_protected" { has_is_protected = true; }
-            }
-        }
-        if !has_icon {
-            let _ = conn.execute("ALTER TABLE source_directories ADD COLUMN icon TEXT", []);
-        }
-        if !has_sort_order {
-            let _ = conn.execute("ALTER TABLE source_directories ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0", []);
-        }
-        if !has_is_protected {
-            let _ = conn.execute("ALTER TABLE source_directories ADD COLUMN is_protected BOOLEAN NOT NULL DEFAULT 0", []);
-        }
-    }
 
     conn.execute(
         "CREATE TABLE IF NOT EXISTS agent_configs (
@@ -167,6 +132,7 @@ pub fn init_db(db_path: &PathBuf) -> Result<Connection> {
         )",
         [],
     )?;
+    
     // Prompt 分组表
     conn.execute(
         "CREATE TABLE IF NOT EXISTS prompt_groups (
@@ -215,10 +181,109 @@ pub fn init_db(db_path: &PathBuf) -> Result<Connection> {
         [],
     )?;
 
-    // 忽略可能的已存在错误
-    let _ = conn.execute("ALTER TABLE prompts ADD COLUMN deleted_at DATETIME", []);
+    // 执行数据库迁移
+    run_migrations(&mut conn)?;
 
     Ok(conn)
+}
+
+fn run_migrations(conn: &mut Connection) -> Result<()> {
+    let mut user_version: i32 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    
+    if user_version == 0 {
+        migrate_v0_to_v1(conn)?;
+        conn.execute("PRAGMA user_version = 1", [])?;
+        user_version = 1;
+    }
+    
+    // Future migrations go here:
+    // if user_version == 1 { ... user_version = 2; }
+    
+    Ok(())
+}
+
+fn migrate_v0_to_v1(conn: &Connection) -> Result<()> {
+    // skills 迁移
+    if let Ok(mut stmt) = conn.prepare("PRAGMA table_info(skills)") {
+        let mut has_category = false;
+        let mut has_tags = false;
+        let mut has_skill_scope = false;
+        let mut has_online_url = false;
+        let mut has_is_favorite = false;
+        let mut has_use_count = false;
+        
+        let rows = stmt.query_map([], |row| {
+            let name: String = row.get(1)?;
+            Ok(name)
+        });
+        
+        if let Ok(rows_iter) = rows {
+            for name_result in rows_iter {
+                if let Ok(name) = name_result {
+                    if name == "category" { has_category = true; }
+                    if name == "tags" { has_tags = true; }
+                    if name == "skill_scope" { has_skill_scope = true; }
+                    if name == "online_url" { has_online_url = true; }
+                    if name == "is_favorite" { has_is_favorite = true; }
+                    if name == "use_count" { has_use_count = true; }
+                }
+            }
+        }
+        
+        if !has_category { let _ = conn.execute("ALTER TABLE skills ADD COLUMN category TEXT NOT NULL DEFAULT 'Other'", []); }
+        if !has_tags { let _ = conn.execute("ALTER TABLE skills ADD COLUMN tags TEXT", []); }
+        if !has_skill_scope { let _ = conn.execute("ALTER TABLE skills ADD COLUMN skill_scope TEXT NOT NULL DEFAULT 'repo'", []); }
+        if !has_online_url { let _ = conn.execute("ALTER TABLE skills ADD COLUMN online_url TEXT", []); }
+        if !has_is_favorite { let _ = conn.execute("ALTER TABLE skills ADD COLUMN is_favorite BOOLEAN NOT NULL DEFAULT 0", []); }
+        if !has_use_count { let _ = conn.execute("ALTER TABLE skills ADD COLUMN use_count INTEGER NOT NULL DEFAULT 0", []); }
+    }
+
+    // source_directories 迁移
+    if let Ok(mut stmt) = conn.prepare("PRAGMA table_info(source_directories)") {
+        let mut has_icon = false;
+        let mut has_sort_order = false;
+        let mut has_is_protected = false;
+        
+        let rows = stmt.query_map([], |row| {
+            let name: String = row.get(1)?;
+            Ok(name)
+        });
+        
+        if let Ok(rows_iter) = rows {
+            for name_result in rows_iter {
+                if let Ok(name) = name_result {
+                    if name == "icon" { has_icon = true; }
+                    if name == "sort_order" { has_sort_order = true; }
+                    if name == "is_protected" { has_is_protected = true; }
+                }
+            }
+        }
+        
+        if !has_icon { let _ = conn.execute("ALTER TABLE source_directories ADD COLUMN icon TEXT", []); }
+        if !has_sort_order { let _ = conn.execute("ALTER TABLE source_directories ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0", []); }
+        if !has_is_protected { let _ = conn.execute("ALTER TABLE source_directories ADD COLUMN is_protected BOOLEAN NOT NULL DEFAULT 0", []); }
+    }
+
+    // prompts 迁移
+    if let Ok(mut stmt) = conn.prepare("PRAGMA table_info(prompts)") {
+        let mut has_deleted_at = false;
+        let rows = stmt.query_map([], |row| {
+            let name: String = row.get(1)?;
+            Ok(name)
+        });
+        
+        if let Ok(rows_iter) = rows {
+            for name_result in rows_iter {
+                if let Ok(name) = name_result {
+                    if name == "deleted_at" { has_deleted_at = true; }
+                }
+            }
+        }
+        
+        if !has_deleted_at { let _ = conn.execute("ALTER TABLE prompts ADD COLUMN deleted_at DATETIME", []); }
+    }
+
+    Ok(())
 }
 
 use crate::models::{Skill, SourceDirectory};

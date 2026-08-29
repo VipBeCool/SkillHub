@@ -34,6 +34,12 @@ pub fn run() {
             std::fs::create_dir_all(&app_data_dir).expect("Failed to create app data dir");
             
             let db_path = app_data_dir.join("skillhub.sqlite");
+            
+            // Backup the database before applying migrations or starting the app
+            if let Err(e) = db::backup_database(&db_path) {
+                eprintln!("Failed to backup database: {}", e);
+            }
+            
             let conn = db::init_db(&db_path).expect("Failed to initialize database");
             
             app.manage(AppState {
@@ -171,7 +177,9 @@ pub fn run() {
             prompt_commands::cleanup_expired_trash,
             commands::generate_skill_reference_prompt,
             commands::add_online_skill,
-            commands::update_skill_tags
+            commands::update_skill_tags,
+            commands::export_database,
+            commands::import_database
         ])
         .on_window_event(|window, event| match event {
             tauri::WindowEvent::CloseRequested { api, .. } => {

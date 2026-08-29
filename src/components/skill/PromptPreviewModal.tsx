@@ -61,14 +61,14 @@ export function PromptPreviewModal({
     <>
       {/* 背景遮罩 */}
       <div
-        className="fixed inset-0 bg-black/20 backdrop-blur-sm z-[100] transition-opacity duration-200"
+        className="fixed inset-0 z-[100] modal-backdrop transition-opacity"
         onClick={onClose}
       />
 
       {/* 弹窗主体 */}
       <div className="fixed inset-0 z-[101] flex items-center justify-center p-6 pointer-events-none">
         <div
-          className="pointer-events-auto w-full max-w-2xl bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-black/[0.08] flex flex-col overflow-hidden"
+          className="pointer-events-auto w-full max-w-2xl modal-glass rounded-2xl flex flex-col"
           style={{ maxHeight: "80vh" }}
           onClick={(e) => e.stopPropagation()}
         >

@@ -228,9 +228,10 @@ export const SearchModal: React.FC<SearchModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/20 backdrop-blur-sm transition-opacity" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 modal-backdrop transition-opacity" onClick={onClose} />
       <div 
-        className="w-full max-w-[1000px] bg-white rounded-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] overflow-hidden flex flex-col h-[70vh] border border-black/10 animate-in fade-in zoom-in-95 duration-200"
+        className="modal-glass w-full max-w-[1000px] rounded-2xl overflow-hidden flex flex-col max-h-[70vh] animate-in fade-in zoom-in-95 duration-200"
         onClick={e => e.stopPropagation()}
       >
           <div className="flex items-center px-4 py-3 border-b border-black/5 shrink-0">

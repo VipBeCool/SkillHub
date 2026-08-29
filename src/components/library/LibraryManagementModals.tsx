@@ -69,8 +69,9 @@ export function CreateSkillLibraryModal({ isOpen, onClose, onSuccess }: CreateSk
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/10 backdrop-blur-sm p-4">
-      <div className="bg-white/95 backdrop-blur-xl border border-[var(--color-border)] rounded-2xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col relative transition-all duration-300">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 modal-backdrop transition-opacity" onClick={onClose} />
+      <div className="modal-glass rounded-2xl w-full max-w-md overflow-hidden flex flex-col relative transition-all duration-300">
         <div className="flex items-center justify-between p-4 border-b border-[var(--color-border)]/60 bg-[#fafbfc]">
           <h2 className="text-[15px] font-semibold text-[var(--foreground)] flex items-center">
             <Plus className="w-4 h-4 mr-2 text-blue-500" />
@@ -212,8 +213,9 @@ export function OpenSkillLibraryModal({ isOpen, onClose, onSuccess }: OpenSkillL
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/10 backdrop-blur-sm p-4">
-      <div className="bg-white/95 backdrop-blur-xl border border-[var(--color-border)] rounded-2xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col relative transition-all duration-300">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 modal-backdrop transition-opacity" onClick={onClose} />
+      <div className="modal-glass rounded-2xl w-full max-w-md overflow-hidden flex flex-col relative transition-all duration-300">
         <div className="flex items-center justify-between p-4 border-b border-[var(--color-border)]/60 bg-[#fafbfc]">
           <h2 className="text-[15px] font-semibold text-[var(--foreground)] flex items-center">
             <Folder className="w-4 h-4 mr-2 text-blue-500" />
@@ -354,8 +356,9 @@ export function MergeSkillLibraryModal({ isOpen, onClose, onSuccess, targetLibra
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/10 backdrop-blur-sm p-4">
-      <div className="bg-white/95 backdrop-blur-xl border border-[var(--color-border)] rounded-2xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col relative transition-all duration-300">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 modal-backdrop transition-opacity" onClick={onClose} />
+      <div className="modal-glass rounded-2xl w-full max-w-md overflow-hidden flex flex-col relative transition-all duration-300">
         <div className="flex items-center justify-between p-4 border-b border-[var(--color-border)]/60 bg-[#fafbfc]">
           <h2 className="text-[15px] font-semibold text-[var(--foreground)] flex items-center">
             <ArrowRightLeft className="w-4 h-4 mr-2 text-blue-500" />

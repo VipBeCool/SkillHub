@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import { X, Plus, Trash2, Bot, Folder } from "lucide-react";
+import { X, Plus, Trash2, Folder } from "lucide-react";
 import { Tooltip } from "../ui/Tooltip";
 
 interface AgentConfig {
@@ -17,9 +17,10 @@ interface AgentConfig {
 interface AgentSettingsDialogProps {
   isOpen: boolean;
   onClose: () => void;
+  isInline?: boolean;
 }
 
-export function AgentSettingsDialog({ isOpen, onClose }: AgentSettingsDialogProps) {
+export function AgentSettingsDialog({ isOpen, onClose, isInline = false }: AgentSettingsDialogProps) {
   const [agents, setAgents] = useState<AgentConfig[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -97,20 +98,20 @@ export function AgentSettingsDialog({ isOpen, onClose }: AgentSettingsDialogProp
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/10 backdrop-blur-sm p-4">
-      <div className="bg-white/90 backdrop-blur-xl border border-[var(--color-border)] rounded-2xl w-full max-w-2xl max-h-[85vh] shadow-2xl flex flex-col relative">
-        <div className="px-6 py-4 border-b border-[var(--color-border)] flex items-center justify-between shrink-0">
+  const content = (
+    <div className={`flex-1 flex flex-col ${!isInline ? "modal-glass rounded-2xl w-full max-w-2xl max-h-[85vh] relative" : "w-full"}`}>
+      {!isInline && (
+        <div className="px-6 py-4 border-b border-black/5 dark:border-white/5 flex items-center justify-between shrink-0">
           <div className="flex items-center space-x-2 text-[var(--foreground)]">
-            <Bot className="w-5 h-5 text-[var(--color-primary)]" />
-            <h2 className="text-lg font-medium">Agent 设置与同步</h2>
+            <h2 className="text-sm font-semibold">Agent 同步配置</h2>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-lg text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-colors">
             <X className="w-5 h-5" />
           </button>
         </div>
+      )}
 
-        <div className="p-6 overflow-y-auto flex-1">
+      <div className={`${isInline ? "" : "p-6 overflow-y-auto"} flex-1`}>
           <div className="space-y-4">
             {isAdding ? (
               <div className="animate-in fade-in zoom-in-95 duration-200">
@@ -180,7 +181,7 @@ export function AgentSettingsDialog({ isOpen, onClose }: AgentSettingsDialogProp
                     <button
                       type="submit"
                       disabled={loading || !newDisplayName || !newSkillsPath}
-                      className="flex items-center px-5 py-2 bg-[var(--color-foreground)] text-white rounded-md text-[13px] font-medium hover:bg-black transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                      className="flex items-center px-4 py-1.5 bg-[var(--primary-color)] text-white rounded-md text-[13px] font-medium hover:bg-[var(--primary-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
                     >
                       {loading ? "保存中..." : "保存 Agent"}
                     </button>
@@ -193,47 +194,46 @@ export function AgentSettingsDialog({ isOpen, onClose }: AgentSettingsDialogProp
                   <h3 className="text-sm font-medium text-[var(--foreground)]">已配置的 Agent 列表</h3>
                   <button
                     onClick={() => setIsAdding(true)}
-                    className="flex items-center px-3 py-1.5 bg-[var(--color-foreground)] text-white rounded-md text-[13px] font-medium hover:bg-black transition-all shadow-sm"
+                    className="flex items-center px-2.5 py-1.5 bg-white border border-black/10 rounded-md text-[12px] font-medium hover:bg-black/5 transition-colors shadow-sm"
                   >
-                    <Plus className="w-4 h-4 mr-1.5" />
-                    新增 Agent
+                    <Plus className="w-3.5 h-3.5 mr-1" />
+                    新增
                   </button>
                 </div>
                 
-                <div className="space-y-3">
+                <div className="space-y-2">
                   {agents.length === 0 ? (
-                    <div className="text-center py-10 text-[var(--color-muted)] border border-dashed border-[var(--color-border)] rounded-xl bg-black/[0.02]">
-                      <p className="text-sm font-medium mb-1 text-[var(--foreground)]">暂未配置任何 Agent</p>
-                      <p className="text-[13px]">点击右上角“新增 Agent”开始配置</p>
+                    <div className="text-center py-8 text-[var(--color-muted)] border border-dashed border-black/10 dark:border-white/10 rounded-xl bg-black/[0.01]">
+                      <p className="text-[13px] font-medium mb-1 text-[var(--foreground)]">暂未配置任何 Agent</p>
+                      <p className="text-[12px]">点击右上角“新增”开始配置</p>
                     </div>
                   ) : (
-                    agents.map((agent) => (
-                      <div key={agent.id} className="flex flex-col p-4 bg-white rounded-xl border border-[var(--color-border)] hover:border-black/20 hover:shadow-sm transition-all">
-                        <div className="flex items-start justify-between">
-                          <div className="flex items-center space-x-3">
-                            <div className="w-10 h-10 rounded-lg bg-[var(--color-primary)]/10 text-[var(--color-primary)] flex items-center justify-center shrink-0">
-                              <Bot className="w-5 h-5" />
+                    <div className="bg-white dark:bg-[#1A1A1A] border border-black/5 dark:border-white/5 rounded-xl overflow-hidden divide-y divide-black/5 dark:divide-white/5">
+                      {agents.map((agent) => (
+                        <div key={agent.id} className="flex flex-col p-4 transition-all">
+                          <div className="flex items-start justify-between">
+                            <div className="flex items-center space-x-3">
+                              <div>
+                                <h4 className="text-[13px] font-semibold text-[var(--foreground)]">{agent.display_name}</h4>
+                                <div className="text-[12px] text-[var(--color-muted)] font-mono mt-0.5">{agent.name}</div>
+                              </div>
                             </div>
-                            <div>
-                              <h4 className="text-[14px] font-semibold text-[var(--foreground)]">{agent.display_name}</h4>
-                              <div className="text-[12px] text-[var(--color-muted)] font-mono mt-0.5 opacity-80">ID: {agent.name}</div>
-                            </div>
+                            <Tooltip content="删除">
+                              <button 
+                                onClick={() => handleDeleteAgent(agent.id)}
+                                className="p-1 rounded-md text-[var(--color-muted)] hover:bg-red-50 hover:text-red-500 transition-colors"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </Tooltip>
                           </div>
-                          <Tooltip content="删除 Agent">
-                            <button 
-                              onClick={() => handleDeleteAgent(agent.id)}
-                              className="p-1.5 rounded-lg text-[var(--color-muted)] hover:bg-red-50 hover:text-red-500 transition-colors"
-                            >
-                              <Trash2 className="w-4.5 h-4.5" />
-                            </button>
-                          </Tooltip>
+                          <div className="mt-2 text-[12px] text-[var(--color-muted)] flex items-center">
+                            <Folder className="w-3.5 h-3.5 mr-1.5 shrink-0" />
+                            <span className="truncate">{agent.skills_path}</span>
+                          </div>
                         </div>
-                        <div className="mt-3.5 text-[12px] text-[var(--foreground)] bg-black/[0.03] p-2.5 rounded-lg border border-black/5 break-all flex items-start">
-                          <Folder className="w-4 h-4 mr-2 text-[var(--color-muted)] shrink-0 mt-0.5" />
-                          <span className="opacity-80 leading-relaxed">{agent.skills_path}</span>
-                        </div>
-                      </div>
-                    ))
+                      ))}
+                    </div>
                   )}
                 </div>
               </div>
@@ -241,6 +241,14 @@ export function AgentSettingsDialog({ isOpen, onClose }: AgentSettingsDialogProp
           </div>
         </div>
       </div>
+  );
+
+  if (isInline) return content;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 modal-backdrop transition-opacity" onClick={onClose} />
+      {content}
     </div>
   );
 }

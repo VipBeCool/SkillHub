@@ -13,7 +13,7 @@ import { CreateSkillLibraryModal, OpenSkillLibraryModal, MergeSkillLibraryModal 
 
 import { SkillDetailPage } from "./components/skill/SkillDetailPage";
 import { PromptPreviewModal } from "./components/skill/PromptPreviewModal";
-import { AgentSettingsDialog } from "./components/agent/AgentSettingsDialog";
+import { GlobalSettingsModal } from "./components/ui/GlobalSettingsModal";
 import { ConfirmDialog } from './components/ui/ConfirmDialog';
 import { SearchModal } from "./components/search/SearchModal";
 import { RepoCard } from "./components/skill/RepoCard";
@@ -1293,7 +1293,13 @@ function App() {
 
       {isLeftSidebarOpen && (
       <div className="w-64 bg-transparent flex flex-col h-full shrink-0 relative z-20 text-[13px] border-r border-[var(--color-border)]">
-        <div data-tauri-drag-region className="h-10 w-full shrink-0"></div>
+        <div 
+          data-tauri-drag-region 
+          className="h-10 w-full shrink-0"
+          style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+          onPointerDown={(e) => { if (e.target === e.currentTarget) getCurrentWindow().startDragging(); }}
+          onDoubleClick={(e) => { if (e.target === e.currentTarget) getCurrentWindow().toggleMaximize(); }}
+        ></div>
 
         {/* 模块 Tab 导航与全局搜索 */}
         <div className="px-3 pb-3 flex items-center justify-between gap-2">
@@ -1450,6 +1456,14 @@ function App() {
                     </svg>
                     <span>Github技能</span>
                   </button>
+                  <button
+                    className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none ${activeTab === "online" ? "bg-black/5 text-[var(--foreground)] font-semibold" : "text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 font-medium"
+                      }`}
+                    onClick={() => handleSidebarNav('skill-home', '技能库', { filter: 'online', repoId: undefined }, 'Globe')}
+                  >
+                    <Globe className="w-4 h-4" />
+                    <span>线上技能</span>
+                  </button>
                 </div>
               </div>
             </div>
@@ -1507,7 +1521,7 @@ function App() {
             ) : (
             <div className="flex-1 flex flex-col h-full min-w-0 bg-[var(--color-background)] relative">
           {directories.length > 0 && (
-            <div data-tauri-drag-region className="py-3 px-8 bg-white flex items-center justify-between shrink-0 relative z-0">
+            <div className="py-3 px-8 bg-white flex items-center justify-between shrink-0 relative z-0">
               <div className="flex items-center space-x-3">
 
                 <h1 className="text-[15px] font-medium tracking-tight text-[var(--foreground)] flex items-center">
@@ -1943,13 +1957,18 @@ function App() {
                 }}
                 onToggleInspector={() => setIsInspectorOpen(!isInspectorOpen)}
                 onOpenPromptTab={(title, promptId) => openTab('prompt-home', title, { promptId }, 'FileText')}
-                initialPromptId={currentTab?.context?.promptId}
+                initialPromptId={currentTab?.context?.promptOpened ? undefined : currentTab?.context?.promptId}
+                onPromptOpened={() => {
+                  if (currentTab) {
+                    updateActiveTab({ context: { ...currentTab.context, promptOpened: true } });
+                  }
+                }}
               />
             </div>
           ) : (
           /* 资源社区占位页面 */
           <div className="flex-1 flex flex-col h-full min-w-0 bg-[var(--color-background)] relative">
-            <div data-tauri-drag-region className="h-16 border-b border-[var(--color-border)] bg-white/70 backdrop-blur-xl flex items-center px-8 shrink-0 relative z-0">
+            <div className="h-16 border-b border-[var(--color-border)] bg-white/70 backdrop-blur-xl flex items-center px-8 shrink-0 relative z-0">
               <h1 className="text-xl font-medium tracking-tight text-[var(--foreground)]">资源社区</h1>
             </div>
             <div className="flex-1 flex flex-col items-center justify-center p-6 bg-[var(--color-background)]">
@@ -2021,9 +2040,10 @@ function App() {
         onClose={() => setPromptModal(prev => ({ ...prev, isOpen: false }))}
       />
 
-      <AgentSettingsDialog
+      <GlobalSettingsModal
         isOpen={isSettingsOpen}
         onClose={() => { setIsSettingsOpen(false); fetchData(); }}
+        defaultTab="agent"
       />
 
       <SearchModal

@@ -85,13 +85,13 @@ export function AboutDialog({ isOpen, onClose }: AboutDialogProps) {
     <div className="fixed inset-0 z-[99999] flex items-center justify-center">
       {/* Backdrop */}
       <div 
-        className="absolute inset-0 bg-white/40 backdrop-blur-sm animate-in fade-in duration-200"
+        className="absolute inset-0 modal-backdrop transition-opacity"
         onClick={onClose}
       />
       
       {/* Dialog */}
       <div 
-        className="relative bg-white w-[340px] rounded-2xl shadow-[0_20px_60px_rgb(0,0,0,0.15)] flex flex-col items-center pt-10 pb-8 px-8 animate-in zoom-in-95 duration-200 border border-black/5 text-[var(--foreground)]"
+        className="relative modal-glass w-[340px] flex flex-col items-center pt-10 pb-8 px-8 animate-in zoom-in-95 duration-200 text-[var(--foreground)]"
         onClick={(e) => e.stopPropagation()}
       >
         <button 

@@ -54,8 +54,9 @@ export function CreateGroupDialog({ isOpen, group, onClose, onSave }: CreateGrou
   if (!isOpen) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/10 backdrop-blur-sm p-4">
-      <div className="bg-white/95 backdrop-blur-xl border border-[var(--color-border)] rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden flex flex-col relative transition-all duration-300 animate-in zoom-in-95 fade-in">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 modal-backdrop transition-opacity" onClick={onClose} />
+      <div className="modal-glass rounded-2xl w-full max-w-sm overflow-hidden flex flex-col relative transition-all duration-300 animate-in zoom-in-95 fade-in">
         
         {/* Header */}
         <div className="px-6 py-4 border-b border-[var(--color-border)] flex items-center justify-between relative">

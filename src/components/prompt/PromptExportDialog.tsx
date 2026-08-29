@@ -55,8 +55,9 @@ export function PromptExportDialog({ isOpen, prompts, onClose }: PromptExportDia
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/10 backdrop-blur-sm p-4">
-      <div className="bg-white/95 backdrop-blur-xl border border-[var(--color-border)] rounded-2xl w-full max-w-sm shadow-2xl animate-in zoom-in-95 fade-in duration-150">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 modal-backdrop transition-opacity" onClick={onClose} />
+      <div className="modal-glass rounded-2xl w-full max-w-sm overflow-hidden flex flex-col relative transition-all duration-300 animate-in zoom-in-95 fade-in duration-150">
         <div className="px-5 py-4 border-b border-[var(--color-border)] flex items-center justify-between">
           <div>
             <h2 className="text-[15px] font-semibold text-[var(--foreground)]">导出提示词</h2>

@@ -183,6 +183,7 @@ interface PromptModuleProps {
   onToggleInspector?: () => void;
   onOpenPromptTab?: (title: string, promptId: string) => void;
   initialPromptId?: string;
+  onPromptOpened?: () => void;
 }
 
 interface PromptInspectorData {
@@ -190,13 +191,14 @@ interface PromptInspectorData {
   versions: PromptVersion[];
 }
 
-export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChange, onTitleChange, onToggleInspector, onOpenPromptTab, initialPromptId }: PromptModuleProps) {
+export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChange, onTitleChange, onToggleInspector, onOpenPromptTab, initialPromptId, onPromptOpened }: PromptModuleProps) {
   const [prompts, setPrompts] = useState<Prompt[]>([]);
   const [groups, setGroups] = useState<PromptGroup[]>([]);
   const [search] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [lastSelectedId, setLastSelectedId] = useState<string | null>(null);
   const [inspectorData, setInspectorData] = useState<PromptInspectorData | null>(null);
+  const isDraggingRef = useRef(false); // 追踪框选状态，避免干扰
 
   // 弹窗状态
   const [isEditorOpen, setIsEditorOpen] = useState(false);
@@ -319,6 +321,7 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChang
         setEditingPrompt(p);
         setIsEditorOpen(true);
         initialPromptOpenedRef.current = initialPromptId;
+        onPromptOpened?.();
       }
     }
   }, [initialPromptId, prompts]);
@@ -579,6 +582,7 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChang
     if (area?.parentElement) {
       area.parentElement.style.zIndex = '10000';
     }
+    isDraggingRef.current = true; // 标记框选开始
     if (!event?.ctrlKey && !event?.metaKey && !event?.shiftKey) {
       selection.clearSelection();
       setSelectedIds(new Set());
@@ -607,10 +611,6 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChang
       <div className="flex-1 flex flex-col h-full min-w-0 bg-white">
         {/* 顶栏 */}
         <div 
-          data-tauri-drag-region 
-          onPointerDown={(e) => {
-            if (e.target === e.currentTarget) getCurrentWindow().startDragging();
-          }}
           className="py-3 px-6 bg-white flex items-center justify-between shrink-0 relative z-0"
         >
           <div className="flex items-center gap-3">
@@ -651,14 +651,7 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChang
         {/* 内容 */}
           {/* 卡片网格 */}
           <div 
-            className="flex-1 overflow-y-auto"
-            onPointerDown={(e) => {
-              if (e.button !== 0) return; // Only left click
-              if (!(e.target as Element).closest('[data-prompt-id]')) {
-                setSelectedIds(new Set());
-                setInspectorData(null);
-              }
-            }}
+            className="flex-1 overflow-y-auto flex flex-col"
             onContextMenu={(e) => {
               if (e.target === e.currentTarget) {
                 e.preventDefault();
@@ -685,79 +678,90 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChang
                 </button>
               </div>
             ) : (
-              <div className="min-h-full">
-                <SelectionArea
-            onStart={handleSelectionStart}
-            onMove={handleSelectionMove}
-            selectables=".prompt-card"
-            features={{ touch: false, range: true, singleTap: { allow: false } }}
-          >
-            <div 
-              className="prompt-grid px-6 pt-3 pb-20 grid grid-cols-2 xl:grid-cols-3 gap-4 min-h-full items-stretch content-start"
-                onPointerDown={(e) => {
-                  if (e.target === e.currentTarget) {
-                    setSelectedIds(new Set());
-                    setInspectorData(null);
-                  }
+              // 框选容器：完全擑满可滚动区域，包括卡片下方的空白区
+              <SelectionArea
+                className="flex-1 flex flex-col min-h-0"
+                onBeforeStart={({ event }: SelectionEvent) => {
+                  // 点击在 prompt-card 上不启动框选
+                  if ((event?.target as Element)?.closest?.('[data-prompt-id]')) return false;
+                  // 点击空白区：立即清空选中（取消高亮），然后允许框选继续
+                  setSelectedIds(new Set());
+                  setInspectorData(null);
+                  return true;
                 }}
-                onContextMenu={(e) => {
-                  if (e.target === e.currentTarget) {
-                    e.preventDefault();
-                    setContextPrompt(null);
-                    showContextMenu(e);
-                  }
-                }}
+                onStart={handleSelectionStart}
+                onMove={handleSelectionMove}
+                onStop={() => { setTimeout(() => { isDraggingRef.current = false; }, 0); }}
+                selectables=".prompt-card"
+                features={{ touch: false, range: true, singleTap: { allow: false } }}
               >
-                {prompts.map(prompt => (
-                  <PromptCard
-                    key={prompt.id}
-                    prompt={prompt}
-                    isTrashMode={filter === "trash"}
-                    onRestore={(p) => {
-                      invoke("restore_prompts", { ids: [p.id] }).then(() => {
-                        showToast("已恢复", "success");
-                        setSelectedIds(new Set());
-                        setInspectorData(null);
-                        fetchData();
-                      });
-                    }}
-                    onHardDelete={async (p) => {
-                      if (!(await waitConfirm("确认彻底删除该提示词吗？此操作不可恢复！", "彻底删除"))) return;
-                      invoke("hard_delete_prompts", { ids: [p.id] }).then(() => {
-                        showToast("已彻底删除", "success");
-                        setSelectedIds(new Set());
-                        setInspectorData(null);
-                        fetchData();
-                      });
-                    }}
-                    selected={selectedIds.has(prompt.id)}
-                    onSelect={handleCardSelect}
-                    onClick={(e, p) => handleSelectPrompt(p, e)}
-                    onDoubleClick={(p) => { 
-                      if (filter !== "trash") {
-                        setEditingPrompt(p); 
-                        setIsEditorOpen(true); 
-                      }
-                    }}
-                    onContextMenu={(e, p) => {
+                {/* grid 内容区，flex-1 确保空白区也在 SelectionArea 范围内 */}
+                <div 
+                  className="prompt-grid flex-1 px-6 pt-3 pb-20 grid grid-cols-2 xl:grid-cols-3 gap-4 content-start"
+                  onPointerDown={(e) => {
+                    // 点击网格空白处（非卡片）时清空选择，不调用 stopPropagation 确保事件继续冒泡给 SelectionArea
+                    if (e.target === e.currentTarget) {
+                      setSelectedIds(new Set());
+                      setInspectorData(null);
+                    }
+                  }}
+                  onContextMenu={(e) => {
+                    if (e.target === e.currentTarget) {
                       e.preventDefault();
-                      e.stopPropagation();
-                      setContextPrompt(p);
-                      if (!selectedIds.has(p.id)) {
-                        setSelectedIds(new Set([p.id]));
-                        invoke<PromptVersion[]>("get_prompt_versions", { promptId: p.id })
-                          .then(versions => setInspectorData({ prompt: p, versions }))
-                          .catch(() => setInspectorData({ prompt: p, versions: [] }));
-                      }
+                      setContextPrompt(null);
                       showContextMenu(e);
-                    }}
-                    onFavoriteToggle={handleFavoriteToggle}
-                    onCopy={() => {}}
-                  />
-                ))}
-              </div>
-            </SelectionArea>
-            </div>
+                    }
+                  }}
+                >
+                  {prompts.map(prompt => (
+                    <PromptCard
+                      key={prompt.id}
+                      prompt={prompt}
+                      isTrashMode={filter === "trash"}
+                      onRestore={(p) => {
+                        invoke("restore_prompts", { ids: [p.id] }).then(() => {
+                          showToast("已恢复", "success");
+                          setSelectedIds(new Set());
+                          setInspectorData(null);
+                          fetchData();
+                        });
+                      }}
+                      onHardDelete={async (p) => {
+                        if (!(await waitConfirm("确认彻底删除该提示词吗？此操作不可恢复！", "彻底删除"))) return;
+                        invoke("hard_delete_prompts", { ids: [p.id] }).then(() => {
+                          showToast("已彻底删除", "success");
+                          setSelectedIds(new Set());
+                          setInspectorData(null);
+                          fetchData();
+                        });
+                      }}
+                      selected={selectedIds.has(prompt.id)}
+                      onSelect={handleCardSelect}
+                      onClick={(e, p) => handleSelectPrompt(p, e)}
+                      onDoubleClick={(p) => { 
+                        if (filter !== "trash") {
+                          setEditingPrompt(p); 
+                          setIsEditorOpen(true); 
+                        }
+                      }}
+                      onContextMenu={(e, p) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setContextPrompt(p);
+                        if (!selectedIds.has(p.id)) {
+                          setSelectedIds(new Set([p.id]));
+                          invoke<PromptVersion[]>("get_prompt_versions", { promptId: p.id })
+                            .then(versions => setInspectorData({ prompt: p, versions }))
+                            .catch(() => setInspectorData({ prompt: p, versions: [] }));
+                        }
+                        showContextMenu(e);
+                      }}
+                      onFavoriteToggle={handleFavoriteToggle}
+                      onCopy={() => {}}
+                    />
+                  ))}
+                </div>
+              </SelectionArea>
             )}
           </div>
         </div>
@@ -768,7 +772,13 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChang
             if (selectedIds.size === 0) {
               return (
                 <div className="bg-transparent border-l border-[var(--color-border)] flex flex-col shrink-0 h-full overflow-hidden w-64">
-                  <div className="px-4 py-3 flex items-center justify-between shrink-0">
+                  <div 
+                    data-tauri-drag-region
+                    onPointerDown={(e) => { if (e.target === e.currentTarget) getCurrentWindow().startDragging(); }}
+                    onDoubleClick={(e) => { if (e.target === e.currentTarget) getCurrentWindow().toggleMaximize(); }}
+                    className="px-4 h-10 flex items-center justify-between shrink-0"
+                    style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+                  >
                     <span className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wide"></span>
                     {onToggleInspector && (
                       <Tooltip content="收起检查器 (⌘/)">
@@ -791,7 +801,13 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChang
             if (selectedIds.size > 1) {
               return (
                 <div className="bg-transparent border-l border-[var(--color-border)] flex flex-col shrink-0 h-full overflow-hidden w-64">
-                  <div className="px-4 py-3 flex items-center justify-between shrink-0">
+                  <div 
+                    data-tauri-drag-region
+                    onPointerDown={(e) => { if (e.target === e.currentTarget) getCurrentWindow().startDragging(); }}
+                    onDoubleClick={(e) => { if (e.target === e.currentTarget) getCurrentWindow().toggleMaximize(); }}
+                    className="px-4 h-10 flex items-center justify-between shrink-0"
+                    style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+                  >
                     <span className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wide"></span>
                     {onToggleInspector && (
                       <Tooltip content="收起检查器 (⌘/)">
@@ -840,7 +856,13 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChang
 
             return (
               <div className="bg-transparent border-l border-[var(--color-border)] flex flex-col shrink-0 h-full overflow-hidden w-64">
-                <div className="px-4 py-3 flex items-center justify-between shrink-0">
+                <div 
+                  data-tauri-drag-region
+                  onPointerDown={(e) => { if (e.target === e.currentTarget) getCurrentWindow().startDragging(); }}
+                  onDoubleClick={(e) => { if (e.target === e.currentTarget) getCurrentWindow().toggleMaximize(); }}
+                  className="px-4 h-10 flex items-center justify-between shrink-0"
+                  style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+                >
                   <span className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wide"></span>
                   <div className="flex items-center gap-1">
                     <button

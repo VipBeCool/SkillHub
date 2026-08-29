@@ -29,11 +29,11 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
 
   return createPortal(
     <div 
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-[2px] animate-in fade-in duration-200"
-      onClick={onCancel}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
     >
+      <div className="absolute inset-0 modal-backdrop transition-opacity" onClick={onCancel} />
       <div 
-        className="bg-white border border-[var(--color-border)] rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200"
+        className="modal-glass rounded-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="p-6">

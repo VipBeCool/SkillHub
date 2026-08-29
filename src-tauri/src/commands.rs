@@ -2002,3 +2002,97 @@ fn remove_linux_folder_icon(folder_path: &str) {
         .args(&["set", "-t", "unset", folder_path.to_str().unwrap_or(""), "metadata::custom-icon"])
         .output();
 }
+
+#[tauri::command]
+pub async fn export_database(app: tauri::AppHandle, target_path: String) -> Result<(), String> {
+    use tauri::Manager;
+    use std::fs::File;
+    use zip::write::FileOptions;
+    use zip::ZipWriter;
+    
+    let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let db_path = app_data_dir.join("skillhub.sqlite");
+    
+    if !db_path.exists() {
+        return Err("数据库文件不存在".to_string());
+    }
+
+    // 创建 manifest
+    let manifest = serde_json::json!({
+        "export_time": chrono::Utc::now().to_rfc3339(),
+        "app_version": app.package_info().version.to_string(),
+    });
+    
+    let manifest_str = serde_json::to_string_pretty(&manifest).map_err(|e| e.to_string())?;
+    
+    // 执行打包逻辑
+    tauri::async_runtime::spawn_blocking(move || {
+        let file = File::create(&target_path).map_err(|e| e.to_string())?;
+        let mut zip = ZipWriter::new(file);
+        
+        #[allow(deprecated)]
+        let opts = FileOptions::default()
+            .compression_method(zip::CompressionMethod::Stored)
+            .unix_permissions(0o644);
+            
+        // 写入 manifest
+        zip.start_file("manifest.json", opts).map_err(|e| e.to_string())?;
+        use std::io::Write;
+        zip.write_all(manifest_str.as_bytes()).map_err(|e| e.to_string())?;
+        
+        // 写入 sqlite
+        zip.start_file("skillhub.sqlite", opts).map_err(|e| e.to_string())?;
+        let mut db_file = File::open(&db_path).map_err(|e| e.to_string())?;
+        use std::io::Read;
+        let mut buf = Vec::new();
+        db_file.read_to_end(&mut buf).map_err(|e| e.to_string())?;
+        zip.write_all(&buf).map_err(|e| e.to_string())?;
+        
+        zip.finish().map_err(|e| e.to_string())?;
+        
+        Ok::<(), String>(())
+    })
+    .await
+    .map_err(|e| format!("线程错误: {}", e))??;
+    
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn import_database(app: tauri::AppHandle, zip_path: String) -> Result<(), String> {
+    use tauri::Manager;
+    use std::fs::File;
+    use zip::ZipArchive;
+    
+    let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let db_path = app_data_dir.join("skillhub.sqlite");
+    
+    // 在子线程解压和校验
+    tauri::async_runtime::spawn_blocking(move || {
+        let file = File::open(&zip_path).map_err(|e| e.to_string())?;
+        let mut archive = ZipArchive::new(file).map_err(|e| format!("无效的 ZIP 文件: {}", e))?;
+        
+        // 校验 manifest
+        let has_manifest = archive.by_name("manifest.json").is_ok();
+        let has_db = archive.by_name("skillhub.sqlite").is_ok();
+        
+        if !has_manifest || !has_db {
+            return Err("压缩包格式不正确，缺少必要文件 (manifest.json 或 skillhub.sqlite)".to_string());
+        }
+        
+        // 触发本地备份
+        crate::db::backup_database(&db_path).map_err(|e| format!("导入前自动备份失败: {}", e))?;
+        
+        // 提取数据库覆盖当前文件
+        let mut db_file = archive.by_name("skillhub.sqlite").map_err(|e| e.to_string())?;
+        let mut target_file = File::create(&db_path).map_err(|e| format!("无法覆盖数据库文件: {}", e))?;
+        use std::io::copy;
+        copy(&mut db_file, &mut target_file).map_err(|e| format!("提取数据库文件失败: {}", e))?;
+        
+        Ok::<(), String>(())
+    })
+    .await
+    .map_err(|e| format!("线程错误: {}", e))??;
+    
+    Ok(())
+}

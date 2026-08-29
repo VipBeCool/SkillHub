@@ -15,6 +15,7 @@ export interface TabContext {
   repoId?: string;        // 仓库 ID
   skillId?: string;       // 技能 ID
   promptId?: string;      // 提示词 ID
+  promptOpened?: boolean; // 提示词是否已打开过编辑弹窗
   resourceId?: string;    // 社区资源 ID
   filter?: string;        // 筛选条件
   // 用于 prompt-home 展示

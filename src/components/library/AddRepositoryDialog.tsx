@@ -151,38 +151,24 @@ export function AddRepositoryDialog({
         const repoName = githubUrl.split('/').filter(Boolean).pop()?.replace('.git', '') || 'repo';
         const finalTargetDir = `${githubTargetDir}/${repoName}`.replace(/\\/g, '/').replace(/\/{2,}/g, '/');
         
-        let isSlow = false;
-        const slowTimer = setTimeout(() => {
-          isSlow = true;
-          onCloningStart?.(finalTargetDir, repoName);
-          onClose();
-          setGithubUrl("");
-          setTimeout(() => setStep("select"), 300);
-          setLoading(false);
-        }, 150);
-
+        onCloningStart?.(finalTargetDir, repoName);
+        
         invoke("import_github_skills_to_workspace", {
           url: githubUrl,
           targetDir: finalTargetDir,
           sourceDirId: defaultSourceDirId || "",
         }).then(() => {
-          clearTimeout(slowTimer);
-          if (!isSlow) {
-            onClose();
-            setGithubUrl("");
-            setTimeout(() => setStep("select"), 300);
-            setLoading(false);
-          }
           onCloningSuccess?.(finalTargetDir);
+          showToast(`已成功克隆技能库: ${repoName}`, 'success');
           onSuccess();
+          onClose();
+          setGithubUrl("");
+          setTimeout(() => setStep("select"), 300);
+          setLoading(false);
         }).catch(err => {
-          clearTimeout(slowTimer);
-          if (!isSlow) {
-            showToast(`${err}`, 'error');
-            setLoading(false);
-          } else {
-            onCloningError?.(finalTargetDir, err);
-          }
+          onCloningError?.(finalTargetDir, err);
+          showToast(`${err}`, 'error');
+          setLoading(false);
         });
         
         return;
@@ -208,8 +194,9 @@ export function AddRepositoryDialog({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/10 backdrop-blur-sm p-4">
-      <div className="bg-white/95 backdrop-blur-xl border border-[var(--color-border)] rounded-2xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col relative transition-all duration-300">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 modal-backdrop transition-opacity" onClick={onClose} />
+      <div className="modal-glass rounded-2xl w-full max-w-md overflow-hidden flex flex-col relative transition-all duration-300">
         
         {/* Header */}
         <div className="px-6 py-4 border-b border-[var(--color-border)] flex items-center justify-between relative">

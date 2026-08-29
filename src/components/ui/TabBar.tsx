@@ -1,5 +1,6 @@
 import { useRef, useEffect, useState } from 'react';
-import { ChevronLeft, ChevronRight, Plus, X, PanelLeft, PanelLeftClose, PanelRightOpen } from 'lucide-react';
+import { PanelLeft, PanelLeftClose, ChevronLeft, ChevronRight, X, Plus, PanelRightOpen } from 'lucide-react';
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Tab, TabType } from '../../types/tabs';
 import { Tooltip } from './Tooltip';
 import { ContextMenu } from './ContextMenu';
@@ -78,6 +79,8 @@ export function TabBar({
       data-tauri-drag-region
       className="flex items-end h-10 bg-transparent shrink-0 relative z-30"
       style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+      onPointerDown={(e) => { if (e.target === e.currentTarget) getCurrentWindow().startDragging(); }}
+      onDoubleClick={(e) => { if (e.target === e.currentTarget) getCurrentWindow().toggleMaximize(); }}
     >
       {/* 2处：macOS 红绿灯占位区域 (仅侧边栏收起时需要，展开时红绿灯在侧边栏上方) */}
       {!isSidebarOpen && <div className="w-[72px] shrink-0" data-tauri-drag-region />}
@@ -199,7 +202,12 @@ export function TabBar({
       </div>
 
       {/* 1处：标题栏空白处，用于拖动窗口和双击缩放 */}
-      <div className="flex-1 h-full min-w-0" data-tauri-drag-region />
+      <div 
+        className="flex-1 h-full min-w-0" 
+        data-tauri-drag-region 
+        onPointerDown={(e) => { if (e.target === e.currentTarget) getCurrentWindow().startDragging(); }}
+        onDoubleClick={(e) => { if (e.target === e.currentTarget) getCurrentWindow().toggleMaximize(); }}
+      />
 
       {/* 右侧控制区（例如右侧边栏切换） - 仅在侧边栏收起时显示在 TabBar */}
       {onToggleRightSidebar && !isRightSidebarOpen && (

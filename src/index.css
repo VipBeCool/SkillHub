@@ -91,6 +91,15 @@
   .input-field:read-only {
     @apply cursor-not-allowed opacity-80 focus:ring-0 focus:border-black/10;
   }
+
+  /* Unified Frosted Glass Styles for Modals */
+  .modal-backdrop {
+    @apply bg-black/20 backdrop-blur-sm;
+  }
+
+  .modal-glass {
+    @apply bg-white/95 backdrop-blur-xl border border-black/10 dark:border-white/10 shadow-2xl;
+  }
 }
 
 @layer utilities {

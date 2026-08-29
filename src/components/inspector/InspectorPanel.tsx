@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { open } from '@tauri-apps/plugin-dialog';
 import { 
@@ -314,7 +315,13 @@ export function InspectorPanel({
     return (
       <div className="w-64 border-l border-[var(--color-border)] bg-transparent flex flex-col shrink-0 h-full overflow-hidden">
         {/* 头部 */}
-        <div className="px-4 py-3 flex items-center justify-between shrink-0">
+        <div 
+          data-tauri-drag-region
+          onPointerDown={(e) => { if (e.target === e.currentTarget) getCurrentWindow().startDragging(); }}
+          onDoubleClick={(e) => { if (e.target === e.currentTarget) getCurrentWindow().toggleMaximize(); }}
+          className="px-4 h-10 flex items-center justify-between shrink-0"
+          style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+        >
           <span className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider"></span>
           {toggleButton}
         </div>
@@ -409,7 +416,13 @@ export function InspectorPanel({
   if (selectedItemType === 'repo' && selectedRepos.length > 1) {
     return (
       <div className="w-64 border-l border-[var(--color-border)] bg-transparent flex flex-col shrink-0 h-full overflow-hidden">
-        <div className="px-4 py-3 flex items-center justify-between shrink-0">
+        <div 
+          data-tauri-drag-region
+          onPointerDown={(e) => { if (e.target === e.currentTarget) getCurrentWindow().startDragging(); }}
+          onDoubleClick={(e) => { if (e.target === e.currentTarget) getCurrentWindow().toggleMaximize(); }}
+          className="px-4 h-10 flex items-center justify-between shrink-0"
+          style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+        >
           <span className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider"></span>
           {toggleButton}
         </div>
@@ -502,7 +515,13 @@ export function InspectorPanel({
     return (
       <div className="w-64 border-l border-[var(--color-border)] bg-transparent flex flex-col shrink-0 h-full overflow-hidden">
         {/* 头部 */}
-        <div className="px-4 py-3  flex items-center justify-between shrink-0">
+        <div 
+          data-tauri-drag-region
+          onPointerDown={(e) => { if (e.target === e.currentTarget) getCurrentWindow().startDragging(); }}
+          onDoubleClick={(e) => { if (e.target === e.currentTarget) getCurrentWindow().toggleMaximize(); }}
+          className="px-4 h-10 flex items-center justify-between shrink-0"
+          style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+        >
           <span className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider"></span>
           {toggleButton}
         </div>
@@ -795,7 +814,13 @@ export function InspectorPanel({
   if (selectedItemType === 'skill' && selectedSkills.length > 1) {
     return (
       <div className="w-64 border-l border-[var(--color-border)] bg-transparent flex flex-col shrink-0 h-full overflow-hidden">
-        <div className="px-4 py-3  flex items-center justify-between shrink-0">
+        <div 
+          data-tauri-drag-region
+          onPointerDown={(e) => { if (e.target === e.currentTarget) getCurrentWindow().startDragging(); }}
+          onDoubleClick={(e) => { if (e.target === e.currentTarget) getCurrentWindow().toggleMaximize(); }}
+          className="px-4 h-10 flex items-center justify-between shrink-0"
+          style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+        >
           <span className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider"></span>
           {toggleButton}
         </div>
@@ -816,7 +841,13 @@ export function InspectorPanel({
     return (
       <div className="w-64 border-l border-[var(--color-border)] bg-transparent flex flex-col shrink-0 h-full overflow-hidden">
         {/* 头部 */}
-        <div className="px-4 py-3  flex items-center justify-between shrink-0">
+        <div 
+          data-tauri-drag-region
+          onPointerDown={(e) => { if (e.target === e.currentTarget) getCurrentWindow().startDragging(); }}
+          onDoubleClick={(e) => { if (e.target === e.currentTarget) getCurrentWindow().toggleMaximize(); }}
+          className="px-4 h-10 flex items-center justify-between shrink-0"
+          style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+        >
           <span className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider"></span>
           {toggleButton}
         </div>
@@ -1005,7 +1036,13 @@ export function InspectorPanel({
   // 兜底
   return (
     <div className="w-64 border-l border-[var(--color-border)] bg-transparent flex flex-col shrink-0 h-full">
-      <div className="px-4 py-3  flex items-center justify-between">
+      <div 
+        data-tauri-drag-region
+        onPointerDown={(e) => { if (e.target === e.currentTarget) getCurrentWindow().startDragging(); }}
+        onDoubleClick={(e) => { if (e.target === e.currentTarget) getCurrentWindow().toggleMaximize(); }}
+        className="px-4 h-10 flex items-center justify-between shrink-0"
+        style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+      >
         <span className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider"></span>
         {toggleButton}
       </div>
