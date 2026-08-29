@@ -1,12 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Plus, Download, Star, LayoutGrid, Trash2, Trash, FolderPlus, MoreHorizontal, X, Languages, Loader2, Folder, Edit2, FolderX, Tag, PanelRightClose, ChevronRight } from "lucide-react";
+import { Plus, Download, Star, LayoutGrid, Trash2, Trash, FolderPlus, MoreHorizontal, X, Folder, Edit2, FolderX, Tag, PanelRightClose, ChevronRight } from "lucide-react";
 import { Prompt, PromptGroup, PromptVersion } from "./types";
 import { PromptCard } from "./components/prompt/PromptCard";
 import { SelectionArea, SelectionEvent } from "@viselect/react";
-import { PromptEditorDrawer } from "./components/prompt/PromptEditorDrawer";
+
 import { CreateGroupDialog } from "./components/prompt/CreateGroupDialog";
 import { PromptExportDialog } from "./components/prompt/PromptExportDialog";
 import { ConfirmDialog } from "./components/ui/ConfirmDialog";
@@ -181,9 +180,7 @@ interface PromptModuleProps {
   onFilterChange: (filter: PromptFilter) => void;
   onTitleChange: (title: string, icon: string) => void;
   onToggleInspector?: () => void;
-  onOpenPromptTab?: (title: string, promptId: string) => void;
-  initialPromptId?: string;
-  onPromptOpened?: () => void;
+  onOpenPromptDetail?: (title: string, promptId?: string, isEditing?: boolean) => void;
 }
 
 interface PromptInspectorData {
@@ -191,7 +188,7 @@ interface PromptInspectorData {
   versions: PromptVersion[];
 }
 
-export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChange, onTitleChange, onToggleInspector, onOpenPromptTab, initialPromptId, onPromptOpened }: PromptModuleProps) {
+export function PromptModule({ filter, refreshKey, onGroupsChange, onTitleChange, onToggleInspector, onOpenPromptDetail }: PromptModuleProps) {
   const [prompts, setPrompts] = useState<Prompt[]>([]);
   const [groups, setGroups] = useState<PromptGroup[]>([]);
   const [search] = useState("");
@@ -201,17 +198,12 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChang
   const isDraggingRef = useRef(false); // 追踪框选状态，避免干扰
 
   // 弹窗状态
-  const [isEditorOpen, setIsEditorOpen] = useState(false);
-  const [editingPrompt, setEditingPrompt] = useState<Prompt | null>(null);
+
   
   // Tag editor in inspector
   const [inspectorTagInput, setInspectorTagInput] = useState("");
   const inspectorTagInputRef = useRef<HTMLInputElement>(null);
   const inspectorTagDropdownRef = useRef<HTMLDivElement>(null);
-
-  // Translator state
-  const [translatingId, setTranslatingId] = useState<string | null>(null);
-  const [targetLang, setTargetLang] = useState("zh-CN");
 
   // Derived tags for autocomplete
   const allTags = Array.from(new Set(prompts.flatMap(p => p.tags ? p.tags.split(",").map(t => t.trim()).filter(Boolean) : [])));
@@ -267,31 +259,6 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChang
       fetchData(); // Revert
     }
   };
-
-  const handleTranslate = async (p: Prompt) => {
-    if (!p.content) return;
-    setTranslatingId(p.id);
-    try {
-      const translated = await invoke<string>("translate_text", { text: p.content, targetLang });
-      const newContent = p.content + "\n\n---\n" + translated;
-      setPrompts(prev => prev.map(pr => pr.id === p.id ? { ...pr, content: newContent } : pr));
-      await invoke("update_prompt", { 
-        id: p.id, 
-        title: p.title, 
-        content: newContent,
-        description: p.description || null, 
-        groupId: p.group_id || null,
-        tags: p.tags || null, 
-        variables: p.variables || null,
-        changeNote: "追加翻译" 
-      });
-      showToast("翻译已追加到内容底部", "success");
-    } catch (e) {
-      showToast("翻译失败", "error");
-    } finally {
-      setTranslatingId(null);
-    }
-  };
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
 
   // 获取下一个元素的辅助函数
@@ -312,19 +279,7 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChang
     return null;
   };
 
-  // 监听 initialPromptId
-  const initialPromptOpenedRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (initialPromptId && prompts.length > 0 && initialPromptOpenedRef.current !== initialPromptId) {
-      const p = prompts.find(p => p.id === initialPromptId);
-      if (p) {
-        setEditingPrompt(p);
-        setIsEditorOpen(true);
-        initialPromptOpenedRef.current = initialPromptId;
-        onPromptOpened?.();
-      }
-    }
-  }, [initialPromptId, prompts]);
+
 
   // 从本地加载分组（仅前端缓存或读取真实数据）
   useEffect(() => {
@@ -334,7 +289,7 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChang
       if (isInput) return;
 
       if (e.key === 'Backspace' || e.key === 'Delete') {
-        if (selectedIds.size > 0 && !isEditorOpen) {
+        if (selectedIds.size > 0) {
           e.preventDefault();
           handleDeleteSelected();
         }
@@ -342,12 +297,13 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChang
       }
 
       if (e.key === 'Enter') {
-        if (selectedIds.size === 1 && !isEditorOpen) {
+        if (selectedIds.size === 1) {
           e.preventDefault();
           const p = prompts.find(p => p.id === Array.from(selectedIds)[0]);
           if (p) {
-            setEditingPrompt(p);
-            setIsEditorOpen(true);
+            if (onOpenPromptDetail) {
+              onOpenPromptDetail(p.title || '无标题提示词', p.id, false);
+            }
           }
         }
         return;
@@ -393,7 +349,7 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChang
     
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [prompts, selectedIds, lastSelectedId, isEditorOpen]);
+  }, [prompts, selectedIds, lastSelectedId]);
   const [exportingPrompts, setExportingPrompts] = useState<Prompt[]>([]);
 
   // 右键菜单
@@ -611,7 +567,7 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChang
       <div className="flex-1 flex flex-col h-full min-w-0 bg-white">
         {/* 顶栏 */}
         <div 
-          className="py-3 px-6 bg-white flex items-center justify-between shrink-0 relative z-0"
+          className="h-10 px-6 bg-white flex items-center justify-between shrink-0 relative z-0"
         >
           <div className="flex items-center gap-3">
             <h1 className="text-[15px] font-medium text-[var(--foreground)]">{filterLabel}</h1>
@@ -637,9 +593,9 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChang
               </button>
             )}
             {filter !== "trash" && (
-              <button
-                onClick={() => { setEditingPrompt(null); setIsEditorOpen(true); }}
-                className="flex items-center space-x-1 bg-blue-500 text-white px-2.5 py-1 rounded-md text-[12px] font-medium hover:bg-blue-600 shadow-sm shadow-blue-500/20 transition-all ml-1"
+              <button 
+                onClick={() => onOpenPromptDetail?.("新建提示词", undefined, true)}
+                className="px-3 py-1.5 bg-[var(--color-primary)] text-white rounded-md text-[13px] font-medium hover:bg-blue-600 transition-colors shadow-sm flex items-center space-x-1.5 shrink-0"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>添加提示词</span>
@@ -651,7 +607,13 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChang
         {/* 内容 */}
           {/* 卡片网格 */}
           <div 
-            className="flex-1 overflow-y-auto flex flex-col"
+            className="flex-1 overflow-y-auto relative z-0 bg-white"
+            onClick={(e) => {
+              if (!isDraggingRef.current && !(e.target as Element).closest?.('[data-prompt-id]')) {
+                setSelectedIds(new Set());
+                setInspectorData(null);
+              }
+            }}
             onContextMenu={(e) => {
               if (e.target === e.currentTarget) {
                 e.preventDefault();
@@ -670,7 +632,7 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChang
                   点击「添加提示词」开始收集你常用的 AI Prompt，随时快速复用
                 </p>
                 <button 
-                  onClick={() => { setEditingPrompt(null); setIsEditorOpen(true); }}
+                  onClick={() => onOpenPromptDetail?.("新建提示词", undefined, true)}
                   className="flex items-center gap-2 px-6 py-2.5 bg-blue-500 text-white text-[14px] font-medium rounded-xl hover:bg-blue-600 transition-colors shadow-sm shadow-blue-500/20"
                 >
                   <Plus className="w-4 h-4" />
@@ -680,7 +642,7 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChang
             ) : (
               // 框选容器：完全擑满可滚动区域，包括卡片下方的空白区
               <SelectionArea
-                className="flex-1 flex flex-col min-h-0"
+                className="min-h-full flex flex-col"
                 onBeforeStart={({ event }: SelectionEvent) => {
                   // 点击在 prompt-card 上不启动框选
                   if ((event?.target as Element)?.closest?.('[data-prompt-id]')) return false;
@@ -740,8 +702,9 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChang
                       onClick={(e, p) => handleSelectPrompt(p, e)}
                       onDoubleClick={(p) => { 
                         if (filter !== "trash") {
-                          setEditingPrompt(p); 
-                          setIsEditorOpen(true); 
+                          if (onOpenPromptDetail) {
+                            onOpenPromptDetail(p.title || '无标题提示词', p.id, false);
+                          }
                         }
                       }}
                       onContextMenu={(e, p) => {
@@ -773,11 +736,11 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChang
               return (
                 <div className="bg-transparent border-l border-[var(--color-border)] flex flex-col shrink-0 h-full overflow-hidden w-64">
                   <div 
-                    data-tauri-drag-region
-                    onPointerDown={(e) => { if (e.target === e.currentTarget) getCurrentWindow().startDragging(); }}
-                    onDoubleClick={(e) => { if (e.target === e.currentTarget) getCurrentWindow().toggleMaximize(); }}
                     className="px-4 h-10 flex items-center justify-between shrink-0"
+                    data-tauri-drag-region
                     style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+                    onPointerDown={(e) => { if (e.target === e.currentTarget) import('@tauri-apps/api/window').then(m => m.getCurrentWindow().startDragging()); }}
+                    onDoubleClick={(e) => { if (e.target === e.currentTarget) import('@tauri-apps/api/window').then(m => m.getCurrentWindow().toggleMaximize()); }}
                   >
                     <span className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wide"></span>
                     {onToggleInspector && (
@@ -802,11 +765,11 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChang
               return (
                 <div className="bg-transparent border-l border-[var(--color-border)] flex flex-col shrink-0 h-full overflow-hidden w-64">
                   <div 
-                    data-tauri-drag-region
-                    onPointerDown={(e) => { if (e.target === e.currentTarget) getCurrentWindow().startDragging(); }}
-                    onDoubleClick={(e) => { if (e.target === e.currentTarget) getCurrentWindow().toggleMaximize(); }}
                     className="px-4 h-10 flex items-center justify-between shrink-0"
+                    data-tauri-drag-region
                     style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+                    onPointerDown={(e) => { if (e.target === e.currentTarget) import('@tauri-apps/api/window').then(m => m.getCurrentWindow().startDragging()); }}
+                    onDoubleClick={(e) => { if (e.target === e.currentTarget) import('@tauri-apps/api/window').then(m => m.getCurrentWindow().toggleMaximize()); }}
                   >
                     <span className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wide"></span>
                     {onToggleInspector && (
@@ -857,16 +820,16 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChang
             return (
               <div className="bg-transparent border-l border-[var(--color-border)] flex flex-col shrink-0 h-full overflow-hidden w-64">
                 <div 
-                  data-tauri-drag-region
-                  onPointerDown={(e) => { if (e.target === e.currentTarget) getCurrentWindow().startDragging(); }}
-                  onDoubleClick={(e) => { if (e.target === e.currentTarget) getCurrentWindow().toggleMaximize(); }}
                   className="px-4 h-10 flex items-center justify-between shrink-0"
+                  data-tauri-drag-region
                   style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+                  onPointerDown={(e) => { if (e.target === e.currentTarget) import('@tauri-apps/api/window').then(m => m.getCurrentWindow().startDragging()); }}
+                  onDoubleClick={(e) => { if (e.target === e.currentTarget) import('@tauri-apps/api/window').then(m => m.getCurrentWindow().toggleMaximize()); }}
                 >
                   <span className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wide"></span>
                   <div className="flex items-center gap-1">
                     <button
-                      onClick={() => { setEditingPrompt(p); setIsEditorOpen(true); }}
+                      onClick={() => { if (onOpenPromptDetail) onOpenPromptDetail(p.title || '无标题', p.id, false); }}
                       className="px-1.5 py-1 text-[12px] text-[var(--color-primary)] font-medium hover:text-[var(--color-primary)]/80 transition-colors"
                     >编辑</button>
                     {onToggleInspector && (
@@ -892,27 +855,6 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChang
                     <p className="text-[12px] text-[var(--foreground)] leading-relaxed whitespace-pre-wrap font-mono">
                       {p.content}
                     </p>
-                    <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover/prompt:opacity-100 transition-opacity">
-                      <select 
-                        value={targetLang}
-                        onChange={e => setTargetLang(e.target.value)}
-                        className="h-[26px] text-[11px] bg-white border border-[var(--color-border)] rounded-md px-1.5 focus:outline-none focus:border-[var(--color-primary)]/50 shadow-sm"
-                        onClick={e => e.stopPropagation()}
-                      >
-                        <option value="zh-CN">中文</option>
-                        <option value="en">English</option>
-                        <option value="ja">日本語</option>
-                        <option value="ko">한국어</option>
-                      </select>
-                      <button 
-                        onClick={() => handleTranslate(p)}
-                        disabled={translatingId === p.id}
-                        title="翻译此提示词并追加到底部"
-                        className="p-1.5 bg-white border border-[var(--color-border)] rounded-md shadow-sm hover:text-[var(--color-primary)] disabled:opacity-100 disabled:text-[var(--color-muted)]"
-                      >
-                        {translatingId === p.id ? <Loader2 size={14} className="animate-spin" /> : <Languages size={14} />}
-                      </button>
-                    </div>
                   </div>
                   
                   <div>
@@ -1039,22 +981,7 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChang
           document.getElementById('global-inspector-slot')!
         ) : null}
 
-      {/* 弹窗 */}
-      <PromptEditorDrawer
-        isOpen={isEditorOpen}
-        prompt={editingPrompt}
-        groups={groups}
-        allTags={allTags}
-        onClose={() => setIsEditorOpen(false)}
-        onSave={() => {
-          // 新建时自动切到全部视图，让用户看见刚创建的提示词
-          if (!editingPrompt && filter !== "all") {
-            onFilterChange("all");
-          } else {
-            fetchData();
-          }
-        }}
-      />
+
       <PromptExportDialog
         isOpen={isExportDialogOpen}
         prompts={exportingPrompts}
@@ -1137,9 +1064,9 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChang
                 }
               }
             ] : [
-              { id: 'open', label: '打开', icon: <ChevronRight size={14} />, onClick: () => { setEditingPrompt(contextPrompt); setIsEditorOpen(true); hideContextMenu(); } },
-              ...(onOpenPromptTab ? [{ id: 'open_new_tab', label: '在新标签页中打开', icon: <Plus size={14} />, onClick: () => { onOpenPromptTab(contextPrompt.title || '无标题提示词', contextPrompt.id); hideContextMenu(); } }] : []),
-              { id: 'edit', label: '编辑', onClick: () => { setEditingPrompt(contextPrompt); setIsEditorOpen(true); hideContextMenu(); } },
+              { id: 'open', label: '打开', icon: <ChevronRight size={14} />, onClick: () => { onOpenPromptDetail?.(contextPrompt.title || '无标题', contextPrompt.id, false); hideContextMenu(); } },
+              ...(onOpenPromptDetail ? [{ id: 'open_new_tab', label: '在新标签页中打开', icon: <Plus size={14} />, onClick: () => { onOpenPromptDetail(contextPrompt.title || '无标题提示词', contextPrompt.id, false); hideContextMenu(); } }] : []),
+              { id: 'edit', label: '编辑', onClick: () => { onOpenPromptDetail?.(contextPrompt.title || '无标题', contextPrompt.id, true); hideContextMenu(); } },
               { id: 'copy', label: '复制内容', onClick: async () => { 
                   await navigator.clipboard.writeText(contextPrompt.content); 
                   showToast("已复制", "success"); 
@@ -1187,7 +1114,7 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onFilterChang
                 }
               }
             ] : [
-              { id: 'new', label: '新建提示词', onClick: () => { setEditingPrompt(null); setIsEditorOpen(true); hideContextMenu(); } }
+              { id: 'new', label: '新建提示词', onClick: () => { onOpenPromptDetail?.('新建提示词', undefined, true); hideContextMenu(); } }
             ]
           )
         }

@@ -28,6 +28,7 @@ import type { ContextMenuItem } from "./components/ui/ContextMenu";
 import { getNextElement } from "./utils/navigation";
 import { Skill, SourceDirectory, AgentConfig, SyncRecord, GroupedRepo, PromptGroup, Prompt } from "./types";
 import { PromptModule, PromptSidebarNav, PromptFilter } from "./PromptModule";
+import { PromptDetailPage } from "./components/prompt/PromptDetailPage";
 import { useTabs } from "./hooks/useTabs";
 import { TabType } from "./types/tabs";
 import { TabBar } from "./components/ui/TabBar";
@@ -1944,26 +1945,46 @@ function App() {
         </div>
         )) : currentTabModule === 'prompts' ? (
             /* 提示词管理模块 */
-            <div className="flex-1 flex h-full min-w-0 overflow-hidden">
-              <PromptModule
-                refreshKey={promptRefreshKey}
-                filter={promptFilter}
-                onGroupsChange={setPromptGroups}
-                onFilterChange={setPromptFilter}
-                onTitleChange={(title, icon) => {
-                  if (activeModule === 'prompts' && (currentTab?.title !== title || currentTab?.icon !== icon)) {
-                    updateActiveTab({ title, icon });
-                  }
-                }}
-                onToggleInspector={() => setIsInspectorOpen(!isInspectorOpen)}
-                onOpenPromptTab={(title, promptId) => openTab('prompt-home', title, { promptId }, 'FileText')}
-                initialPromptId={currentTab?.context?.promptOpened ? undefined : currentTab?.context?.promptId}
-                onPromptOpened={() => {
-                  if (currentTab) {
-                    updateActiveTab({ context: { ...currentTab.context, promptOpened: true } });
-                  }
-                }}
-              />
+            <div className="flex-1 flex h-full min-w-0 overflow-hidden relative">
+              {currentTab?.type === 'prompt-detail' && (
+                <div className="absolute inset-0 z-10 bg-[var(--color-background)]">
+                  <PromptDetailPage 
+                    promptId={currentTab.context?.promptId} 
+                    isEditingInit={currentTab.context?.isEditing} 
+                    onSaveSuccess={() => {
+                      // Trigger a refresh of the prompts list if needed
+                      setPromptRefreshKey(prev => prev + 1);
+                      if (!currentTab.context?.promptId) {
+                        if (canGoBack) tabGoBack(); else closeTab(currentTab.id);
+                      }
+                    }}
+                    onCancelNew={() => {
+                      if (!currentTab.context?.promptId) {
+                        if (canGoBack) tabGoBack(); else closeTab(currentTab.id);
+                      }
+                    }}
+                  />
+                </div>
+              )}
+              
+              <div 
+                className="flex-1 flex h-full min-w-0" 
+                style={{ display: currentTab?.type === 'prompt-detail' ? 'none' : 'flex' }}
+              >
+                <PromptModule
+                  refreshKey={promptRefreshKey}
+                  filter={promptFilter}
+                  onGroupsChange={setPromptGroups}
+                  onFilterChange={setPromptFilter}
+                  onTitleChange={(title, icon) => {
+                    if (activeModule === 'prompts' && (currentTab?.title !== title || currentTab?.icon !== icon)) {
+                      updateActiveTab({ title, icon });
+                    }
+                  }}
+                  onToggleInspector={() => setIsInspectorOpen(!isInspectorOpen)}
+                  onOpenPromptDetail={(title, promptId, isEditing) => navigateTo('prompt-detail', title, { promptId, isEditing }, 'FileText')}
+                />
+              </div>
             </div>
           ) : (
           /* 资源社区占位页面 */

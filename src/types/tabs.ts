@@ -5,7 +5,7 @@ export type TabType =
   | 'skill-repo'      // 某个仓库的技能列表
   | 'skill-detail'    // 单个技能详情（全宽页面）
   | 'prompt-home'     // 提示词首页
-  | 'prompt-editor'   // 单个提示词编辑器（全宽页面）
+  | 'prompt-detail'   // 单个提示词详情（全宽页面）
   | 'resource-home'   // 资源社区首页
   | 'resource-detail' // 社区资源详情
   ;
@@ -16,6 +16,7 @@ export interface TabContext {
   skillId?: string;       // 技能 ID
   promptId?: string;      // 提示词 ID
   promptOpened?: boolean; // 提示词是否已打开过编辑弹窗
+  isEditing?: boolean;    // 打开时是否进入编辑模式
   resourceId?: string;    // 社区资源 ID
   filter?: string;        // 筛选条件
   // 用于 prompt-home 展示
