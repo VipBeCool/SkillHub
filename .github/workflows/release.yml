@@ -96,8 +96,9 @@ jobs:
             try {
               const changelog = fs.readFileSync('CHANGELOG.md', 'utf8');
               const version = context.ref.replace('refs/tags/v', '');
-              // 匹配当前版本的更新日志，直到下一个大标题 (## [) 或文件结束
-              const regex = new RegExp(`## \\\\[${version}\\\\](.*?)(?=\\n## \\\\[|$)`, 's');
+              // 匹配当前版本的更新日志，直到下一个版本标题 (## [) 或文件结束
+              const escapedVersion = version.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+              const regex = new RegExp(`## \\[${escapedVersion}\\][^\\n]*\\n(.*?)(?=\\n## \\[|$)`, 's');
               const match = changelog.match(regex);
               if (match && match[1]) {
                 releaseNotes = match[1].trim();
