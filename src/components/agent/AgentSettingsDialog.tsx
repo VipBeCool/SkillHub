@@ -181,7 +181,7 @@ export function AgentSettingsDialog({ isOpen, onClose, isInline = false }: Agent
                     <button
                       type="submit"
                       disabled={loading || !newDisplayName || !newSkillsPath}
-                      className="flex items-center px-4 py-1.5 bg-[var(--primary-color)] text-white rounded-md text-[13px] font-medium hover:bg-[var(--primary-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                      className="flex items-center px-4 py-1.5 bg-[var(--color-primary)] text-white rounded-md text-[13px] font-medium hover:bg-[var(--color-primary-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
                     >
                       {loading ? "保存中..." : "保存 Agent"}
                     </button>

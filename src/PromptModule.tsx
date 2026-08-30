@@ -12,6 +12,7 @@ import { ConfirmDialog } from "./components/ui/ConfirmDialog";
 import { showToast } from "./components/ui/Toast";
 import { Tooltip } from "./components/ui/Tooltip";
 import { ContextMenu, useContextMenu } from "./components/ui/ContextMenu";
+import { QuickLookModal } from "./components/ui/QuickLookModal";
 
 // ===== 侧边栏导航（嵌入 App.tsx 左侧栏）=====
 export type PromptFilter = "all" | "favorites" | string;
@@ -180,7 +181,7 @@ interface PromptModuleProps {
   onFilterChange: (filter: PromptFilter) => void;
   onTitleChange: (title: string, icon: string) => void;
   onToggleInspector?: () => void;
-  onOpenPromptDetail?: (title: string, promptId?: string, isEditing?: boolean) => void;
+  onOpenPromptDetail?: (title: string, promptId?: string, isEditing?: boolean, newTab?: boolean) => void;
 }
 
 interface PromptInspectorData {
@@ -196,6 +197,7 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onTitleChange
   const [lastSelectedId, setLastSelectedId] = useState<string | null>(null);
   const [inspectorData, setInspectorData] = useState<PromptInspectorData | null>(null);
   const isDraggingRef = useRef(false); // 追踪框选状态，避免干扰
+  const [quickLookOpen, setQuickLookOpen] = useState(false);
 
   // 弹窗状态
 
@@ -296,6 +298,14 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onTitleChange
         return;
       }
 
+      if (e.key === ' ') {
+        if (selectedIds.size > 0) {
+          e.preventDefault();
+          setQuickLookOpen(prev => !prev);
+        }
+        return;
+      }
+
       if (e.key === 'Enter') {
         if (selectedIds.size === 1) {
           e.preventDefault();
@@ -349,7 +359,7 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onTitleChange
     
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [prompts, selectedIds, lastSelectedId]);
+  }, [prompts, selectedIds, lastSelectedId, quickLookOpen]);
   const [exportingPrompts, setExportingPrompts] = useState<Prompt[]>([]);
 
   // 右键菜单
@@ -357,13 +367,13 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onTitleChange
   const [contextPrompt, setContextPrompt] = useState<Prompt | null>(null);
 
   // 确认弹窗
-  const [confirmData, setConfirmData] = useState<{ title: string, message: string, onConfirm: () => void, onClose: () => void } | null>(null);
+  const [confirmData, setConfirmData] = useState<{ title: string, message: string, onConfirm: () => void, onCancel: () => void } | null>(null);
   const waitConfirm = (message: string, title: string = "确认操作") => new Promise<boolean>(resolve => {
     setConfirmData({
       title,
       message,
       onConfirm: () => { setConfirmData(null); resolve(true); },
-      onClose: () => { setConfirmData(null); resolve(false); }
+      onCancel: () => { setConfirmData(null); resolve(false); }
     });
   });
 
@@ -828,10 +838,7 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onTitleChange
                 >
                   <span className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wide"></span>
                   <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => { if (onOpenPromptDetail) onOpenPromptDetail(p.title || '无标题', p.id, false); }}
-                      className="px-1.5 py-1 text-[12px] text-[var(--color-primary)] font-medium hover:text-[var(--color-primary)]/80 transition-colors"
-                    >编辑</button>
+
                     {onToggleInspector && (
                       <Tooltip content="收起检查器 (⌘/)">
                         <button
@@ -1065,7 +1072,7 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onTitleChange
               }
             ] : [
               { id: 'open', label: '打开', icon: <ChevronRight size={14} />, onClick: () => { onOpenPromptDetail?.(contextPrompt.title || '无标题', contextPrompt.id, false); hideContextMenu(); } },
-              ...(onOpenPromptDetail ? [{ id: 'open_new_tab', label: '在新标签页中打开', icon: <Plus size={14} />, onClick: () => { onOpenPromptDetail(contextPrompt.title || '无标题提示词', contextPrompt.id, false); hideContextMenu(); } }] : []),
+              ...(onOpenPromptDetail ? [{ id: 'open_new_tab', label: '在新标签页中打开', icon: <Plus size={14} />, onClick: () => { onOpenPromptDetail(contextPrompt.title || '无标题提示词', contextPrompt.id, false, true); hideContextMenu(); } }] : []),
               { id: 'edit', label: '编辑', onClick: () => { onOpenPromptDetail?.(contextPrompt.title || '无标题', contextPrompt.id, true); hideContextMenu(); } },
               { id: 'copy', label: '复制内容', onClick: async () => { 
                   await navigator.clipboard.writeText(contextPrompt.content); 
@@ -1120,6 +1127,44 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onTitleChange
         }
       />
       {confirmData && <ConfirmDialog {...(confirmData as any)} isOpen={true} />}
+      
+      {/* Quick Look Modal for Prompts */}
+      <QuickLookModal
+        isOpen={quickLookOpen}
+        onClose={() => setQuickLookOpen(false)}
+        previewType={quickLookOpen && selectedIds.size > 0 ? 'prompt' : null}
+        prompt={quickLookOpen && selectedIds.size > 0 ? prompts.find(p => p.id === (lastSelectedId && selectedIds.has(lastSelectedId) ? lastSelectedId : Array.from(selectedIds).pop())) : undefined}
+        onOpenDetail={() => {
+            setQuickLookOpen(false);
+            const promptId = lastSelectedId && selectedIds.has(lastSelectedId) ? lastSelectedId : Array.from(selectedIds).pop();
+            const prompt = prompts.find(p => p.id === promptId);
+            if (prompt && onOpenPromptDetail) {
+                onOpenPromptDetail(prompt.title || '无标题提示词', prompt.id, false);
+            }
+        }}
+        onNavigate={(direction) => {
+            if (selectedIds.size === 0) return;
+            const grid = document.querySelector('.prompt-grid');
+            let columns = 3;
+            if (grid) {
+                const gridStyle = window.getComputedStyle(grid);
+                columns = gridStyle.gridTemplateColumns.split(' ').length;
+            }
+            const currentId = lastSelectedId || Array.from(selectedIds)[0];
+            const nextPrompt = getNextElement(
+                currentId,
+                direction,
+                columns
+            );
+            if (nextPrompt) {
+                setSelectedIds(new Set([nextPrompt.id]));
+                setLastSelectedId(nextPrompt.id);
+                setInspectorData(null);
+                const el = document.querySelector(`[data-prompt-id="${nextPrompt.id}"]`);
+                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+        }}
+      />
     </div>
   );
 }

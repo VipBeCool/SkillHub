@@ -22,6 +22,7 @@ import { ToastContainer, showToast } from "./components/ui/Toast";
 import { Tooltip } from "./components/ui/Tooltip";
 import { AboutDialog } from "./components/ui/AboutDialog";
 import { UpdateNotifier } from "./components/ui/UpdateNotifier";
+import { QuickLookModal } from "./components/ui/QuickLookModal";
 import { InspectorPanel } from "./components/inspector/InspectorPanel";
 import { ContextMenu, useContextMenu } from "./components/ui/ContextMenu";
 import type { ContextMenuItem } from "./components/ui/ContextMenu";
@@ -89,6 +90,7 @@ function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isAboutOpen, setIsAboutOpen] = useState(false);
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
+  const [quickLookOpen, setQuickLookOpen] = useState(false);
 
   const selectedRepoId = currentTab?.context?.repoId || null;
   const setSelectedRepoId = (id: string | null) => {
@@ -1029,6 +1031,9 @@ function App() {
         } else if (e.key === 't') {
           e.preventDefault();
           openTab('skill-home', '技能库', { workspaceId: selectedWorkspaceId || undefined }, 'home');
+        } else if (e.key.toLowerCase() === 'w') {
+          e.preventDefault();
+          closeTab(activeTabId);
         } else if (e.key === '[') {
           e.preventDefault();
           if (canGoBack) tabGoBack();
@@ -1055,6 +1060,21 @@ function App() {
             setSelectedRepoId(null);
           }
         }
+      }
+
+      // Quick Look (空格键)
+      if (e.key === ' ' && !isAddDialogOpen && !isSettingsOpen && !isSearchModalOpen && !isInput && !deleteConfirmRepos) {
+        e.preventDefault();
+        if (quickLookOpen) {
+          setQuickLookOpen(false);
+        } else {
+          if (inspectorSelectedType === 'skill' && selectedSkillIds.size > 0) {
+             setQuickLookOpen(true);
+          } else if (inspectorSelectedType === 'repo' && selectedRepoIds.size > 0) {
+             setQuickLookOpen(true);
+          }
+        }
+        return;
       }
 
       // 方向键导航
@@ -1188,6 +1208,8 @@ function App() {
     activeModule,
     fetchData,
     openTab,
+    closeTab,
+    activeTabId,
     canGoBack,
     canGoForward,
     tabGoBack,
@@ -1251,7 +1273,7 @@ function App() {
   }, [isFlatView, selectedTag, activeView, selectedRepoId, filteredGroupedRepos, currentTab?.context?.filter]);
 
   useEffect(() => {
-    if (currentTab?.type?.startsWith('skill')) {
+    if (currentTab?.type === 'skill-home' || currentTab?.type === 'skill-repo') {
       const title = getHeaderTitleStr();
       const icon = getHeaderIconStr();
       if (currentTab?.title !== title || currentTab?.icon !== icon) {
@@ -1977,12 +1999,18 @@ function App() {
                   onGroupsChange={setPromptGroups}
                   onFilterChange={setPromptFilter}
                   onTitleChange={(title, icon) => {
-                    if (activeModule === 'prompts' && (currentTab?.title !== title || currentTab?.icon !== icon)) {
+                    if (activeModule === 'prompts' && currentTab?.type === 'prompt-home' && (currentTab?.title !== title || currentTab?.icon !== icon)) {
                       updateActiveTab({ title, icon });
                     }
                   }}
                   onToggleInspector={() => setIsInspectorOpen(!isInspectorOpen)}
-                  onOpenPromptDetail={(title, promptId, isEditing) => navigateTo('prompt-detail', title, { promptId, isEditing }, 'FileText')}
+                  onOpenPromptDetail={(title, promptId, isEditing, newTab) => {
+                    if (newTab) {
+                      openTab('prompt-detail', title, { promptId, isEditing }, 'FileText');
+                    } else {
+                      navigateTo('prompt-detail', title, { promptId, isEditing }, 'FileText');
+                    }
+                  }}
                 />
               </div>
             </div>
@@ -2011,25 +2039,30 @@ function App() {
         </div>
 
         {/* Global Inspector Panel Area (Currently just for skills) */}
-        {currentTabModule === 'skills' && (
-          <InspectorPanel
-            selectedItemType={inspectorSelectedType}
-            selectedRepos={filteredGroupedRepos.filter(r => selectedRepoIds.has(r.id))}
-            selectedSkills={(filteredGroupedRepos.find(r => r.id === selectedRepoId)?.skills || []).filter(s => selectedSkillIds.has(s.id))}
-            agents={agents}
-            syncRecords={syncRecords}
-            currentLibrary={selectedWorkspaceDir || null}
-            allRepos={filteredGroupedRepos}
-            onOpenDrawer={(skill) => { navigateTo('skill-detail', skill.name, { ...currentTab?.context, skillId: skill.id }, 'FileText'); }}
-            onSelectRepo={(repoId) => setSelectedRepoId(repoId)}
-            onRefreshData={fetchData}
-            onUpdateRepos={handleUpdateRepos}
-            onDeleteRepos={(e, r) => handleDeleteRepos(e as any, r)}
-            isOpen={isInspectorOpen}
-            onToggle={() => setIsInspectorOpen(!isInspectorOpen)}
-            onGeneratePrompt={handleGeneratePrompt}
-          />
-        )}
+        {currentTabModule === 'skills' && (() => {
+          const isDetailView = currentTab?.type === 'skill-detail' && currentTab.context.skillId;
+          const detailSkill = isDetailView ? filteredGroupedRepos.flatMap(r => r.skills).find(s => s.id === currentTab.context.skillId) : null;
+          
+          return (
+            <InspectorPanel
+              selectedItemType={isDetailView ? 'skill' : inspectorSelectedType}
+              selectedRepos={isDetailView ? [] : filteredGroupedRepos.filter(r => selectedRepoIds.has(r.id))}
+              selectedSkills={isDetailView ? (detailSkill ? [detailSkill] : []) : (filteredGroupedRepos.find(r => r.id === selectedRepoId)?.skills || []).filter(s => selectedSkillIds.has(s.id))}
+              agents={agents}
+              syncRecords={syncRecords}
+              currentLibrary={selectedWorkspaceDir || null}
+              allRepos={filteredGroupedRepos}
+              onOpenDrawer={(skill) => { navigateTo('skill-detail', skill.name, { ...currentTab?.context, skillId: skill.id }, 'FileText'); }}
+              onSelectRepo={(repoId) => setSelectedRepoId(repoId)}
+              onRefreshData={fetchData}
+              onUpdateRepos={handleUpdateRepos}
+              onDeleteRepos={(e, r) => handleDeleteRepos(e as any, r)}
+              isOpen={isInspectorOpen}
+              onToggle={() => setIsInspectorOpen(!isInspectorOpen)}
+              onGeneratePrompt={handleGeneratePrompt}
+            />
+          );
+        })()}
         <div id="global-inspector-slot" className="shrink-0 h-full bg-transparent" style={{ display: isInspectorOpen ? 'block' : 'none' }}></div>
       </div>
 
@@ -2190,6 +2223,86 @@ function App() {
 
       <ToastContainer />
       {confirmData && <ConfirmDialog {...(confirmData as any)} />}
+      
+      {/* Quick Look Modal */}
+      <QuickLookModal
+        isOpen={quickLookOpen}
+        onClose={() => setQuickLookOpen(false)}
+        previewType={(quickLookOpen && inspectorSelectedType === 'skill' && selectedSkillIds.size > 0) ? 'skill' : (quickLookOpen && inspectorSelectedType === 'repo' && selectedRepoIds.size > 0) ? 'repo' : null}
+        skill={
+            (quickLookOpen && inspectorSelectedType === 'skill' && selectedSkillIds.size > 0) 
+            ? filteredGroupedRepos.flatMap(r => r.skills).find(s => s.id === ((lastSelectedSkillId && selectedSkillIds.has(lastSelectedSkillId)) ? lastSelectedSkillId : Array.from(selectedSkillIds).pop()))
+            : undefined
+        }
+        repo={
+            (quickLookOpen && inspectorSelectedType === 'repo' && selectedRepoIds.size > 0)
+            ? filteredGroupedRepos.find(r => r.id === ((lastSelectedRepoId && selectedRepoIds.has(lastSelectedRepoId)) ? lastSelectedRepoId : Array.from(selectedRepoIds).pop()))
+            : undefined
+        }
+        onOpenDetail={() => {
+            setQuickLookOpen(false);
+            if (inspectorSelectedType === 'skill') {
+                const skillId = (lastSelectedSkillId && selectedSkillIds.has(lastSelectedSkillId)) ? lastSelectedSkillId : Array.from(selectedSkillIds).pop();
+                const skill = filteredGroupedRepos.flatMap(r => r.skills).find(s => s.id === skillId);
+                if (skill) {
+                    navigateTo('skill-detail', skill.name, { ...currentTab?.context, skillId: skill.id }, 'FileText');
+                }
+            } else if (inspectorSelectedType === 'repo') {
+                const repoId = (lastSelectedRepoId && selectedRepoIds.has(lastSelectedRepoId)) ? lastSelectedRepoId : Array.from(selectedRepoIds).pop();
+                const repo = filteredGroupedRepos.find(r => r.id === repoId);
+                if (repo) {
+                    setSelectedRepoId(repo.id);
+                    setInspectorSelectedType('repo');
+                    setSelectedRepoIds(new Set([repo.id]));
+                    setSelectedSkillIds(new Set());
+                }
+            }
+        }}
+        onNavigate={(direction) => {
+            const key = direction === 'up' ? 'ArrowUp' : 'ArrowDown';
+            if (inspectorSelectedType === 'skill') {
+                const skillId = (lastSelectedSkillId && selectedSkillIds.has(lastSelectedSkillId)) ? lastSelectedSkillId : Array.from(selectedSkillIds).pop();
+                if (skillId) {
+                    const currentEl = document.querySelector(`[data-id="${skillId}"]`);
+                    if (currentEl) {
+                        const allEls = Array.from(document.querySelectorAll('[data-id]'));
+                        const nextEl = getNextElement(currentEl, key, allEls);
+                        if (nextEl) {
+                            const nextId = nextEl.getAttribute('data-id');
+                            if (nextId) {
+                                const nextSkill = filteredGroupedRepos.flatMap(r => r.skills).find(s => s.id === nextId);
+                                if (nextSkill) {
+                                    setSelectedSkillIds(new Set([nextId]));
+                                    setLastSelectedSkillId(nextId);
+                                    nextEl.scrollIntoView({ block: 'nearest' });
+                                }
+                            }
+                        }
+                    }
+                }
+            } else if (inspectorSelectedType === 'repo') {
+                const repoId = (lastSelectedRepoId && selectedRepoIds.has(lastSelectedRepoId)) ? lastSelectedRepoId : Array.from(selectedRepoIds).pop();
+                if (repoId) {
+                    const currentEl = document.querySelector(`[data-id="${repoId}"]`);
+                    if (currentEl) {
+                        const allEls = Array.from(document.querySelectorAll('[data-id]'));
+                        const nextEl = getNextElement(currentEl, key, allEls);
+                        if (nextEl) {
+                            const nextId = nextEl.getAttribute('data-id');
+                            if (nextId) {
+                                const nextRepo = filteredGroupedRepos.find(r => r.id === nextId);
+                                if (nextRepo) {
+                                    setSelectedRepoIds(new Set([nextId]));
+                                    setLastSelectedRepoId(nextId);
+                                    nextEl.scrollIntoView({ block: 'nearest' });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }}
+      />
       <UpdateNotifier />
     </div>
   );

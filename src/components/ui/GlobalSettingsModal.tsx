@@ -102,7 +102,7 @@ export function GlobalSettingsModal({ isOpen, onClose, defaultTab = "agent" }: G
                   : "text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 dark:hover:bg-white/5"
               }`}
             >
-              <ShieldCheck className={`w-4 h-4 mr-3 ${activeTab === "agent" ? "text-[var(--primary-color)]" : "opacity-70"}`} />
+              <ShieldCheck className={`w-4 h-4 mr-3 ${activeTab === "agent" ? "text-[var(--color-primary)]" : "opacity-70"}`} />
               Agent 同步配置
             </button>
             <button
@@ -113,7 +113,7 @@ export function GlobalSettingsModal({ isOpen, onClose, defaultTab = "agent" }: G
                   : "text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 dark:hover:bg-white/5"
               }`}
             >
-              <Database className={`w-4 h-4 mr-3 ${activeTab === "backup" ? "text-[var(--primary-color)]" : "opacity-70"}`} />
+              <Database className={`w-4 h-4 mr-3 ${activeTab === "backup" ? "text-[var(--color-primary)]" : "opacity-70"}`} />
               数据与备份
             </button>
           </div>
@@ -166,7 +166,7 @@ export function GlobalSettingsModal({ isOpen, onClose, defaultTab = "agent" }: G
                   <button 
                     onClick={handleExport}
                     disabled={isExporting}
-                    className="flex items-center space-x-1.5 px-3 py-1.5 bg-[var(--primary-color)] text-white rounded-md text-[13px] font-medium hover:bg-[var(--primary-hover)] transition-colors disabled:opacity-50 shadow-sm shrink-0"
+                    className="flex items-center space-x-1.5 px-3 py-1.5 bg-[var(--color-primary)] text-white rounded-md text-[13px] font-medium hover:bg-[var(--color-primary-hover)] transition-colors disabled:opacity-50 shadow-sm shrink-0"
                   >
                     <Save className="w-4 h-4" />
                     <span>{isExporting ? "导出中..." : "开始导出"}</span>

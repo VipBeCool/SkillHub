@@ -5,13 +5,14 @@ import { X, Folder, Plus, Copy, ArrowRightLeft } from 'lucide-react';
 import { SourceDirectory } from '../../types';
 
 export const COMMON_AGENT_PATHS = [
-  { name: 'Claude Desktop', path: '~/Library/Application Support/Claude/skills', id: 'claude' },
   { name: 'Cursor', path: '~/.cursor/skills', id: 'cursor' },
   { name: 'Trae', path: '~/.trae/skills', id: 'trae' },
+  { name: 'Claude Code', path: '~/.claude/skills', id: 'claude_code' },
   { name: 'Windsurf', path: '~/.windsurf/skills', id: 'windsurf' },
-  { name: 'Codebuddy (海外)', path: '~/.codebuddy/skills', id: 'codebuddy_overseas' },
-  { name: 'Codebuddy (中文)', path: '~/.codebuddy_cn/skills', id: 'codebuddy_cn' },
-  { name: 'Antigravity', path: '~/.gemini/skills', id: 'antigravity' },
+  { name: 'Antigravity (Gemini)', path: '~/.gemini/config/skills', id: 'antigravity' },
+  { name: 'Cline', path: '~/.cline/skills', id: 'cline' },
+  { name: 'Augment Code', path: '~/.augment/skills', id: 'augment' },
+  { name: 'CodeBuddy', path: '~/.codebuddy/skills', id: 'codebuddy' },
 ];
 
 interface CreateSkillLibraryModalProps {
@@ -202,8 +203,8 @@ export function OpenSkillLibraryModal({ isOpen, onClose, onSuccess }: OpenSkillL
   const handleImportAgent = async (agentPath: string, agentName: string) => {
     setLoading(true);
     try {
-      await invoke('create_local_skill_library', { name: `${agentName} 技能库`, path: agentPath });
-      onSuccess();
+      const id = await invoke<string>('create_local_skill_library', { name: `${agentName} 技能库`, path: agentPath });
+      onSuccess(id);
       onClose();
     } catch (err) {
       alert(`导入失败 (可能路径不存在): ${err}`);

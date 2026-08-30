@@ -1150,6 +1150,17 @@ pub fn remove_source_directory(state: State<'_, AppState>, id: String, delete_lo
 
 #[tauri::command]
 pub fn create_local_skill_library(state: State<'_, AppState>, name: String, path: String) -> Result<String, String> {
+    // 展开 ~ 为用户 home 目录
+    let path = if path.starts_with("~/") {
+        if let Some(home) = dirs::home_dir() {
+            home.join(&path[2..]).to_string_lossy().to_string()
+        } else {
+            path
+        }
+    } else {
+        path
+    };
+
     let db = state.db.lock().unwrap();
     if let Err(e) = std::fs::create_dir_all(&path) {
         return Err(format!("Failed to create directory: {}", e));
