@@ -575,7 +575,7 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onTitleChange
       {/* 主内容区 */}
       <div className="flex-1 flex flex-col h-full min-w-0 bg-white">
         <div 
-          className="pt-5 pb-3 px-8 bg-white flex items-center justify-between shrink-0 relative z-0"
+          className="pt-5 pb-3 px-6 bg-white flex items-center justify-between shrink-0 relative z-0"
         >
           <div className="flex items-center space-x-3">
             <h1 className="text-[15px] font-medium tracking-tight text-[var(--foreground)] flex items-center">

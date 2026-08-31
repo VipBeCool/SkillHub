@@ -1563,7 +1563,7 @@ function App() {
             ) : (
             <div className="flex-1 flex flex-col h-full min-w-0 bg-[var(--color-background)] relative">
           {directories.length > 0 && (
-            <div className="pt-5 pb-3 px-8 bg-white flex items-center justify-between shrink-0 relative z-0">
+            <div className="pt-5 pb-3 px-6 bg-white flex items-center justify-between shrink-0 relative z-0">
               <div className="flex items-center space-x-3">
 
                 <h1 className="text-[15px] font-medium tracking-tight text-[var(--foreground)] flex items-center">
@@ -2109,7 +2109,7 @@ function App() {
           ) : (
           /* 资源社区占位页面 */
           <div className="flex-1 flex flex-col h-full min-w-0 bg-[var(--color-background)] relative">
-            <div className="h-16 border-b border-[var(--color-border)] bg-white/70 backdrop-blur-xl flex items-center px-8 shrink-0 relative z-0">
+            <div className="h-16 border-b border-[var(--color-border)] bg-white/70 backdrop-blur-xl flex items-center px-6 shrink-0 relative z-0">
               <h1 className="text-xl font-medium tracking-tight text-[var(--foreground)]">资源社区</h1>
             </div>
             <div className="flex-1 flex flex-col items-center justify-center p-6 bg-[var(--color-background)]">
