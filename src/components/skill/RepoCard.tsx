@@ -32,6 +32,7 @@ export const RepoCard: React.FC<RepoCardProps> = ({
   return (
     <div 
       data-id={repo.id}
+      data-type="repo"
       onClick={(e) => { e.stopPropagation(); onClick(e); }}
       onDoubleClick={(e) => { e.stopPropagation(); onDoubleClick(e); }}
       onAuxClick={onAuxClick}
@@ -64,10 +65,15 @@ export const RepoCard: React.FC<RepoCardProps> = ({
             ) : (
               <span className="text-[10px] text-[var(--color-muted)]">{repo.skills.length} 个技能</span>
             )}
-            <span className={`w-1.5 h-1.5 rounded-full ${
+            <span className={`w-1 h-1 rounded-full ${
               repo.source_type === 'online' ? 'bg-emerald-500' :
               repo.source_type === 'github' ? 'bg-[#0066FF]' : 'bg-[#86868B]'
             }`} />
+            {repo.author && (
+              <>
+                <span className="text-[10px] text-[var(--color-muted)] max-w-[60px] truncate">@{repo.author}</span>
+              </>
+            )}
           </div>
         </div>
       </div>

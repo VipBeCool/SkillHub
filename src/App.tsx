@@ -18,6 +18,7 @@ import { ConfirmDialog } from './components/ui/ConfirmDialog';
 import { SearchModal } from "./components/search/SearchModal";
 import { RepoCard } from "./components/skill/RepoCard";
 import { SkillCard } from "./components/skill/SkillCard";
+import { CategorizedView } from "./components/skill/CategorizedView";
 import { ToastContainer, showToast } from "./components/ui/Toast";
 import { Tooltip } from "./components/ui/Tooltip";
 import { AboutDialog } from "./components/ui/AboutDialog";
@@ -145,6 +146,7 @@ function App() {
   const [isFileDraggingOver, setIsFileDraggingOver] = useState(false);
   const mainContentRef = useRef<HTMLDivElement>(null);
   const [loadingText, setLoadingText] = useState("SkillHub载入中…");
+  const [viewMode, setViewMode] = useState<'grid' | 'categorized'>('categorized');
   const skillLibrarySelectorRef = useRef<SkillLibrarySelectorRef>(null);
   const isDraggingRef = useRef(false);
 
@@ -603,7 +605,13 @@ function App() {
         if (newSet.has(repo.id)) newSet.delete(repo.id);
         else newSet.add(repo.id);
       } else if (e?.shiftKey && lastSelectedRepoId) {
-        const allIds = filteredGroupedRepos.map(r => r.id);
+        let allIds = filteredGroupedRepos.map(r => r.id);
+        if (viewMode === 'categorized') {
+          // CategorizedView 先渲染 collection，再渲染单技能
+          const collections = filteredGroupedRepos.filter(r => r.repo_type === 'collection');
+          const singles = filteredGroupedRepos.filter(r => r.repo_type !== 'collection');
+          allIds = [...collections, ...singles].map(r => r.id);
+        }
         const startIdx = allIds.indexOf(lastSelectedRepoId);
         const endIdx = allIds.indexOf(repo.id);
         if (startIdx !== -1 && endIdx !== -1) {
@@ -614,6 +622,7 @@ function App() {
             newSet.add(allIds[i]);
           }
         } else {
+          newSet.clear();
           newSet.add(repo.id);
         }
       } else {
@@ -623,20 +632,30 @@ function App() {
       return newSet;
     });
 
-    // 只在单选或追加选时更新 anchor
+    // 只在单选或追加选时更新 anchor，或者跨分组导致了重新单选
     if (!e?.shiftKey) {
       setLastSelectedRepoId(repo.id);
+    } else if (e?.shiftKey && lastSelectedRepoId && viewMode === 'categorized') {
+      const lastRepo = filteredGroupedRepos.find(r => r.id === lastSelectedRepoId);
+      if (lastRepo && (lastRepo.repo_type === 'collection') !== (repo.repo_type === 'collection')) {
+        setLastSelectedRepoId(repo.id);
+      }
     }
-  }, [filteredGroupedRepos, lastSelectedRepoId]);
+  }, [filteredGroupedRepos, lastSelectedRepoId, viewMode]);
 
   // 单击选中技能
-  const handleSelectSkill = useCallback((skill: Skill, e?: React.MouseEvent) => { console.log("handleSelectSkill called:", skill.name, "modifiers:", e?.metaKey, e?.ctrlKey, e?.shiftKey); 
+  const handleSelectSkill = useCallback((skill: Skill, e?: React.MouseEvent) => {
     setInspectorSelectedType('skill');
     setSelectedRepoIds(new Set());
 
-    const visibleSkills = isFlatView 
+    let visibleSkills = isFlatView 
       ? filteredGroupedRepos.flatMap(r => r.skills)
       : filteredGroupedRepos.find(r => r.id === selectedRepoId)?.skills || [];
+      
+    if (viewMode === 'grid') {
+      const collections = filteredGroupedRepos.filter(r => r.repo_type === 'collection');
+      visibleSkills = collections.flatMap(r => r.skills);
+    }
 
     setSelectedSkillIds(prev => {
       const newSet = new Set(prev);
@@ -667,7 +686,7 @@ function App() {
     if (!e?.shiftKey) {
       setLastSelectedSkillId(skill.id);
     }
-  }, [filteredGroupedRepos, selectedRepoId, isFlatView, lastSelectedSkillId]);
+  }, [filteredGroupedRepos, selectedRepoId, isFlatView, viewMode, lastSelectedSkillId]);
 
   // 返回上一级
   const handleToggleFavorite = async (id: string) => {
@@ -1552,6 +1571,30 @@ function App() {
                 </h1>
               </div>
               <div className="flex items-center space-x-3">
+                {!selectedRepoId && !isFlatView && (
+                  <div className="flex bg-black/5 rounded-lg p-0.5 mr-2">
+                    <button
+                      onClick={() => setViewMode('categorized')}
+                      className={`px-3 py-1 rounded-md text-[12px] font-medium transition-all ${
+                        viewMode === 'categorized' 
+                          ? 'bg-white shadow-sm text-[var(--foreground)]' 
+                          : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'
+                      }`}
+                    >
+                      分类
+                    </button>
+                    <button
+                      onClick={() => setViewMode('grid')}
+                      className={`px-3 py-1 rounded-md text-[12px] font-medium transition-all ${
+                        viewMode === 'grid' 
+                          ? 'bg-white shadow-sm text-[var(--foreground)]' 
+                          : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'
+                      }`}
+                    >
+                      平铺
+                    </button>
+                  </div>
+                )}
                 <button onClick={() => handleSyncAll(true, directories.filter(d => d.id === selectedWorkspaceId))} disabled={isSyncingAll} className="flex items-center space-x-1 px-2 py-1 rounded-md font-medium text-[12px] text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-all disabled:opacity-50">
                   <RefreshCw className={`w-3.5 h-3.5 ${isSyncingAll ? 'animate-spin text-[var(--color-primary)]' : ''}`} />
                   <span>{isSyncingAll ? '正在同步...' : '同步当前库'}</span>
@@ -1566,7 +1609,7 @@ function App() {
 
           <div 
             ref={mainContentRef}
-            className="flex-1 overflow-y-auto relative z-0 bg-white flex flex-col"
+            className="flex-1 overflow-y-auto hover-scroll relative z-0 bg-white flex flex-col"
             onClick={() => { if (!isDraggingRef.current) handleDeselectAll(); }}
             onContextMenu={(e) => {
               // Because cards call stopPropagation(), this only fires for blank space
@@ -1600,46 +1643,57 @@ function App() {
                 }
                 if (!event?.ctrlKey && !event?.metaKey && !event?.shiftKey) {
                   selection.clearSelection();
-                  if (!selectedRepoId && !isFlatView) {
-                    setSelectedRepoIds(new Set());
-                  } else {
-                    setSelectedSkillIds(new Set());
-                  }
+                  setSelectedRepoIds(new Set());
+                  setSelectedSkillIds(new Set());
                 }
               }}
               onMove={({ store: { changed: { added, removed } } }: SelectionEvent) => {
                 isDraggingRef.current = true;
-                if (!selectedRepoId && !isFlatView) {
-                  setSelectedRepoIds(prev => {
-                    const next = new Set(prev);
-                    added.forEach((el: Element) => {
-                      const id = el.getAttribute('data-id');
-                      if (id) next.add(id);
-                    });
-                    removed.forEach((el: Element) => {
-                      const id = el.getAttribute('data-id');
-                      if (id) next.delete(id);
-                    });
-                    return next;
+                let lastAddedType: 'repo' | 'skill' | null = null;
+                
+                // Determine what was added in this exact move event synchronously
+                added.forEach((el: Element) => {
+                  const type = el.getAttribute('data-type');
+                  if (type === 'repo' || type === 'skill') {
+                    lastAddedType = type;
+                  }
+                });
+
+                setSelectedRepoIds(prev => {
+                  const next = new Set(prev);
+                  added.forEach((el: Element) => {
+                    const id = el.getAttribute('data-id');
+                    if (id && el.getAttribute('data-type') === 'repo') {
+                      next.add(id);
+                    }
                   });
-                  setInspectorSelectedType('repo');
-                } else {
-                  setSelectedSkillIds(prev => {
-                    const next = new Set(prev);
-                    added.forEach((el: Element) => {
-                      const id = el.getAttribute('data-id');
-                      if (id) next.add(id);
-                    });
-                    removed.forEach((el: Element) => {
-                      const id = el.getAttribute('data-id');
-                      if (id) next.delete(id);
-                    });
-                    return next;
+                  removed.forEach((el: Element) => {
+                    const id = el.getAttribute('data-id');
+                    if (id && el.getAttribute('data-type') === 'repo') next.delete(id);
                   });
-                  setInspectorSelectedType('skill');
+                  return next;
+                });
+                
+                setSelectedSkillIds(prev => {
+                  const next = new Set(prev);
+                  added.forEach((el: Element) => {
+                    const id = el.getAttribute('data-id');
+                    if (id && el.getAttribute('data-type') === 'skill') {
+                      next.add(id);
+                    }
+                  });
+                  removed.forEach((el: Element) => {
+                    const id = el.getAttribute('data-id');
+                    if (id && el.getAttribute('data-type') === 'skill') next.delete(id);
+                  });
+                  return next;
+                });
+                
+                if (lastAddedType) {
+                  setInspectorSelectedType(lastAddedType);
                 }
               }}
-              onStop={() => { setTimeout(() => { isDraggingRef.current = false; }, 0); }}
+              onStop={() => { setTimeout(() => { isDraggingRef.current = false; }, 100); }}
               selectables="[data-id]"
               features={{ touch: false, range: true, singleTap: { allow: false } }}
               className="flex-1 flex flex-col min-h-0"
@@ -1805,9 +1859,44 @@ function App() {
                 </div>
               </div>
             ) : !selectedRepoId && !isFlatView ? (
-              <>
-                <div className="flex-1 grid gap-3 content-start px-6 pt-3 pb-20" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }}>
-                  {cloningRepos.map((repo, idx) => (
+              viewMode === 'categorized' ? (
+                <CategorizedView
+                  repos={filteredGroupedRepos}
+                  cloningRepos={cloningRepos}
+                  selectedRepoIds={selectedRepoIds}
+                  selectedSkillIds={selectedSkillIds}
+                  onSelectRepo={handleSelectRepo}
+                  onSelectSkill={(skill, _repo, e) => {
+                    handleSelectSkill(skill, e);
+                  }}
+                  onDoubleClickRepo={(repoId) => {
+                    setSelectedRepoId(repoId);
+                    setInspectorSelectedType('repo');
+                    setSelectedRepoIds(new Set([repoId]));
+                    setSelectedSkillIds(new Set());
+                  }}
+                  onDoubleClickSkill={(skill, _repo) => {
+                    navigateTo('skill-detail', skill.name, { ...currentTab?.context, skillId: skill.id }, 'FileText');
+                  }}
+                  onContextMenuRepo={(e, repo) => {
+                    if (!selectedRepoIds.has(repo.id)) handleSelectRepo(repo, e);
+                    showContextMenu(e, { type: 'repo', data: repo });
+                  }}
+                  onContextMenuSkill={(e, skill) => {
+                    if (!selectedSkillIds.has(skill.id)) handleSelectSkill(skill, e);
+                    showContextMenu(e, { type: 'skill', data: skill });
+                  }}
+                  onFavoriteToggle={(_e, skill) => handleToggleFavorite(skill.id)}
+                  handleCancelClone={handleCancelClone}
+                  syncRecords={syncRecords}
+                  agents={agents}
+                  onUpdateRepo={(e, r) => handleUpdateRepos(e, [r])}
+                  onDeleteRepo={(e, r) => handleDeleteRepos(e, [r])}
+                />
+              ) : (
+                <>
+                  <div className="flex-1 grid gap-3 content-start px-6 pt-3 pb-20" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }}>
+                    {cloningRepos.map((repo, idx) => (
                     <div key={`cloning-${idx}`} className="group bg-[var(--color-muted-bg)]/30 backdrop-blur-md rounded-xl p-4 border border-dashed border-[var(--color-border)] shadow-sm flex flex-col h-24 animate-pulse">
                       <div className="flex items-center space-x-2">
                         <div className="w-8 h-8 rounded-lg bg-[var(--color-muted-bg)] flex items-center justify-center shrink-0">
@@ -1859,6 +1948,7 @@ function App() {
                   ))}
                 </div>
               </>
+              )
             ) : (
               <>
                 <div className="flex-1 grid gap-3 content-start px-6 pt-3 pb-20" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))' }}>
@@ -2047,7 +2137,7 @@ function App() {
             <InspectorPanel
               selectedItemType={isDetailView ? 'skill' : inspectorSelectedType}
               selectedRepos={isDetailView ? [] : filteredGroupedRepos.filter(r => selectedRepoIds.has(r.id))}
-              selectedSkills={isDetailView ? (detailSkill ? [detailSkill] : []) : (filteredGroupedRepos.find(r => r.id === selectedRepoId)?.skills || []).filter(s => selectedSkillIds.has(s.id))}
+              selectedSkills={isDetailView ? (detailSkill ? [detailSkill] : []) : filteredGroupedRepos.flatMap(r => r.skills).filter(s => selectedSkillIds.has(s.id))}
               agents={agents}
               syncRecords={syncRecords}
               currentLibrary={selectedWorkspaceDir || null}

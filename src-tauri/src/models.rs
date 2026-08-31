@@ -99,6 +99,7 @@ pub struct GroupedRepo {
     /// 仓库类型（内部逻辑，不对用户暴露）：single / collection
     #[serde(default = "default_repo_type")]
     pub repo_type: String,
+    pub author: Option<String>,
 }
 
 fn default_repo_type() -> String {

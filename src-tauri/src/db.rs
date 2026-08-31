@@ -372,6 +372,7 @@ pub fn get_repositories_with_skills(db: &Connection) -> Result<Vec<GroupedRepo>,
             category: None,
             is_missing: !exists,
             repo_type: "single".to_string(), // 在所有技能收集完后再推断
+            author: None,
         });
 
         if !repo.skills.iter().any(|s| s.id == skill.id) {
@@ -397,11 +398,48 @@ pub fn get_repositories_with_skills(db: &Connection) -> Result<Vec<GroupedRepo>,
         let is_official = repo.skills.iter().any(|s| s.local_path.ends_with("SKILL.md") || s.local_path.ends_with("SKILL.mdx"));
         repo.category = Some(if is_official { "正式技能".to_string() } else { "其他".to_string() });
         repo.skills.sort_by(|a, b| a.name.cmp(&b.name));
+        
+        // 推断 repo_type
+        if repo.skills.len() >= 2 {
+            repo.repo_type = "collection".to_string();
+        } else {
+            repo.repo_type = "single".to_string();
+        }
+
+        // 解析 GitHub 作者
+        if repo.source_type == "github" {
+            let git_config_path = std::path::Path::new(&repo.path).join(".git/config");
+            if let Ok(config_content) = std::fs::read_to_string(git_config_path) {
+                // 简单查找 url = https://github.com/owner/repo.git 或者 git@github.com:owner/repo.git
+                for line in config_content.lines() {
+                    let line = line.trim();
+                    if line.starts_with("url = ") {
+                        let url = line.trim_start_matches("url = ");
+                        if let Some(owner) = extract_github_owner(url) {
+                            repo.author = Some(owner);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
     }
 
     result.sort_by(|a, b| b.installed_at.cmp(&a.installed_at));
 
     Ok(result)
+}
+
+fn extract_github_owner(url: &str) -> Option<String> {
+    // 提取类似 https://github.com/owner/repo.git 或者 git@github.com:owner/repo.git 中的 owner
+    if url.starts_with("https://github.com/") {
+        let path = url.trim_start_matches("https://github.com/");
+        return path.split('/').next().map(|s| s.to_string());
+    } else if url.starts_with("git@github.com:") {
+        let path = url.trim_start_matches("git@github.com:");
+        return path.split('/').next().map(|s| s.to_string());
+    }
+    None
 }
 
 pub fn update_skill_metadata(db: &Connection, id: &str, name: &str, description: &str, category: &str, tags: Option<&str>) -> Result<(), String> {

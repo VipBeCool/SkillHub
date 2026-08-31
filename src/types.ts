@@ -48,6 +48,8 @@ export interface GroupedRepo {
   skills: Skill[];
   category?: string;
   is_missing?: boolean;
+  repo_type?: string;
+  author?: string;
 }
 
 // ===== Prompt 管理相关类型 =====

@@ -430,8 +430,8 @@ export function InspectorPanel({
           <div className="w-16 h-16 bg-[var(--color-primary)]/10 rounded-full flex items-center justify-center mb-4">
              <span className="text-2xl font-bold text-[var(--color-primary)]">{selectedRepos.length}</span>
           </div>
-          <h3 className="text-[15px] font-semibold text-[var(--foreground)] mb-1">已选 {selectedRepos.length} 个仓库</h3>
-          <p className="text-[12px] text-[var(--color-muted)] text-center mb-6">你可以对选中的仓库进行批量操作</p>
+          <h3 className="text-[15px] font-semibold text-[var(--foreground)] mb-1">已选 {selectedRepos.length} 个技能</h3>
+          <p className="text-[12px] text-[var(--color-muted)] text-center mb-6">你可以对选中的技能进行批量操作</p>
           
           <div className="flex flex-col space-y-2 w-full px-2">
             <div className="relative w-full">
@@ -541,6 +541,9 @@ export function InspectorPanel({
                 isOnline ? 'text-emerald-600' : isGithub ? 'text-[#0066FF]' : 'text-[#86868B]'
               }`}>
                 {isOnline ? '线上收藏' : selectedRepo.source_type}
+                {selectedRepo.author && (
+                  <span className="ml-1 text-[var(--color-muted)]">@{selectedRepo.author}</span>
+                )}
               </span>
             </div>
             {!isOnline && (
@@ -838,6 +841,7 @@ export function InspectorPanel({
   // ========== 技能详情模式 ==========
   if (selectedItemType === 'skill' && selectedSkills.length === 1) {
     const selectedSkill = selectedSkills[0];
+    const parentRepo = allRepos.find(r => r.skills.some(s => s.id === selectedSkill.id));
     return (
       <div className="w-64 border-l border-[var(--color-border)] bg-transparent flex flex-col shrink-0 h-full overflow-hidden">
         {/* 头部 */}
@@ -1016,7 +1020,12 @@ export function InspectorPanel({
             <div className="space-y-1.5 text-[12px]">
               <div className="flex items-center justify-between">
                 <span className="text-[var(--color-muted)]">来源</span>
-                <span className="text-[var(--foreground)] font-medium uppercase text-[11px]">{selectedSkill.source_type}</span>
+                <span className="text-[var(--foreground)] font-medium uppercase text-[11px]">
+                  {selectedSkill.source_type}
+                  {parentRepo?.author && (
+                    <span className="ml-1 text-[var(--color-muted)]">@{parentRepo.author}</span>
+                  )}
+                </span>
               </div>
               {selectedSkill.updated_at && (
                 <div className="flex items-center justify-between">

@@ -618,7 +618,7 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onTitleChange
         {/* 内容 */}
           {/* 卡片网格 */}
           <div 
-            className="flex-1 overflow-y-auto relative z-0 bg-white"
+            className="flex-1 overflow-y-auto hover-scroll relative z-0 bg-white"
             onClick={(e) => {
               if (!isDraggingRef.current && !(e.target as Element).closest?.('[data-prompt-id]')) {
                 setSelectedIds(new Set());
@@ -664,7 +664,7 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onTitleChange
                 }}
                 onStart={handleSelectionStart}
                 onMove={handleSelectionMove}
-                onStop={() => { setTimeout(() => { isDraggingRef.current = false; }, 0); }}
+                onStop={() => { setTimeout(() => { isDraggingRef.current = false; }, 100); }}
                 selectables=".prompt-card"
                 features={{ touch: false, range: true, singleTap: { allow: false } }}
               >
