@@ -216,7 +216,7 @@ export function SkillDetailPage({ skillId, onGeneratePrompt }: SkillDetailPagePr
   }
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-white relative">
+    <div className="flex-1 flex flex-col h-full min-w-0 bg-white relative">
       <div className="flex items-start justify-between px-8 py-6 border-b border-[var(--color-border)] shrink-0 gap-4">
         <div className="flex items-start space-x-3 min-w-0 flex-1">
           <div className={`shrink-0 w-12 h-12 rounded-xl flex items-center justify-center ${skill.source_type === 'github' ? 'bg-[#024ad8]/10 text-[#024ad8]' : 'bg-fuchsia-500/10 text-fuchsia-600'}`}>
