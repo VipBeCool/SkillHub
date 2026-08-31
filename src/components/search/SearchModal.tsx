@@ -240,7 +240,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
             ref={inputRef}
             type="text"
             className="flex-1 text-lg outline-none bg-transparent placeholder-gray-400 text-[var(--foreground)]"
-            placeholder="搜索技能、子技能或提示词..."
+            placeholder="搜索技能和提示词..."
             value={query}
             onChange={e => {
               setQuery(e.target.value);
