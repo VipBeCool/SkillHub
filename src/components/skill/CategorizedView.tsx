@@ -78,14 +78,14 @@ export function CategorizedView({
 
   return (
     <div
-      className="flex-1 flex flex-col px-6 pt-3 pb-20 overflow-y-auto hover-scroll"
+      className="flex-1 flex flex-col px-6 pt-0 pb-20 overflow-y-auto hover-scroll"
       onMouseEnter={e => e.currentTarget.style.setProperty('--scroll-thumb-color', 'rgba(0,0,0,0.18)')}
       onMouseLeave={e => e.currentTarget.style.setProperty('--scroll-thumb-color', 'transparent')}
     >
       {/* 技能组合包分组 */}
       {collections.length > 0 && (
-        <div className="mb-4">
-          <div className="flex items-center mb-4 cursor-pointer select-none group w-fit" onClick={toggleCollections}>
+        <div className="mb-4 relative">
+          <div className={`flex items-center sticky top-0 bg-white z-10 pt-3 pb-2 -mx-6 px-6 cursor-pointer select-none group ${collectionsCollapsed ? 'mb-0' : 'mb-4'}`} onClick={toggleCollections}>
             <h2 className="text-[12px] font-medium text-[var(--color-muted)] group-hover:text-[var(--foreground)] transition-colors">技能组合包 ({collections.length})</h2>
             {collectionsCollapsed ? (
               <ChevronRight className="w-4 h-4 ml-1 text-[var(--color-muted)] group-hover:text-[var(--foreground)] transition-colors" />
@@ -137,8 +137,8 @@ export function CategorizedView({
 
       {/* 单技能分组 */}
       {(singles.length > 0 || onlineSingles.length > 0) && (
-        <div>
-          <div className="flex items-center sticky top-0 bg-white/80 backdrop-blur-md z-10 pt-2 pb-2 -mt-2 mb-4">
+        <div className="relative">
+          <div className={`flex items-center sticky top-0 bg-white z-10 pt-2 pb-2 -mx-6 px-6 ${singlesCollapsed ? 'mb-0' : 'mb-4'}`}>
             <div className="flex items-center cursor-pointer select-none group" onClick={toggleSingles}>
               <h2 className="text-[12px] font-medium text-[var(--color-muted)] group-hover:text-[var(--foreground)] transition-colors">技能 ({singles.length})</h2>
               {singlesCollapsed ? (
