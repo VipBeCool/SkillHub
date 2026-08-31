@@ -91,7 +91,7 @@ export function AboutDialog({ isOpen, onClose }: AboutDialogProps) {
       
       {/* Dialog */}
       <div 
-        className="relative modal-glass w-[340px] flex flex-col items-center pt-10 pb-8 px-8 animate-in zoom-in-95 duration-200 text-[var(--foreground)]"
+        className="relative modal-glass rounded-xl w-[340px] flex flex-col items-center pt-10 pb-8 px-8 animate-in zoom-in-95 duration-200 text-[var(--foreground)]"
         onClick={(e) => e.stopPropagation()}
       >
         <button 
@@ -107,7 +107,7 @@ export function AboutDialog({ isOpen, onClose }: AboutDialogProps) {
         
         <h2 className="text-[28px] font-semibold mb-1 tracking-tight">SkillHub</h2>
         <p className="text-[13px] text-[var(--color-muted)] mb-6 font-medium">
-          个人技能与 Prompt 管理枢纽
+          个人 Prompt 与技能管理工具
         </p>
 
         <div className="flex flex-col items-center gap-1.5 mb-7">
