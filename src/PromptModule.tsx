@@ -548,7 +548,6 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onTitleChange
     if (area?.parentElement) {
       area.parentElement.style.zIndex = '10000';
     }
-    isDraggingRef.current = true; // 标记框选开始
     if (!event?.ctrlKey && !event?.metaKey && !event?.shiftKey) {
       selection.clearSelection();
       setSelectedIds(new Set());
@@ -619,12 +618,6 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onTitleChange
           {/* 卡片网格 */}
           <div 
             className="flex-1 overflow-y-auto hover-scroll relative z-0 bg-white"
-            onClick={(e) => {
-              if (!isDraggingRef.current && !(e.target as Element).closest?.('[data-prompt-id]')) {
-                setSelectedIds(new Set());
-                setInspectorData(null);
-              }
-            }}
             onContextMenu={(e) => {
               if (e.target === e.currentTarget) {
                 e.preventDefault();
@@ -663,8 +656,11 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onTitleChange
                   return true;
                 }}
                 onStart={handleSelectionStart}
-                onMove={handleSelectionMove}
-                onStop={() => { setTimeout(() => { isDraggingRef.current = false; }, 100); }}
+                onMove={(e) => {
+                  isDraggingRef.current = true;
+                  handleSelectionMove(e);
+                }}
+                onStop={() => { setTimeout(() => { isDraggingRef.current = false; }, 200); }}
                 selectables=".prompt-card"
                 features={{ touch: false, range: true, singleTap: { allow: false } }}
               >
