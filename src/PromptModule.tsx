@@ -618,6 +618,8 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onTitleChange
           {/* 卡片网格 */}
           <div 
             className="flex-1 overflow-y-auto hover-scroll relative z-0 bg-white"
+            onMouseEnter={e => e.currentTarget.style.setProperty('--scroll-thumb-color', 'rgba(0,0,0,0.18)')}
+            onMouseLeave={e => e.currentTarget.style.setProperty('--scroll-thumb-color', 'transparent')}
             onContextMenu={(e) => {
               if (e.target === e.currentTarget) {
                 e.preventDefault();

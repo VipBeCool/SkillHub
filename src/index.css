@@ -146,15 +146,9 @@ body > div[style*="overflow: hidden"][style*="position: fixed"] {
   width: 4px;
 }
 
-/* Hover-activated scrollbars using box-shadow hack for WebKit repaint */
+/* Hover-activated scrollbars via CSS variable (JS sets --scroll-thumb-color on the element) */
 .hover-scroll::-webkit-scrollbar-thumb {
-  background-color: transparent !important;
+  background-color: var(--scroll-thumb-color, transparent);
   border-radius: 10px;
-  box-shadow: inset 0 0 0 10px transparent;
-}
-.hover-scroll:hover::-webkit-scrollbar-thumb {
-  box-shadow: inset 0 0 0 10px rgba(0, 0, 0, 0.15);
-}
-.hover-scroll::-webkit-scrollbar-thumb:hover {
-  box-shadow: inset 0 0 0 10px rgba(0, 0, 0, 0.3);
+  transition: background-color 0.15s ease;
 }

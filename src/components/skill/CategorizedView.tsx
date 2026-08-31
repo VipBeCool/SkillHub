@@ -77,7 +77,11 @@ export function CategorizedView({
   };
 
   return (
-    <div className="flex-1 flex flex-col px-6 pt-3 pb-20 overflow-y-auto hover-scroll">
+    <div
+      className="flex-1 flex flex-col px-6 pt-3 pb-20 overflow-y-auto hover-scroll"
+      onMouseEnter={e => e.currentTarget.style.setProperty('--scroll-thumb-color', 'rgba(0,0,0,0.18)')}
+      onMouseLeave={e => e.currentTarget.style.setProperty('--scroll-thumb-color', 'transparent')}
+    >
       {/* 技能组合包分组 */}
       {collections.length > 0 && (
         <div className="mb-4">

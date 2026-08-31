@@ -1611,6 +1611,8 @@ function App() {
             ref={mainContentRef}
             className="flex-1 overflow-y-auto hover-scroll relative z-0 bg-white flex flex-col"
             onClick={() => { if (!isDraggingRef.current) handleDeselectAll(); }}
+            onMouseEnter={e => e.currentTarget.style.setProperty('--scroll-thumb-color', 'rgba(0,0,0,0.18)')}
+            onMouseLeave={e => e.currentTarget.style.setProperty('--scroll-thumb-color', 'transparent')}
             onContextMenu={(e) => {
               // Because cards call stopPropagation(), this only fires for blank space
               showContextMenu(e, { type: 'empty', data: null });
