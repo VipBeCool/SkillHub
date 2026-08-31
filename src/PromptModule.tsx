@@ -575,13 +575,14 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onTitleChange
     <div className="flex flex-1 h-full min-w-0 overflow-hidden bg-transparent">
       {/* 主内容区 */}
       <div className="flex-1 flex flex-col h-full min-w-0 bg-white">
-        {/* 顶栏 */}
         <div 
-          className="h-10 px-6 bg-white flex items-center justify-between shrink-0 relative z-0"
+          className="pt-5 pb-3 px-8 bg-white flex items-center justify-between shrink-0 relative z-0"
         >
-          <div className="flex items-center gap-3">
-            <h1 className="text-[15px] font-medium text-[var(--foreground)]">{filterLabel}</h1>
-            <span className="bg-black/5 text-[var(--color-muted)] text-[11px] px-2 py-0.5 rounded-full font-medium ml-2">{prompts.length}</span>
+          <div className="flex items-center space-x-3">
+            <h1 className="text-[15px] font-medium tracking-tight text-[var(--foreground)] flex items-center">
+              {filterLabel}
+              <span className="bg-black/5 text-[var(--color-muted)] text-[11px] px-2 py-0.5 rounded-full font-medium ml-2">{prompts.length}</span>
+            </h1>
           </div>
           <div className="flex items-center gap-1">
             {prompts.length > 0 && filter === "trash" && (
@@ -605,7 +606,7 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onTitleChange
             {filter !== "trash" && (
               <button 
                 onClick={() => onOpenPromptDetail?.("新建提示词", undefined, true)}
-                className="px-3 py-1.5 bg-[var(--color-primary)] text-white rounded-md text-[13px] font-medium hover:bg-blue-600 transition-colors shadow-sm flex items-center space-x-1.5 shrink-0"
+                className="flex items-center space-x-1 bg-blue-500 text-white px-2.5 py-1 rounded-md text-[12px] font-medium hover:bg-blue-600 shadow-sm shadow-blue-500/20 transition-all ml-1"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>添加提示词</span>
