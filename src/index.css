@@ -80,25 +80,48 @@
 
 @layer components {
   .input-field {
-    @apply px-3 py-2 bg-black/5 border border-black/10 rounded-lg text-[13px] text-[var(--foreground)] outline-none transition-all;
+    padding: 0.5rem 0.75rem;
+    background-color: rgba(0, 0, 0, 0.05);
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    border-radius: 0.5rem;
+    font-size: 13px;
+    color: var(--foreground);
+    outline: none;
+    transition: all 0.15s ease;
   }
   .input-field::placeholder {
-    @apply text-[var(--color-muted)];
+    color: var(--color-muted);
   }
   .input-field:focus {
-    @apply bg-white border-blue-500 ring-2 ring-blue-500/20;
+    background-color: #ffffff;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
   }
   .input-field:read-only {
-    @apply cursor-not-allowed opacity-80 focus:ring-0 focus:border-black/10;
+    cursor: not-allowed;
+    opacity: 0.8;
+  }
+  .input-field:read-only:focus {
+    box-shadow: none;
+    border-color: rgba(0, 0, 0, 0.1);
   }
 
   /* Unified Frosted Glass Styles for Modals */
   .modal-backdrop {
-    @apply bg-black/20 backdrop-blur-sm;
+    background-color: rgba(0, 0, 0, 0.2);
+    backdrop-filter: blur(4px);
   }
 
   .modal-glass {
-    @apply bg-white/95 backdrop-blur-xl border border-black/10 dark:border-white/10 shadow-2xl;
+    background-color: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(24px);
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  }
+  @media (prefers-color-scheme: dark) {
+    .modal-glass {
+      border-color: rgba(255, 255, 255, 0.1);
+    }
   }
 }
 
