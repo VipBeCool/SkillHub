@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { openUrl } from '@tauri-apps/plugin-opener';
@@ -6,7 +6,7 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { 
   FolderGit2, HardDrive, Folder, Copy, Link as LinkIcon, Unlink, Globe,
   FileText, ChevronRight, Loader2, PanelRightClose,
-  Database, RefreshCw, Trash2, Download, FileArchive, Sparkles, X
+  Database, RefreshCw, Trash2, Download, FileArchive, Sparkles, X, Search
 } from 'lucide-react';
 import { Tooltip } from '../ui/Tooltip';
 import { DynamicIcon } from "../ui/DynamicIcon";
@@ -61,6 +61,22 @@ export function InspectorPanel({
   const [tags, setTags] = useState("");
   const [tagInput, setTagInput] = useState("");
   const tagInputRef = useRef<HTMLInputElement>(null);
+  const tagDropdownRef = useRef<HTMLDivElement>(null);
+
+  const allTags = useMemo(() => {
+    const tagSet = new Set<string>();
+    allRepos.forEach(repo => {
+      repo.skills.forEach(skill => {
+        if (skill.tags) {
+          skill.tags.split(',').forEach(t => {
+            const tag = t.trim();
+            if (tag) tagSet.add(tag);
+          });
+        }
+      });
+    });
+    return Array.from(tagSet).sort();
+  }, [allRepos]);
 
   useEffect(() => {
     setIsSkillsExpanded(false);
@@ -969,7 +985,8 @@ export function InspectorPanel({
 
           {/* 标签 */}
           <div className="mb-4">
-            <div className="flex flex-wrap gap-1.5 items-center">
+            <h4 className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider mb-2">标签</h4>
+            <div className="flex flex-wrap gap-1.5 items-center mb-2">
               {tags.split(',').map(t => t.trim()).filter(Boolean).map(tag => (
                 <span key={tag} className="group/tag inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-md bg-[var(--color-primary)]/10 text-[var(--color-primary)] font-medium">
                   #{tag}
@@ -981,6 +998,10 @@ export function InspectorPanel({
                   </button>
                 </span>
               ))}
+            </div>
+            
+            <div className="relative" ref={tagDropdownRef}>
+              <Search className="absolute left-2 top-1.5 w-3.5 h-3.5 text-[var(--color-muted)] pointer-events-none" />
               <input
                 ref={tagInputRef}
                 type="text"
@@ -1002,15 +1023,48 @@ export function InspectorPanel({
                   }
                 }}
                 onBlur={() => {
-                  const newTag = tagInput.trim().replace(/[,，]/g, '');
-                  if (newTag) {
-                    addTag(newTag, selectedSkill);
-                    setTagInput("");
-                  }
+                  setTimeout(() => {
+                    const newTag = tagInput.trim().replace(/[,，]/g, '');
+                    if (newTag) {
+                      addTag(newTag, selectedSkill);
+                      setTagInput("");
+                    }
+                  }, 150);
                 }}
-                placeholder="加标签..."
-                className="text-[11px] w-20 px-2 py-1 rounded-md border border-transparent bg-black/5 focus:outline-none focus:border-[var(--color-primary)]/50 focus:bg-white transition-colors placeholder:text-[var(--color-muted)]"
+                placeholder="搜索或创建标签..."
+                className="w-full text-[12px] pl-7 pr-2 py-1.5 rounded-md border border-transparent bg-black/5 focus:outline-none focus:border-[var(--color-primary)]/50 focus:bg-white transition-colors placeholder:text-[var(--color-muted)]"
               />
+              
+              {/* Tags Dropdown */}
+              {(tagInput || document.activeElement === tagInputRef.current) && (
+                <div className="absolute top-full mt-1 left-0 right-0 max-h-48 overflow-y-auto bg-white/95 backdrop-blur-xl border border-[var(--color-border)] rounded-lg shadow-xl z-[100] custom-scrollbar">
+                  {allTags.filter(t => !tags.split(',').map(x => x.trim()).filter(Boolean).includes(t) && t.toLowerCase().includes(tagInput.toLowerCase())).length > 0 ? (
+                    allTags
+                      .filter(t => !tags.split(',').map(x => x.trim()).filter(Boolean).includes(t) && t.toLowerCase().includes(tagInput.toLowerCase()))
+                      .map(tag => (
+                        <button
+                          key={tag}
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            addTag(tag, selectedSkill);
+                            setTagInput("");
+                          }}
+                          className="w-full px-3 py-2 text-[12px] text-left hover:bg-black/5 text-[var(--foreground)]"
+                        >
+                          {tag}
+                        </button>
+                      ))
+                  ) : tagInput ? (
+                    <div className="px-3 py-2 text-[12px] text-[var(--color-muted)]">
+                      按回车创建 "{tagInput}"
+                    </div>
+                  ) : (
+                    <div className="px-3 py-2 text-[12px] text-[var(--color-muted)]">
+                      输入文字搜索或创建标签
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 

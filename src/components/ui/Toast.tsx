@@ -30,7 +30,7 @@ export const ToastContainer: React.FC = () => {
   useEffect(() => {
     const handler = (e: Event) => {
       const msg = (e as CustomEvent<ToastMessage>).detail;
-      setToasts(prev => [...prev, msg]);
+      setToasts([msg]);
       setTimeout(() => {
         setToasts(prev => prev.filter(t => t.id !== msg.id));
       }, msg.type === 'error' ? 5000 : (msg.action ? 5000 : 2500));

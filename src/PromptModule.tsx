@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
-import { Plus, Download, Star, LayoutGrid, Trash2, Trash, FolderPlus, MoreHorizontal, X, Folder, Edit2, FolderX, Tag, PanelRightClose, ChevronRight } from "lucide-react";
+import { Plus, Download, Star, LayoutGrid, Trash2, Trash, FolderPlus, MoreHorizontal, X, Folder, Edit2, FolderX, Tag, PanelRightClose, ChevronRight, Search } from "lucide-react";
 import { Prompt, PromptGroup, PromptVersion } from "./types";
 import { PromptCard } from "./components/prompt/PromptCard";
 import { SelectionArea, SelectionEvent } from "@viselect/react";
@@ -258,6 +258,28 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onTitleChange
       });
     } catch (e) {
       showToast("更新标签失败", "error");
+      fetchData(); // Revert
+    }
+  };
+
+  const handleInspectorUpdateGroup = async (prompt: Prompt, groupId: string | null) => {
+    // Optimistic update
+    setPrompts(prev => prev.map(p => p.id === prompt.id ? { ...p, group_id: groupId || undefined } : p));
+    
+    try {
+      await invoke("update_prompt", { 
+        id: prompt.id, 
+        title: prompt.title, 
+        content: prompt.content,
+        description: prompt.description || null, 
+        groupId: groupId,
+        tags: prompt.tags || null, 
+        variables: prompt.variables || null,
+        changeNote: "修改分组" 
+      });
+      showToast("分组已更新");
+    } catch (e) {
+      showToast("更新分组失败", "error");
       fetchData(); // Revert
     }
   };
@@ -865,7 +887,7 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onTitleChange
                   
                   <div>
                     <h4 className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wide mb-2">标签</h4>
-                    <div className="flex flex-wrap gap-1.5 items-center">
+                    <div className="flex flex-wrap gap-1.5 items-center mb-2">
                       {(p.tags ? p.tags.split(",").map(t => t.trim()).filter(Boolean) : []).map(tag => (
                         <span key={tag} className="group/tag inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-md bg-[var(--color-primary)]/10 text-[var(--color-primary)] font-medium">
                           #{tag}
@@ -877,70 +899,71 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onTitleChange
                           </button>
                         </span>
                       ))}
+                    </div>
                       
-                      <div className="relative" ref={inspectorTagDropdownRef}>
-                        <input
-                          ref={inspectorTagInputRef}
-                          type="text"
-                          value={inspectorTagInput}
-                          onChange={e => setInspectorTagInput(e.target.value)}
-                          onKeyDown={e => {
-                            const tagList = p.tags ? p.tags.split(",").map(t => t.trim()).filter(Boolean) : [];
-                            if (e.key === 'Enter' || e.key === ',' || e.key === '，') {
-                              e.preventDefault();
-                              const newTag = inspectorTagInput.trim().replace(/[,，]/g, '');
-                              if (newTag) {
-                                handleInspectorAddTag(p, newTag);
-                                setInspectorTagInput("");
-                              }
-                            } else if (e.key === 'Backspace' && !inspectorTagInput && tagList.length > 0) {
-                              handleInspectorRemoveTag(p, tagList[tagList.length - 1]);
+                    <div className="relative" ref={inspectorTagDropdownRef}>
+                      <Search className="absolute left-2 top-1.5 w-3.5 h-3.5 text-[var(--color-muted)] pointer-events-none" />
+                      <input
+                        ref={inspectorTagInputRef}
+                        type="text"
+                        value={inspectorTagInput}
+                        onChange={e => setInspectorTagInput(e.target.value)}
+                        onKeyDown={e => {
+                          const tagList = p.tags ? p.tags.split(",").map(t => t.trim()).filter(Boolean) : [];
+                          if (e.key === 'Enter' || e.key === ',' || e.key === '，') {
+                            e.preventDefault();
+                            const newTag = inspectorTagInput.trim().replace(/[,，]/g, '');
+                            if (newTag) {
+                              handleInspectorAddTag(p, newTag);
+                              setInspectorTagInput("");
                             }
-                          }}
-                          onBlur={() => {
-                            setTimeout(() => {
-                              const newTag = inspectorTagInput.trim().replace(/[,，]/g, '');
-                              if (newTag) {
-                                handleInspectorAddTag(p, newTag);
-                                setInspectorTagInput("");
-                              }
-                            }, 150);
-                          }}
-                          placeholder="加标签..."
-                          className="text-[11px] w-20 px-2 py-1 rounded-md border border-transparent bg-black/5 focus:outline-none focus:border-[var(--color-primary)]/50 focus:bg-white transition-colors placeholder:text-[var(--color-muted)]"
-                        />
-                        
-                        {/* Tags Dropdown */}
-                        {(inspectorTagInput || document.activeElement === inspectorTagInputRef.current) && (
-                          <div className="absolute bottom-full left-0 mb-1 w-[180px] max-h-[160px] overflow-y-auto bg-white border border-[var(--color-border)] rounded-lg shadow-lg z-20">
-                            {allTags.filter(t => !(p.tags ? p.tags.split(",").map(x => x.trim()).filter(Boolean) : []).includes(t) && t.toLowerCase().includes(inspectorTagInput.toLowerCase())).length > 0 ? (
-                              allTags
-                                .filter(t => !(p.tags ? p.tags.split(",").map(x => x.trim()).filter(Boolean) : []).includes(t) && t.toLowerCase().includes(inspectorTagInput.toLowerCase()))
-                                .map(tag => (
-                                  <button
-                                    key={tag}
-                                    onMouseDown={(e) => {
-                                      e.preventDefault();
-                                      handleInspectorAddTag(p, tag);
-                                      setInspectorTagInput("");
-                                    }}
-                                    className="w-full px-3 py-2 text-[12px] text-left hover:bg-black/5 text-[var(--foreground)]"
-                                  >
-                                    {tag}
-                                  </button>
-                                ))
-                            ) : inspectorTagInput ? (
-                              <div className="px-3 py-2 text-[12px] text-[var(--color-muted)]">
-                                按回车创建 "{inspectorTagInput}"
-                              </div>
-                            ) : (
-                              <div className="px-3 py-2 text-[12px] text-[var(--color-muted)]">
-                                暂无其他标签
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
+                          } else if (e.key === 'Backspace' && !inspectorTagInput && tagList.length > 0) {
+                            handleInspectorRemoveTag(p, tagList[tagList.length - 1]);
+                          }
+                        }}
+                        onBlur={() => {
+                          setTimeout(() => {
+                            const newTag = inspectorTagInput.trim().replace(/[,，]/g, '');
+                            if (newTag) {
+                              handleInspectorAddTag(p, newTag);
+                              setInspectorTagInput("");
+                            }
+                          }, 150);
+                        }}
+                        placeholder="搜索或创建标签..."
+                        className="w-full text-[12px] pl-7 pr-2 py-1.5 rounded-md border border-transparent bg-black/5 focus:outline-none focus:border-[var(--color-primary)]/50 focus:bg-white transition-colors placeholder:text-[var(--color-muted)]"
+                      />
+                      
+                      {/* Tags Dropdown */}
+                      {(inspectorTagInput || document.activeElement === inspectorTagInputRef.current) && (
+                        <div className="absolute top-full mt-1 left-0 right-0 max-h-48 overflow-y-auto bg-white/95 backdrop-blur-xl border border-[var(--color-border)] rounded-lg shadow-xl z-[100] custom-scrollbar">
+                          {allTags.filter(t => !(p.tags ? p.tags.split(",").map(x => x.trim()).filter(Boolean) : []).includes(t) && t.toLowerCase().includes(inspectorTagInput.toLowerCase())).length > 0 ? (
+                            allTags
+                              .filter(t => !(p.tags ? p.tags.split(",").map(x => x.trim()).filter(Boolean) : []).includes(t) && t.toLowerCase().includes(inspectorTagInput.toLowerCase()))
+                              .map(tag => (
+                                <button
+                                  key={tag}
+                                  onMouseDown={(e) => {
+                                    e.preventDefault();
+                                    handleInspectorAddTag(p, tag);
+                                    setInspectorTagInput("");
+                                  }}
+                                  className="w-full px-3 py-2 text-[12px] text-left hover:bg-black/5 text-[var(--foreground)]"
+                                >
+                                  {tag}
+                                </button>
+                              ))
+                          ) : inspectorTagInput ? (
+                            <div className="px-3 py-2 text-[12px] text-[var(--color-muted)]">
+                              按回车创建 "{inspectorTagInput}"
+                            </div>
+                          ) : (
+                            <div className="px-3 py-2 text-[12px] text-[var(--color-muted)]">
+                              输入文字搜索或创建标签
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -948,7 +971,16 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onTitleChange
                     {p.group_name && (
                       <div className="flex items-center justify-between">
                         <span className="text-[var(--color-muted)]">分组</span>
-                        <span className="text-[var(--foreground)] font-medium">{p.group_name}</span>
+                        <select 
+                          value={p.group_id || ""} 
+                          onChange={(e) => handleInspectorUpdateGroup(p, e.target.value || null)}
+                          className="text-[12px] text-[var(--foreground)] font-medium bg-transparent border-none outline-none text-right appearance-none cursor-pointer hover:text-[var(--color-primary)] transition-colors pr-0"
+                        >
+                          <option value="">未分组</option>
+                          {groups.map(g => (
+                            <option key={g.id} value={g.id}>{g.name}</option>
+                          ))}
+                        </select>
                       </div>
                     )}
                     <div className="flex items-center justify-between">

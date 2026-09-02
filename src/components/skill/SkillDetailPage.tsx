@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { X, FolderGit2, HardDrive, Edit2, Save, Loader2, Copy, Folder, Sparkles, Languages, FileText, List, Star } from "lucide-react";
+import { FolderGit2, HardDrive, Edit2, Save, Loader2, Copy, Folder, Sparkles, Languages, FileText, List, Star } from "lucide-react";
 import { Tooltip } from '../ui/Tooltip';
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -8,6 +8,24 @@ import rehypeRaw from "rehype-raw";
 import { showToast } from '../ui/Toast';
 import { franc } from "franc-min";
 import { formatTokens } from "../../utils";
+
+const extractText = (children: any): string => {
+  if (typeof children === 'string') return children;
+  if (Array.isArray(children)) return children.map(extractText).join('');
+  if (children && typeof children === 'object' && 'props' in children) {
+    return extractText(children.props.children);
+  }
+  return '';
+};
+
+const generateId = (text: string) => encodeURIComponent(text.trim().toLowerCase());
+
+const HeadingRenderer = (level: number) => ({children, ...props}: any) => {
+  const text = extractText(children);
+  const id = generateId(text);
+  const Tag = `h${level}` as any;
+  return <Tag id={id} className="scroll-mt-4" {...props}>{children}</Tag>;
+};
 
 import { Skill } from "../../types";
 
@@ -33,10 +51,79 @@ export function SkillDetailPage({ skillId, onGeneratePrompt }: SkillDetailPagePr
 
   const [files, setFiles] = useState<SkillFile[]>([]);
   const [activeFile, setActiveFile] = useState<string>("");
-  // 标签编辑状态
-  const [tags, setTags] = useState("");
-  const [tagInput, setTagInput] = useState("");
-  const tagInputRef = useRef<HTMLInputElement>(null);
+  const contentScrollRef = useRef<HTMLDivElement>(null);
+
+  // TOC 状态
+  const [headings, setHeadings] = useState<{ id: string, text: string, level: number }[]>([]);
+  const [activeId, setActiveId] = useState<string>("");
+  const [isTocHovered, setIsTocHovered] = useState(false);
+
+  // 解析 Markdown 提取标题
+  useEffect(() => {
+    if (!content) {
+      setHeadings([]);
+      return;
+    }
+    // 移除 frontmatter
+    const cleanContent = content.replace(/^\s*---\r?\n[\s\S]*?\r?\n---\r?\n?/, '');
+    // 移除代码块，防止将代码内的注释或内容当做标题
+    const withoutCodeBlocks = cleanContent.replace(/```[\s\S]*?```/g, '').replace(/~~~[\s\S]*?~~~/g, '');
+    const regex = /^(#{1,6})\s+(.+)$/gm;
+    let match;
+    const newHeadings = [];
+    const idCount: Record<string, number> = {};
+    
+    while ((match = regex.exec(withoutCodeBlocks)) !== null) {
+      const text = match[2].trim();
+      let id = generateId(text);
+      if (idCount[id]) {
+        idCount[id]++;
+        id = `${id}-${idCount[id]}`;
+      } else {
+        idCount[id] = 1;
+      }
+      newHeadings.push({
+        level: match[1].length,
+        text,
+        id
+      });
+    }
+    setHeadings(newHeadings);
+  }, [content]);
+
+  // 处理滚动联动
+  const handleScroll = useCallback(() => {
+    if (!contentScrollRef.current || headings.length === 0) return;
+    const container = contentScrollRef.current;
+    const containerTop = container.getBoundingClientRect().top;
+    const threshold = containerTop + 60;
+    
+    let currentActive = "";
+    for (const h of headings) {
+      const el = document.getElementById(h.id);
+      if (el) {
+        const top = el.getBoundingClientRect().top;
+        if (top <= threshold) {
+          currentActive = h.id;
+        } else {
+          break;
+        }
+      }
+    }
+    if (!currentActive && headings.length > 0) {
+      currentActive = headings[0].id;
+    }
+    setActiveId(currentActive);
+  }, [headings]);
+
+  // 初始化或 headings 变动时，默认选中
+  useEffect(() => {
+    if (headings.length > 0) {
+      setTimeout(() => {
+        handleScroll();
+      }, 50);
+    }
+  }, [headings, handleScroll]);
 
   // 加载 skill 基本信息
   useEffect(() => {
@@ -47,7 +134,6 @@ export function SkillDetailPage({ skillId, onGeneratePrompt }: SkillDetailPagePr
         const found = skillsData.find(s => s.id === skillId);
         if (found) {
           setSkill(found);
-          setTags(found.tags || "");
         }
       } catch (e) {
         console.error("Failed to load skill", e);
@@ -55,33 +141,6 @@ export function SkillDetailPage({ skillId, onGeneratePrompt }: SkillDetailPagePr
     };
     fetchSkill();
   }, [skillId]);
-
-  const addTag = async (newTag: string) => {
-    if (!skill) return;
-    if (!newTag || tags.split(',').map(t => t.trim()).includes(newTag)) return;
-    const newTagsList = [...tags.split(','), newTag].filter(t => t.trim() !== "");
-    const newTagsStr = newTagsList.join(',');
-    setTags(newTagsStr);
-    try {
-      await invoke("update_skill_tags", { id: skill.id, tags: newTagsStr || null });
-      setSkill({ ...skill, tags: newTagsStr });
-    } catch (e) {
-      showToast("更新标签失败", "error");
-    }
-  };
-
-  const removeTag = async (tagToRemove: string) => {
-    if (!skill) return;
-    const newTagsList = tags.split(',').map(t => t.trim()).filter(t => t !== tagToRemove && t !== "");
-    const newTagsStr = newTagsList.join(',');
-    setTags(newTagsStr);
-    try {
-      await invoke("update_skill_tags", { id: skill.id, tags: newTagsStr || null });
-      setSkill({ ...skill, tags: newTagsStr });
-    } catch (e) {
-      showToast("更新标签失败", "error");
-    }
-  };
 
   // 翻译状态
   const [detectedLang, setDetectedLang] = useState<string>("");
@@ -277,53 +336,6 @@ export function SkillDetailPage({ skillId, onGeneratePrompt }: SkillDetailPagePr
               )}
             </div>
             
-            {/* Tags Editor Display */}
-            <div className="mt-4">
-              <div className="flex flex-wrap gap-1.5 items-center">
-                {tags.split(',').map(t => t.trim()).filter(Boolean).map(tag => (
-                  <span key={tag} className="group/tag inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-md bg-[var(--color-primary)]/10 text-[var(--color-primary)] font-medium">
-                    #{tag}
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); removeTag(tag); }}
-                      className="opacity-0 group-hover/tag:opacity-100 hover:text-red-500 transition-all"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </span>
-                ))}
-                <input
-                  ref={tagInputRef}
-                  type="text"
-                  value={tagInput}
-                  onChange={e => setTagInput(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter' || e.key === ',' || e.key === '，') {
-                      e.preventDefault();
-                      const newTag = tagInput.trim().replace(/[,，]/g, '');
-                      if (newTag) {
-                        addTag(newTag);
-                        setTagInput("");
-                      }
-                    } else if (e.key === 'Backspace' && !tagInput) {
-                      const currentTags = tags.split(',').map(t => t.trim()).filter(Boolean);
-                      if (currentTags.length > 0) {
-                        removeTag(currentTags[currentTags.length - 1]);
-                      }
-                    }
-                  }}
-                  onBlur={() => {
-                    const newTag = tagInput.trim().replace(/[,，]/g, '');
-                    if (newTag) {
-                      addTag(newTag);
-                      setTagInput("");
-                    }
-                  }}
-                  placeholder="加标签..."
-                  className="text-[11px] w-20 px-2 py-1 rounded-md border border-transparent bg-black/5 focus:outline-none focus:border-[var(--color-primary)]/50 focus:bg-white transition-colors placeholder:text-[var(--color-muted)]"
-                />
-              </div>
-            </div>
-            
             {/* Capacity Display */}
             {capacity && (
               <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-[var(--color-border)]/50">
@@ -398,7 +410,52 @@ export function SkillDetailPage({ skillId, onGeneratePrompt }: SkillDetailPagePr
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-10 relative flex flex-col">
+      {/* TOC 侧边导航指示器 (移出滚动容器以保持固定) */}
+      {headings.length > 0 && !isEditing && (
+        <div className="absolute right-2 top-[30%] -translate-y-1/2 z-20 pointer-events-none flex flex-col justify-start items-end pt-2">
+          <div 
+            className="pointer-events-auto flex flex-col items-end"
+            onMouseEnter={() => setIsTocHovered(true)}
+            onMouseLeave={() => setIsTocHovered(false)}
+          >
+            <div className={`flex flex-col transition-all duration-300 ${isTocHovered ? 'bg-white/90 backdrop-blur-md rounded-xl p-3 shadow-xl border border-[var(--color-border)] w-64' : 'w-8 py-2 items-end gap-[6px] border border-transparent shadow-none bg-transparent'}`}>
+              {isTocHovered ? (
+                 <div className="max-h-[60vh] w-full overflow-y-auto overflow-x-hidden space-y-0.5 custom-scrollbar">
+                    <div className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider mb-2 px-1">大纲导航</div>
+                    {headings.map(h => (
+                      <button
+                        key={h.id}
+                        onClick={() => {
+                          const el = document.getElementById(h.id);
+                          if (el && contentScrollRef.current) {
+                            const container = contentScrollRef.current;
+                            const topPos = el.offsetTop - 20;
+                            container.scrollTo({ top: topPos, behavior: 'smooth' });
+                          }
+                        }}
+                        className={`w-full text-left truncate px-2 py-1.5 rounded-lg text-[12px] transition-colors ${activeId === h.id ? 'text-gray-700 bg-black/5 font-medium' : 'text-[var(--foreground)] hover:bg-black/5'}`}
+                        style={{ paddingLeft: `${(h.level - 1) * 12 + 8}px` }}
+                      >
+                        {h.text}
+                      </button>
+                    ))}
+                 </div>
+              ) : (
+                 headings.map(h => (
+                    <div 
+                      key={h.id} 
+                      className={`h-[2px] rounded-full transition-all ${
+                        h.level === 1 ? 'w-5' : h.level === 2 ? 'w-4' : h.level === 3 ? 'w-3' : 'w-2.5'
+                      } ${activeId === h.id ? 'bg-gray-400' : 'bg-gray-200/60'}`}
+                    />
+                 ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="flex-1 overflow-y-auto p-10 relative flex flex-col" ref={contentScrollRef} onScroll={handleScroll}>
         {(!loading && !isEditing && files.length > 1) && (
           <div className="mb-8 shrink-0 w-full overflow-hidden">
             <div className="flex space-x-1.5 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] w-full p-1 bg-black/5 rounded-lg border border-black/5">
@@ -448,73 +505,86 @@ export function SkillDetailPage({ skillId, onGeneratePrompt }: SkillDetailPagePr
           <div className="max-w-4xl mx-auto w-full">
             {/* 翻译模块 */}
             {detectedLang && (
-              <div className="bg-[var(--color-primary)]/5 rounded-xl border border-[var(--color-primary)]/20 p-4 flex flex-col gap-3 mb-6">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5 text-[var(--color-primary)]">
-                    <Languages className="w-4 h-4" />
-                    <span className="text-xs font-medium">语言: {detectedLang === 'cmn' ? '中文' : detectedLang === 'eng' ? '英文' : detectedLang}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <select
-                      value={targetLang}
-                      onChange={(e) => {
-                        setTargetLang(e.target.value);
-                        setTranslationText(""); // 切换语言时重置翻译
-                      }}
-                      className="h-[28px] text-[13px] bg-white border border-[var(--color-border)] rounded-md px-2 focus:outline-none focus:border-[var(--color-primary)]/50"
-                    >
-                      <option value="zh-CN">中文</option>
-                      <option value="en">English</option>
-                      <option value="ja">日本語</option>
-                      <option value="ko">한국어</option>
-                      <option value="fr">Français</option>
-                      <option value="es">Español</option>
-                      <option value="ru">Русский</option>
-                    </select>
-                    <button
-                      onClick={() => {
-                        if (!translationText) {
-                          handleTranslate();
-                        } else {
-                          setIsTranslationVisible(!isTranslationVisible);
-                        }
-                      }}
-                      disabled={isTranslating}
-                      className={`h-[28px] flex items-center justify-center text-[12px] font-medium px-3 rounded-md transition-colors disabled:opacity-50 ${
-                        translationText
-                          ? "bg-white border border-[var(--color-border)] text-[var(--foreground)] opacity-80 hover:opacity-100 hover:bg-black/5"
-                          : "bg-[var(--color-primary)] text-white hover:bg-[var(--color-primary)]/90"
-                      }`}
-                    >
-                      {isTranslating ? "翻译中..." : translationText ? (isTranslationVisible ? "收起" : "展开") : "翻译"}
-                    </button>
-                    {translationText && isTranslationVisible && (
+              <div className="flex items-center gap-3 mb-6 pb-4 border-b border-[var(--color-border)]/50">
+                <div className="flex items-center gap-1.5 text-[var(--color-muted)]">
+                  <Languages className="w-4 h-4" />
+                  <span className="text-xs font-medium">语言: {detectedLang === 'cmn' ? '中文' : detectedLang === 'eng' ? '英文' : detectedLang}</span>
+                </div>
+                
+                <div className="flex items-center overflow-hidden bg-white border border-[var(--color-border)] rounded-lg shadow-sm">
+                  <select
+                    value={targetLang}
+                    onChange={(e) => {
+                      setTargetLang(e.target.value);
+                      setTranslationText(""); // 切换语言时重置翻译
+                    }}
+                    className="h-[28px] pl-2 pr-6 text-[12px] bg-transparent border-none focus:outline-none text-gray-600 appearance-none cursor-pointer"
+                  >
+                    <option value="zh-CN">🇨🇳 中文</option>
+                    <option value="en">🇺🇸 English</option>
+                    <option value="ja">🇯🇵 日本語</option>
+                    <option value="ko">🇰🇷 한국어</option>
+                    <option value="fr">🇫🇷 Français</option>
+                    <option value="es">🇪🇸 Español</option>
+                    <option value="ru">🇷🇺 Русский</option>
+                  </select>
+                  <div className="w-[1px] h-4 bg-gray-200"></div>
+                  <button
+                    onClick={() => {
+                      if (!translationText) {
+                        handleTranslate();
+                      } else {
+                        setIsTranslationVisible(!isTranslationVisible);
+                      }
+                    }}
+                    disabled={isTranslating}
+                    title={translationText ? (isTranslationVisible ? "收起" : "展开") : "翻译此文档"}
+                    className="px-3 h-[28px] bg-white hover:bg-gray-50 disabled:bg-gray-50 flex items-center justify-center text-gray-600 disabled:text-gray-400 hover:text-[var(--color-primary)] transition-colors"
+                  >
+                    {isTranslating ? <Loader2 size={14} className="animate-spin" /> : <Languages size={14} />}
+                  </button>
+                  {translationText && isTranslationVisible && (
+                    <>
+                      <div className="w-[1px] h-4 bg-gray-200"></div>
                       <button
                         onClick={() => {
                           navigator.clipboard.writeText(translationText);
                           showToast("翻译结果已复制到剪切板");
                         }}
-                        className="h-[28px] flex items-center justify-center text-[12px] font-medium px-3 bg-white border border-[var(--color-border)] text-[var(--foreground)] opacity-80 hover:opacity-100 hover:bg-black/5 rounded-md transition-colors"
+                        title="复制翻译"
+                        className="px-3 h-[28px] bg-white hover:bg-gray-50 flex items-center justify-center text-gray-600 hover:text-[var(--color-primary)] transition-colors"
                       >
-                        复制
+                        <Copy size={14} />
                       </button>
-                    )}
-                  </div>
+                    </>
+                  )}
                 </div>
-                {translationText && isTranslationVisible && (
-                  <div className="mt-2 pt-3 border-t border-[var(--color-primary)]/10">
-                    <div className="prose max-w-none prose-headings:text-left prose-a:text-[#024ad8] prose-p:leading-relaxed">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
-                        {translationText}
-                      </ReactMarkdown>
-                    </div>
-                  </div>
-                )}
+              </div>
+            )}
+            
+            {translationText && isTranslationVisible && (
+              <div className="mb-6 bg-gray-50/50 rounded-xl p-6 border border-[var(--color-border)]">
+                <div className="prose max-w-none prose-headings:text-left prose-a:text-[#024ad8] prose-p:leading-relaxed">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
+                    {translationText}
+                  </ReactMarkdown>
+                </div>
               </div>
             )}
             
             <div className="prose max-w-none prose-headings:text-left prose-a:text-[#024ad8] prose-p:leading-relaxed pb-12">
-              <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
+              <ReactMarkdown 
+                remarkPlugins={[remarkGfm]} 
+                rehypePlugins={[rehypeRaw]}
+                components={{
+                  h1: HeadingRenderer(1),
+                  h2: HeadingRenderer(2),
+                  h3: HeadingRenderer(3),
+                  h4: HeadingRenderer(4),
+                  h5: HeadingRenderer(5),
+                  h6: HeadingRenderer(6),
+                }}
+              >
                 {content ? content.replace(/^\s*---\r?\n[\s\S]*?\r?\n---\r?\n?/, '') : ""}
               </ReactMarkdown>
             </div>
