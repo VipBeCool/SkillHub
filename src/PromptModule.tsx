@@ -1178,11 +1178,25 @@ export function PromptModule({ filter, refreshKey, activePromptId, onGroupsChang
                   <div>
                     <h3 className="text-[14px] font-semibold text-[var(--foreground)] mb-1">{p.title}</h3>
                     {p.description && (
-                      <p className="text-[12px] text-[var(--color-muted)] leading-relaxed">{p.description}</p>
+                      <p 
+                        className="text-[12px] text-[var(--color-muted)] leading-relaxed max-h-[58px] overflow-hidden"
+                        style={{
+                          WebkitMaskImage: 'linear-gradient(to bottom, black calc(100% - 20px), transparent 100%)',
+                          maskImage: 'linear-gradient(to bottom, black calc(100% - 20px), transparent 100%)'
+                        }}
+                      >
+                        {p.description}
+                      </p>
                     )}
                   </div>
-                  <div className="bg-[var(--color-background)] rounded-lg p-3 max-h-[300px] overflow-y-auto relative group/prompt inspector-scroll-area">
-                    <p className="text-[12px] text-[var(--foreground)] leading-relaxed whitespace-pre-wrap font-mono">
+                  <div 
+                    className="bg-[var(--color-background)] rounded-lg p-3 max-h-[148px] overflow-hidden relative select-text"
+                    style={{
+                      WebkitMaskImage: 'linear-gradient(to bottom, black calc(100% - 36px), transparent 100%)',
+                      maskImage: 'linear-gradient(to bottom, black calc(100% - 36px), transparent 100%)'
+                    }}
+                  >
+                    <p className="text-[12px] text-[var(--foreground)] leading-relaxed whitespace-pre-wrap font-mono select-text">
                       {p.content}
                     </p>
                   </div>

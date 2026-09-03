@@ -225,6 +225,18 @@ export const SearchModal: React.FC<SearchModalProps> = ({
     }
   }, [query, matchedRepos, matchedSkills, matchedPrompts]);
 
+  const handleOpenItem = (item: HoveredItem | null) => {
+    if (!item) return;
+    if (item.type === 'repo') {
+      onSelectRepo(item.repo.id);
+    } else if (item.type === 'skill') {
+      onSelectSkill(item.skill, item.repo);
+    } else if (item.type === 'prompt') {
+      onSelectPrompt(item.prompt);
+    }
+    onClose();
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -250,16 +262,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
               if (e.nativeEvent.isComposing || e.keyCode === 229) return;
               if (e.key === 'Escape') onClose();
               if (e.key === 'Enter' && hoveredItem) {
-                if (hoveredItem.type === 'repo') {
-                  onSelectRepo(hoveredItem.repo.id);
-                  onClose();
-                } else if (hoveredItem.type === 'skill') {
-                  onSelectSkill(hoveredItem.skill, hoveredItem.repo);
-                  onClose();
-                } else if (hoveredItem.type === 'prompt') {
-                  onSelectPrompt(hoveredItem.prompt);
-                  onClose();
-                }
+                handleOpenItem(hoveredItem);
               }
               if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
                 e.preventDefault();
@@ -462,10 +465,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                               id={`search-item-repo-${repo.id}`}
                               key={`repo-${repo.id}`}
                               onMouseEnter={() => setHoveredItem({ type: 'repo', repo })}
-                              onClick={() => {
-                                onSelectRepo(repo.id);
-                                onClose();
-                              }}
+                              onClick={() => handleOpenItem({ type: 'repo', repo })}
                               className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-md transition-all text-left outline-none border-none ${isHovered ? 'bg-blue-50/60 ring-1 ring-blue-500/50 text-blue-900 shadow-sm' : 'hover:bg-black/5 text-gray-800'}`}
                             >
                               <div className="flex items-center space-x-3 truncate">
@@ -515,10 +515,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                               id={`search-item-skill-${skill.id}`}
                               key={`skill-${skill.id}`}
                               onMouseEnter={() => setHoveredItem({ type: 'skill', skill, repo })}
-                              onClick={() => {
-                                onSelectSkill(skill, repo);
-                                onClose();
-                              }}
+                              onClick={() => handleOpenItem({ type: 'skill', skill, repo })}
                               className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-md transition-all text-left outline-none border-none ${isHovered ? 'bg-blue-50/60 ring-1 ring-blue-500/50 text-blue-900 shadow-sm' : 'hover:bg-black/5 text-gray-800'}`}
                             >
                               <div className="flex items-center space-x-3 truncate">
@@ -564,10 +561,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                               id={`search-item-prompt-${prompt.id}`}
                               key={`prompt-${prompt.id}`}
                               onMouseEnter={() => setHoveredItem({ type: 'prompt', prompt })}
-                              onClick={() => {
-                                onSelectPrompt(prompt);
-                                onClose();
-                              }}
+                              onClick={() => handleOpenItem({ type: 'prompt', prompt })}
                               className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-md transition-all text-left outline-none border-none ${isHovered ? 'bg-purple-50/60 ring-1 ring-purple-500/50 text-purple-900 shadow-sm' : 'hover:bg-black/5 text-gray-800'}`}
                             >
                               <div className="flex items-center space-x-3 truncate">
@@ -716,9 +710,13 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                           </button>
                         </Tooltip>
                       </div>
-                      <kbd className="px-1.5 py-0.5 bg-gray-50 border border-gray-200 rounded text-[10px] text-gray-400 font-sans shadow-sm flex items-center">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenItem(hoveredItem)}
+                        className="px-2 py-1 bg-gray-50 hover:bg-gray-100 active:bg-gray-200 border border-gray-200 rounded text-[10px] text-gray-600 font-sans shadow-sm flex items-center transition-colors cursor-pointer"
+                      >
                         ↵ Enter 打开
-                      </kbd>
+                      </button>
                     </div>
                   </div>
                 )}
@@ -779,9 +777,13 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                           </button>
                         </Tooltip>
                       </div>
-                      <kbd className="px-1.5 py-0.5 bg-gray-50 border border-gray-200 rounded text-[10px] text-gray-400 font-sans shadow-sm flex items-center">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenItem(hoveredItem)}
+                        className="px-2 py-1 bg-gray-50 hover:bg-gray-100 active:bg-gray-200 border border-gray-200 rounded text-[10px] text-gray-600 font-sans shadow-sm flex items-center transition-colors cursor-pointer"
+                      >
                         ↵ Enter 打开
-                      </kbd>
+                      </button>
                     </div>
                   </div>
                 )}
@@ -814,7 +816,13 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                     <div className="space-y-3 text-sm text-gray-600 flex-1">
                       <div className="flex flex-col py-2 border-t border-gray-50">
                         <span className="text-gray-400 text-[10px] uppercase tracking-wider mb-2">内容预览</span>
-                        <div className="bg-gray-50 p-2.5 rounded-lg text-[12px] leading-relaxed text-[var(--color-muted)] whitespace-pre-wrap line-clamp-6">
+                        <div 
+                          className="bg-gray-50 p-2.5 rounded-lg text-[12px] leading-relaxed text-[var(--color-muted)] whitespace-pre-wrap max-h-[130px] overflow-hidden select-text"
+                          style={{
+                            WebkitMaskImage: 'linear-gradient(to bottom, black calc(100% - 30px), transparent 100%)',
+                            maskImage: 'linear-gradient(to bottom, black calc(100% - 30px), transparent 100%)'
+                          }}
+                        >
                           {hoveredItem.prompt.content}
                         </div>
                       </div>
@@ -848,9 +856,13 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                           </button>
                         </Tooltip>
                       </div>
-                      <kbd className="px-1.5 py-0.5 bg-gray-50 border border-gray-200 rounded text-[10px] text-gray-400 font-sans shadow-sm flex items-center">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenItem(hoveredItem)}
+                        className="px-2 py-1 bg-gray-50 hover:bg-gray-100 active:bg-gray-200 border border-gray-200 rounded text-[10px] text-gray-600 font-sans shadow-sm flex items-center transition-colors cursor-pointer"
+                      >
                         ↵ Enter 打开
-                      </kbd>
+                      </button>
                     </div>
                   </div>
                 )}

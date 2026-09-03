@@ -2229,7 +2229,13 @@ function App() {
             handleWorkspaceSelect(repo.source_dir_id || null);
           }
           setActiveModule('skills');
-          handleSidebarNav('skill-repo', repo?.name || '仓库', { repoId, activeView: 'all', selectedTag: 'all' });
+          if (repo && repo.skills && repo.skills.length > 0) {
+            // 直接打开技能详情页，中间展示 SKILL.md 内容
+            const targetSkill = repo.skills[0];
+            navigateTo('skill-detail', targetSkill.name, { repoId: repo.id, activeView: 'all', selectedTag: 'all', skillId: targetSkill.id }, 'FileText');
+          } else {
+            handleSidebarNav('skill-repo', repo?.name || '仓库', { repoId, activeView: 'all', selectedTag: 'all' });
+          }
         }}
         onSelectSkill={(skill, repo) => {
           if (repo && repo.source_dir_id !== selectedWorkspaceId) {
@@ -2241,6 +2247,8 @@ function App() {
         onSelectPrompt={(prompt) => {
           setActiveModule('prompts');
           setPromptFilter(prompt.group_id || 'all');
+          // 直接打开提示词详情页，中间展示提示词内容
+          navigateTo('prompt-detail', prompt.title || '无标题提示词', { promptId: prompt.id, isEditing: false }, 'FileText');
           setTimeout(() => {
             window.dispatchEvent(new CustomEvent('select-prompt', { detail: prompt.id }));
           }, 100);

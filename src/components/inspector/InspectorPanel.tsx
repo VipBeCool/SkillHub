@@ -931,7 +931,13 @@ export function InspectorPanel({
               <h3 className="text-[14px] font-semibold text-[var(--foreground)] line-clamp-2">{selectedSkill.name}</h3>
             </div>
             {selectedSkill.description && (
-              <p className="text-[12px] text-[var(--color-muted)] leading-relaxed line-clamp-3">
+              <p 
+                className="text-[12px] text-[var(--color-muted)] leading-relaxed max-h-[64px] overflow-hidden"
+                style={{
+                  WebkitMaskImage: 'linear-gradient(to bottom, black calc(100% - 20px), transparent 100%)',
+                  maskImage: 'linear-gradient(to bottom, black calc(100% - 20px), transparent 100%)'
+                }}
+              >
                 {selectedSkill.description}
               </p>
             )}
