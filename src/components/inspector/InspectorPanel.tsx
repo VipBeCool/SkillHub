@@ -5,7 +5,7 @@ import { openUrl } from '@tauri-apps/plugin-opener';
 import { open } from '@tauri-apps/plugin-dialog';
 import { 
   FolderGit2, HardDrive, Folder, Copy, Link as LinkIcon, Unlink, Globe,
-  FileText, ChevronRight, Loader2, PanelRightClose,
+  FileText, ChevronRight, Loader2, PanelRightClose, Plus,
   Database, RefreshCw, Trash2, Download, FileArchive, Sparkles, X, Search
 } from 'lucide-react';
 import { Tooltip } from '../ui/Tooltip';
@@ -13,6 +13,7 @@ import { DynamicIcon } from "../ui/DynamicIcon";
 import { parseIconConfig } from "../../lib/iconTypes";
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { showToast } from '../ui/Toast';
+import { formatTokens } from "../../utils";
 import { Skill, GroupedRepo, AgentConfig, SyncRecord, SourceDirectory } from '../../types';
 
 interface InspectorPanelProps {
@@ -35,6 +36,19 @@ interface InspectorPanelProps {
   isOpen: boolean;
   onToggle: () => void;
 }
+
+type SkillCapacity = {
+  file_count: number;
+  line_count: number;
+  token_count: number;
+  char_count: number;
+  main_doc_file_count: number;
+  main_doc_token_count: number;
+  knowledge_file_count: number;
+  knowledge_token_count: number;
+  script_file_count: number;
+  script_token_count: number;
+};
 
 export function InspectorPanel({
   selectedItemType,
@@ -60,8 +74,20 @@ export function InspectorPanel({
   // 标签编辑状态
   const [tags, setTags] = useState("");
   const [tagInput, setTagInput] = useState("");
+  const [isTagDropdownOpen, setIsTagDropdownOpen] = useState(false);
   const tagInputRef = useRef<HTMLInputElement>(null);
   const tagDropdownRef = useRef<HTMLDivElement>(null);
+
+  // 点击外部收起标签下拉面板
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (tagDropdownRef.current && !tagDropdownRef.current.contains(e.target as Node)) {
+        setIsTagDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const allTags = useMemo(() => {
     const tagSet = new Set<string>();
@@ -82,16 +108,23 @@ export function InspectorPanel({
     setIsSkillsExpanded(false);
   }, [selectedRepos]);
 
-  // 当选中唯一技能时，加载该技能的同步记录和标签
+  // 技能容量统计状态
+  const [skillCapacity, setSkillCapacity] = useState<SkillCapacity | null>(null);
+
+  // 当选中唯一技能时，加载该技能的同步记录、标签和容量统计
   useEffect(() => {
     if (selectedItemType === 'skill' && selectedSkills.length === 1) {
       setTags(selectedSkills[0].tags || "");
       invoke<SyncRecord[]>('get_sync_records_for_skill', { skillId: selectedSkills[0].id })
         .then(setSkillSyncRecords)
         .catch(console.error);
+      invoke<SkillCapacity>('get_skill_token_count', { skillId: selectedSkills[0].id })
+        .then(setSkillCapacity)
+        .catch(() => setSkillCapacity(null));
     } else {
       setSkillSyncRecords([]);
       setTags("");
+      setSkillCapacity(null);
     }
   }, [selectedItemType, selectedSkills.length === 1 ? selectedSkills[0].id : null]);
 
@@ -949,6 +982,71 @@ export function InspectorPanel({
             </Tooltip>
           </div>
 
+          {/* 上下文占用 / 规模 */}
+          {skillCapacity && (
+            <div className="mb-4">
+              <div className="flex justify-between items-center mb-1.5">
+                <h4 className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider">上下文占用</h4>
+              </div>
+              <Tooltip
+                content={
+                  <div className="flex flex-col gap-1.5 min-w-[210px]">
+                    <div className="font-medium pb-1 border-b border-white/20 flex justify-between items-center">
+                      <span>上下文与规模</span>
+                      <span className="text-[10px] opacity-80">{skillCapacity.file_count} 个文件 · {skillCapacity.line_count.toLocaleString()} 行</span>
+                    </div>
+                    <div className="flex justify-between items-center text-[11px]">
+                      <span>主文档 ({skillCapacity.main_doc_file_count} 个):</span>
+                      <span>约 {formatTokens(skillCapacity.main_doc_token_count)} Tokens</span>
+                    </div>
+                    {skillCapacity.knowledge_file_count > 0 && (
+                      <div className="flex justify-between items-center text-[11px]">
+                        <span>知识库 ({skillCapacity.knowledge_file_count} 个):</span>
+                        <span>约 {formatTokens(skillCapacity.knowledge_token_count)} Tokens</span>
+                      </div>
+                    )}
+                    {skillCapacity.script_file_count > 0 && (
+                      <div className="flex justify-between items-center text-[11px]">
+                        <span>配套脚本 ({skillCapacity.script_file_count} 个):</span>
+                        <span>约 {formatTokens(skillCapacity.script_token_count)} Tokens</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between items-center text-[11px] font-medium pt-1 border-t border-white/10 mt-1">
+                      <span>总基础占用:</span>
+                      <span>~{formatTokens(skillCapacity.token_count)} Tokens</span>
+                    </div>
+                    <div className="text-[10px] opacity-70 mt-1 italic leading-relaxed">
+                      * 仅统计当前目录及子目录下的文本实体<br />
+                      * 无关依赖已自动过滤 (如 node_modules 等)
+                    </div>
+                  </div>
+                }
+              >
+                <div className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-black/[0.03] border border-black/[0.04] text-[11px] text-[var(--color-muted)] cursor-default select-none hover:bg-black/[0.05] transition-colors">
+                  <span className="flex items-center gap-0.5">
+                    <span className="font-medium text-[var(--foreground)]">{skillCapacity.file_count}</span>
+                    <span>文件</span>
+                  </span>
+                  <span className="text-[10px] text-[var(--color-muted)]/40">•</span>
+                  <span className="flex items-center gap-0.5">
+                    <span className="font-medium text-[var(--foreground)]">
+                      {skillCapacity.line_count >= 10000 
+                        ? `${(skillCapacity.line_count / 10000).toFixed(1)}w` 
+                        : skillCapacity.line_count.toLocaleString()}
+                    </span>
+                    <span>行</span>
+                  </span>
+                  <span className="text-[10px] text-[var(--color-muted)]/40">•</span>
+                  <span className="flex items-center gap-0.5 shrink-0">
+                    <span>约</span>
+                    <span className="font-medium text-[var(--foreground)]">{formatTokens(skillCapacity.token_count)}</span>
+                    <span>Tokens</span>
+                  </span>
+                </div>
+              </Tooltip>
+            </div>
+          )}
+
           {/* 同步至 AI Agent */}
           {agents.length > 0 && (
             <div className="mb-4">
@@ -986,7 +1084,7 @@ export function InspectorPanel({
           {/* 标签 */}
           <div className="mb-4">
             <h4 className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider mb-2">标签</h4>
-            <div className="flex flex-wrap gap-1.5 items-center mb-2">
+            <div className="flex flex-wrap gap-1.5 items-center relative" ref={tagDropdownRef}>
               {tags.split(',').map(t => t.trim()).filter(Boolean).map(tag => (
                 <span key={tag} className="group/tag inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-md bg-[var(--color-primary)]/10 text-[var(--color-primary)] font-medium">
                   #{tag}
@@ -998,71 +1096,103 @@ export function InspectorPanel({
                   </button>
                 </span>
               ))}
-            </div>
-            
-            <div className="relative" ref={tagDropdownRef}>
-              <Search className="absolute left-2 top-1.5 w-3.5 h-3.5 text-[var(--color-muted)] pointer-events-none" />
-              <input
-                ref={tagInputRef}
-                type="text"
-                value={tagInput}
-                onChange={e => setTagInput(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter' || e.key === ',' || e.key === '，') {
-                    e.preventDefault();
-                    const newTag = tagInput.trim().replace(/[,，]/g, '');
-                    if (newTag) {
-                      addTag(newTag, selectedSkill);
-                      setTagInput("");
+
+              {/* 紧跟最后一个标签的添加按钮 */}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsTagDropdownOpen(prev => {
+                    const next = !prev;
+                    if (next) {
+                      setTimeout(() => tagInputRef.current?.focus(), 50);
                     }
-                  } else if (e.key === 'Backspace' && !tagInput) {
-                    const currentTags = tags.split(',').map(t => t.trim()).filter(Boolean);
-                    if (currentTags.length > 0) {
-                      removeTag(currentTags[currentTags.length - 1], selectedSkill);
-                    }
-                  }
+                    return next;
+                  });
                 }}
-                onBlur={() => {
-                  setTimeout(() => {
-                    const newTag = tagInput.trim().replace(/[,，]/g, '');
-                    if (newTag) {
-                      addTag(newTag, selectedSkill);
-                      setTagInput("");
-                    }
-                  }, 150);
-                }}
-                placeholder="搜索或创建标签..."
-                className="w-full text-[12px] pl-7 pr-2 py-1.5 rounded-md border border-transparent bg-black/5 focus:outline-none focus:border-[var(--color-primary)]/50 focus:bg-white transition-colors placeholder:text-[var(--color-muted)]"
-              />
+                className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-md border border-dashed transition-all ${
+                  isTagDropdownOpen 
+                    ? 'border-[var(--color-primary)] text-[var(--color-primary)] bg-[var(--color-primary)]/10 font-medium' 
+                    : 'border-[var(--color-border)] text-[var(--color-muted)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] hover:bg-[var(--color-primary)]/5'
+                }`}
+                title="添加或搜索标签"
+              >
+                <Plus className="w-3 h-3" />
+                <span>标签</span>
+              </button>
               
-              {/* Tags Dropdown */}
-              {(tagInput || document.activeElement === tagInputRef.current) && (
-                <div className="absolute top-full mt-1 left-0 right-0 max-h-48 overflow-y-auto bg-white/95 backdrop-blur-xl border border-[var(--color-border)] rounded-lg shadow-xl z-[100] custom-scrollbar">
-                  {allTags.filter(t => !tags.split(',').map(x => x.trim()).filter(Boolean).includes(t) && t.toLowerCase().includes(tagInput.toLowerCase())).length > 0 ? (
-                    allTags
-                      .filter(t => !tags.split(',').map(x => x.trim()).filter(Boolean).includes(t) && t.toLowerCase().includes(tagInput.toLowerCase()))
-                      .map(tag => (
-                        <button
-                          key={tag}
-                          onMouseDown={(e) => {
-                            e.preventDefault();
-                            addTag(tag, selectedSkill);
+              {/* 浮动的搜索与选择面板 */}
+              {isTagDropdownOpen && (
+                <div className="absolute top-full mt-1.5 left-0 right-0 w-full bg-white/95 backdrop-blur-xl border border-[var(--color-border)] rounded-xl shadow-2xl p-2 z-[100] animate-in fade-in zoom-in-95 duration-150">
+                  <div className="relative mb-1.5">
+                    <Search className="absolute left-2.5 top-2 w-3.5 h-3.5 text-[var(--color-muted)] pointer-events-none" />
+                    <input
+                      ref={tagInputRef}
+                      type="text"
+                      value={tagInput}
+                      onChange={e => setTagInput(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Escape') {
+                          setIsTagDropdownOpen(false);
+                          return;
+                        }
+                        if (e.key === 'Enter' || e.key === ',' || e.key === '，') {
+                          e.preventDefault();
+                          const newTag = tagInput.trim().replace(/[,，]/g, '');
+                          if (newTag) {
+                            addTag(newTag, selectedSkill);
                             setTagInput("");
-                          }}
-                          className="w-full px-3 py-2 text-[12px] text-left hover:bg-black/5 text-[var(--foreground)]"
-                        >
-                          {tag}
-                        </button>
-                      ))
-                  ) : tagInput ? (
-                    <div className="px-3 py-2 text-[12px] text-[var(--color-muted)]">
-                      按回车创建 "{tagInput}"
-                    </div>
-                  ) : (
-                    <div className="px-3 py-2 text-[12px] text-[var(--color-muted)]">
-                      输入文字搜索或创建标签
-                    </div>
-                  )}
+                            setIsTagDropdownOpen(false);
+                          }
+                        }
+                      }}
+                      placeholder="搜索或创建标签..."
+                      className="w-full text-[12px] pl-8 pr-2.5 py-1.5 rounded-lg border border-[var(--color-border)] bg-gray-50/80 focus:bg-white focus:outline-none focus:border-[var(--color-primary)]/50 focus:ring-2 focus:ring-[var(--color-primary)]/10 transition-all placeholder:text-[var(--color-muted)]/70"
+                    />
+                  </div>
+
+                  <div className="max-h-44 overflow-y-auto custom-scrollbar flex flex-col gap-0.5">
+                    {allTags.filter(t => !tags.split(',').map(x => x.trim()).filter(Boolean).includes(t) && t.toLowerCase().includes(tagInput.toLowerCase())).length > 0 ? (
+                      allTags
+                        .filter(t => !tags.split(',').map(x => x.trim()).filter(Boolean).includes(t) && t.toLowerCase().includes(tagInput.toLowerCase()))
+                        .map(tag => (
+                          <button
+                            key={tag}
+                            type="button"
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              addTag(tag, selectedSkill);
+                              setTagInput("");
+                              setIsTagDropdownOpen(false);
+                            }}
+                            className="w-full px-2.5 py-1.5 text-[12px] text-left rounded-md hover:bg-black/5 text-[var(--foreground)] transition-colors flex items-center justify-between group"
+                          >
+                            <span>#{tag}</span>
+                            <Plus className="w-3 h-3 text-[var(--color-muted)] opacity-0 group-hover:opacity-100 transition-opacity" />
+                          </button>
+                        ))
+                    ) : tagInput.trim() ? (
+                      <button
+                        type="button"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          const newTag = tagInput.trim().replace(/[,，]/g, '');
+                          if (newTag) {
+                            addTag(newTag, selectedSkill);
+                            setTagInput("");
+                            setIsTagDropdownOpen(false);
+                          }
+                        }}
+                        className="w-full px-2.5 py-1.5 text-[12px] text-left rounded-md hover:bg-[var(--color-primary)]/10 text-[var(--color-primary)] transition-colors flex items-center gap-1.5 font-medium"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>按回车创建 "{tagInput.trim()}"</span>
+                      </button>
+                    ) : (
+                      <div className="px-2 py-3 text-[11px] text-[var(--color-muted)] text-center">
+                        输入文字搜索或按回车创建
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>

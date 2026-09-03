@@ -204,8 +204,20 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onTitleChange
   
   // Tag editor in inspector
   const [inspectorTagInput, setInspectorTagInput] = useState("");
+  const [isInspectorTagDropdownOpen, setIsInspectorTagDropdownOpen] = useState(false);
   const inspectorTagInputRef = useRef<HTMLInputElement>(null);
   const inspectorTagDropdownRef = useRef<HTMLDivElement>(null);
+
+  // 点击外部收起标签下拉面板
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (inspectorTagDropdownRef.current && !inspectorTagDropdownRef.current.contains(e.target as Node)) {
+        setIsInspectorTagDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // Derived tags for autocomplete
   const allTags = Array.from(new Set(prompts.flatMap(p => p.tags ? p.tags.split(",").map(t => t.trim()).filter(Boolean) : [])));
@@ -887,7 +899,7 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onTitleChange
                   
                   <div>
                     <h4 className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wide mb-2">标签</h4>
-                    <div className="flex flex-wrap gap-1.5 items-center mb-2">
+                    <div className="flex flex-wrap gap-1.5 items-center relative" ref={inspectorTagDropdownRef}>
                       {(p.tags ? p.tags.split(",").map(t => t.trim()).filter(Boolean) : []).map(tag => (
                         <span key={tag} className="group/tag inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-md bg-[var(--color-primary)]/10 text-[var(--color-primary)] font-medium">
                           #{tag}
@@ -899,69 +911,103 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onTitleChange
                           </button>
                         </span>
                       ))}
-                    </div>
-                      
-                    <div className="relative" ref={inspectorTagDropdownRef}>
-                      <Search className="absolute left-2 top-1.5 w-3.5 h-3.5 text-[var(--color-muted)] pointer-events-none" />
-                      <input
-                        ref={inspectorTagInputRef}
-                        type="text"
-                        value={inspectorTagInput}
-                        onChange={e => setInspectorTagInput(e.target.value)}
-                        onKeyDown={e => {
-                          const tagList = p.tags ? p.tags.split(",").map(t => t.trim()).filter(Boolean) : [];
-                          if (e.key === 'Enter' || e.key === ',' || e.key === '，') {
-                            e.preventDefault();
-                            const newTag = inspectorTagInput.trim().replace(/[,，]/g, '');
-                            if (newTag) {
-                              handleInspectorAddTag(p, newTag);
-                              setInspectorTagInput("");
+
+                      {/* 紧随最后一个标签的添加按钮 */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsInspectorTagDropdownOpen(prev => {
+                            const next = !prev;
+                            if (next) {
+                              setTimeout(() => inspectorTagInputRef.current?.focus(), 50);
                             }
-                          } else if (e.key === 'Backspace' && !inspectorTagInput && tagList.length > 0) {
-                            handleInspectorRemoveTag(p, tagList[tagList.length - 1]);
-                          }
+                            return next;
+                          });
                         }}
-                        onBlur={() => {
-                          setTimeout(() => {
-                            const newTag = inspectorTagInput.trim().replace(/[,，]/g, '');
-                            if (newTag) {
-                              handleInspectorAddTag(p, newTag);
-                              setInspectorTagInput("");
-                            }
-                          }, 150);
-                        }}
-                        placeholder="搜索或创建标签..."
-                        className="w-full text-[12px] pl-7 pr-2 py-1.5 rounded-md border border-transparent bg-black/5 focus:outline-none focus:border-[var(--color-primary)]/50 focus:bg-white transition-colors placeholder:text-[var(--color-muted)]"
-                      />
+                        className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-md border border-dashed transition-all ${
+                          isInspectorTagDropdownOpen 
+                            ? 'border-[var(--color-primary)] text-[var(--color-primary)] bg-[var(--color-primary)]/10 font-medium' 
+                            : 'border-[var(--color-border)] text-[var(--color-muted)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] hover:bg-[var(--color-primary)]/5'
+                        }`}
+                        title="添加或搜索标签"
+                      >
+                        <Plus className="w-3 h-3" />
+                        <span>标签</span>
+                      </button>
                       
-                      {/* Tags Dropdown */}
-                      {(inspectorTagInput || document.activeElement === inspectorTagInputRef.current) && (
-                        <div className="absolute top-full mt-1 left-0 right-0 max-h-48 overflow-y-auto bg-white/95 backdrop-blur-xl border border-[var(--color-border)] rounded-lg shadow-xl z-[100] custom-scrollbar">
-                          {allTags.filter(t => !(p.tags ? p.tags.split(",").map(x => x.trim()).filter(Boolean) : []).includes(t) && t.toLowerCase().includes(inspectorTagInput.toLowerCase())).length > 0 ? (
-                            allTags
-                              .filter(t => !(p.tags ? p.tags.split(",").map(x => x.trim()).filter(Boolean) : []).includes(t) && t.toLowerCase().includes(inspectorTagInput.toLowerCase()))
-                              .map(tag => (
-                                <button
-                                  key={tag}
-                                  onMouseDown={(e) => {
-                                    e.preventDefault();
-                                    handleInspectorAddTag(p, tag);
+                      {/* 浮动的搜索与选择面板 */}
+                      {isInspectorTagDropdownOpen && (
+                        <div className="absolute top-full mt-1.5 left-0 right-0 w-full bg-white/95 backdrop-blur-xl border border-[var(--color-border)] rounded-xl shadow-2xl p-2 z-[100] animate-in fade-in zoom-in-95 duration-150">
+                          <div className="relative mb-1.5">
+                            <Search className="absolute left-2.5 top-2 w-3.5 h-3.5 text-[var(--color-muted)] pointer-events-none" />
+                            <input
+                              ref={inspectorTagInputRef}
+                              type="text"
+                              value={inspectorTagInput}
+                              onChange={e => setInspectorTagInput(e.target.value)}
+                              onKeyDown={e => {
+                                if (e.key === 'Escape') {
+                                  setIsInspectorTagDropdownOpen(false);
+                                  return;
+                                }
+                                if (e.key === 'Enter' || e.key === ',' || e.key === '，') {
+                                  e.preventDefault();
+                                  const newTag = inspectorTagInput.trim().replace(/[,，]/g, '');
+                                  if (newTag) {
+                                    handleInspectorAddTag(p, newTag);
                                     setInspectorTagInput("");
-                                  }}
-                                  className="w-full px-3 py-2 text-[12px] text-left hover:bg-black/5 text-[var(--foreground)]"
-                                >
-                                  {tag}
-                                </button>
-                              ))
-                          ) : inspectorTagInput ? (
-                            <div className="px-3 py-2 text-[12px] text-[var(--color-muted)]">
-                              按回车创建 "{inspectorTagInput}"
-                            </div>
-                          ) : (
-                            <div className="px-3 py-2 text-[12px] text-[var(--color-muted)]">
-                              输入文字搜索或创建标签
-                            </div>
-                          )}
+                                    setIsInspectorTagDropdownOpen(false);
+                                  }
+                                }
+                              }}
+                              placeholder="搜索或创建标签..."
+                              className="w-full text-[12px] pl-8 pr-2.5 py-1.5 rounded-lg border border-[var(--color-border)] bg-gray-50/80 focus:bg-white focus:outline-none focus:border-[var(--color-primary)]/50 focus:ring-2 focus:ring-[var(--color-primary)]/10 transition-all placeholder:text-[var(--color-muted)]/70"
+                            />
+                          </div>
+
+                          <div className="max-h-44 overflow-y-auto custom-scrollbar flex flex-col gap-0.5">
+                            {allTags.filter(t => !(p.tags ? p.tags.split(",").map(x => x.trim()).filter(Boolean) : []).includes(t) && t.toLowerCase().includes(inspectorTagInput.toLowerCase())).length > 0 ? (
+                              allTags
+                                .filter(t => !(p.tags ? p.tags.split(",").map(x => x.trim()).filter(Boolean) : []).includes(t) && t.toLowerCase().includes(inspectorTagInput.toLowerCase()))
+                                .map(tag => (
+                                  <button
+                                    key={tag}
+                                    type="button"
+                                    onMouseDown={(e) => {
+                                      e.preventDefault();
+                                      handleInspectorAddTag(p, tag);
+                                      setInspectorTagInput("");
+                                      setIsInspectorTagDropdownOpen(false);
+                                    }}
+                                    className="w-full px-2.5 py-1.5 text-[12px] text-left rounded-md hover:bg-black/5 text-[var(--foreground)] transition-colors flex items-center justify-between group"
+                                  >
+                                    <span>#{tag}</span>
+                                    <Plus className="w-3 h-3 text-[var(--color-muted)] opacity-0 group-hover:opacity-100 transition-opacity" />
+                                  </button>
+                                ))
+                            ) : inspectorTagInput.trim() ? (
+                              <button
+                                type="button"
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  const newTag = inspectorTagInput.trim().replace(/[,，]/g, '');
+                                  if (newTag) {
+                                    handleInspectorAddTag(p, newTag);
+                                    setInspectorTagInput("");
+                                    setIsInspectorTagDropdownOpen(false);
+                                  }
+                                }}
+                                className="w-full px-2.5 py-1.5 text-[12px] text-left rounded-md hover:bg-[var(--color-primary)]/10 text-[var(--color-primary)] transition-colors flex items-center gap-1.5 font-medium"
+                              >
+                                <Plus className="w-3.5 h-3.5" />
+                                <span>按回车创建 "{inspectorTagInput.trim()}"</span>
+                              </button>
+                            ) : (
+                              <div className="px-2 py-3 text-[11px] text-[var(--color-muted)] text-center">
+                                输入文字搜索或按回车创建
+                              </div>
+                            )}
+                          </div>
                         </div>
                       )}
                     </div>

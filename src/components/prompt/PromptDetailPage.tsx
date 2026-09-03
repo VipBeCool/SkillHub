@@ -343,7 +343,7 @@ export function PromptDetailPage({ promptId, isEditingInit = false, onSaveSucces
       </div>
 
       {/* 主体内容区 */}
-      <div className="flex-1 overflow-y-auto p-10 relative flex flex-col">
+      <div className="flex-1 overflow-y-auto pt-6 px-10 pb-10 relative flex flex-col">
         <div className="max-w-4xl mx-auto w-full flex flex-col h-full">
           {isEditing ? (
             <div className="flex flex-col space-y-5 flex-1 pb-10 animate-in fade-in duration-300">
@@ -446,12 +446,11 @@ export function PromptDetailPage({ promptId, isEditingInit = false, onSaveSucces
           ) : (
             // 详情模式
             <div className="flex flex-col flex-1 pb-10 animate-in fade-in duration-300">
-              <div className="mb-6 space-y-3">
-                <h2 className="text-[28px] font-bold text-[var(--foreground)] tracking-tight leading-tight">{prompt?.title}</h2>
-                {prompt?.description && (
-                  <p className="text-[15px] text-[var(--color-muted)] leading-relaxed max-w-3xl">{prompt.description}</p>
-                )}
-              </div>
+              {prompt?.description && (
+                <div className="mb-4">
+                  <p className="text-[14px] text-[var(--color-muted)] leading-relaxed max-w-3xl">{prompt.description}</p>
+                </div>
+              )}
 
               <div className="flex-1 flex flex-col bg-white border border-[var(--color-border)] rounded-2xl shadow-sm overflow-hidden flex-shrink-0 min-h-[300px]">
                 {/* 内容工具栏 */}
@@ -544,7 +543,7 @@ export function PromptDetailPage({ promptId, isEditingInit = false, onSaveSucces
                 )}
 
                 {/* 内容区域 */}
-                <div className="flex-1 p-6 overflow-y-auto relative" ref={contentScrollRef} onScroll={handleScroll}>
+                <div className="flex-1 pt-2 px-6 pb-6 overflow-y-auto relative" ref={contentScrollRef} onScroll={handleScroll}>
                   {displayedContent ? (
                     <div className="prose prose-sm max-w-none text-[var(--foreground)] prose-p:leading-relaxed prose-pre:bg-gray-50 prose-pre:border prose-pre:border-gray-200 prose-pre:rounded-xl">
                       <ReactMarkdown 

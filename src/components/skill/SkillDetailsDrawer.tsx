@@ -365,7 +365,7 @@ export function SkillDetailsDrawer({ skill, isOpen, onClose, onGeneratePrompt }:
                         {capacity.line_count.toLocaleString()} 行内容
                       </span>
                       <span className="text-[10px] text-[var(--color-muted)]">•</span>
-                      <span className="text-[10px] font-medium text-blue-500 bg-blue-500/10 px-1.5 py-0.5 rounded cursor-help">
+                      <span className="text-xs font-medium text-[var(--foreground)] opacity-70">
                         ~{formatTokens(capacity.token_count)} Tokens
                       </span>
                     </div>

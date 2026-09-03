@@ -1,13 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { FolderGit2, HardDrive, Edit2, Save, Loader2, Copy, Folder, Sparkles, Languages, FileText, List, Star } from "lucide-react";
+import { FolderGit2, HardDrive, Edit2, Save, Loader2, Sparkles, Languages, Star } from "lucide-react";
 import { Tooltip } from '../ui/Tooltip';
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
 import { showToast } from '../ui/Toast';
 import { franc } from "franc-min";
-import { formatTokens } from "../../utils";
 
 const extractText = (children: any): string => {
   if (typeof children === 'string') return children;
@@ -60,14 +59,12 @@ export function SkillDetailPage({ skillId, onGeneratePrompt }: SkillDetailPagePr
 
   // 解析 Markdown 提取标题
   useEffect(() => {
-    if (!content) {
+    if (!displayedContent) {
       setHeadings([]);
       return;
     }
-    // 移除 frontmatter
-    const cleanContent = content.replace(/^\s*---\r?\n[\s\S]*?\r?\n---\r?\n?/, '');
     // 移除代码块，防止将代码内的注释或内容当做标题
-    const withoutCodeBlocks = cleanContent.replace(/```[\s\S]*?```/g, '').replace(/~~~[\s\S]*?~~~/g, '');
+    const withoutCodeBlocks = displayedContent.replace(/```[\s\S]*?```/g, '').replace(/~~~[\s\S]*?~~~/g, '');
     const regex = /^(#{1,6})\s+(.+)$/gm;
     let match;
     const newHeadings = [];
@@ -144,40 +141,28 @@ export function SkillDetailPage({ skillId, onGeneratePrompt }: SkillDetailPagePr
 
   // 翻译状态
   const [detectedLang, setDetectedLang] = useState<string>("");
-  const [translationText, setTranslationText] = useState("");
+  const [translations, setTranslations] = useState<Record<string, string>>({});
   const [isTranslating, setIsTranslating] = useState(false);
-  const [targetLang, setTargetLang] = useState("zh-CN");
-  const [isTranslationVisible, setIsTranslationVisible] = useState(true);
+  const [targetLang, setTargetLang] = useState("original");
 
-  type SkillCapacity = {
-    file_count: number;
-    line_count: number;
-    token_count: number;
-    char_count: number;
-    main_doc_file_count: number;
-    main_doc_token_count: number;
-    knowledge_file_count: number;
-    knowledge_token_count: number;
-    script_file_count: number;
-    script_token_count: number;
-  };
-  const [capacity, setCapacity] = useState<SkillCapacity | null>(null);
+  const displayedContent = targetLang === "original" 
+    ? (content ? content.replace(/^\s*---\r?\n[\s\S]*?\r?\n---\r?\n?/, '') : "") 
+    : (translations[targetLang] || (content ? content.replace(/^\s*---\r?\n[\s\S]*?\r?\n---\r?\n?/, '') : ""));
+
 
   useEffect(() => {
     if (content) {
       const cleanText = content.replace(/^\s*---\r?\n[\s\S]*?\r?\n---\r?\n?/, '');
       const langCode = franc(cleanText);
       setDetectedLang(langCode);
-      setTranslationText("");
-      setTargetLang(langCode === 'cmn' ? 'en' : 'zh-CN');
+      // setTargetLang("original"); // keep default targetLang to original
     } else {
       setDetectedLang("");
-      setTranslationText("");
     }
   }, [content]);
 
   const handleTranslate = async () => {
-    if (!content) return;
+    if (!content || targetLang === "original") return;
     setIsTranslating(true);
     try {
       const cleanText = content.replace(/^\s*---\r?\n[\s\S]*?\r?\n---\r?\n?/, '');
@@ -185,8 +170,7 @@ export function SkillDetailPage({ skillId, onGeneratePrompt }: SkillDetailPagePr
         text: cleanText,
         targetLang: targetLang
       });
-      setTranslationText(res);
-      setIsTranslationVisible(true);
+      setTranslations(prev => ({ ...prev, [targetLang]: res }));
     } catch (e) {
       showToast("翻译失败", "error");
       console.error(e);
@@ -199,7 +183,6 @@ export function SkillDetailPage({ skillId, onGeneratePrompt }: SkillDetailPagePr
     if (skill) {
       const loadContent = async () => {
         setLoading(true);
-        setCapacity(null);
         try {
           if (skill.source_type === 'online') {
             setFiles([]);
@@ -224,14 +207,6 @@ export function SkillDetailPage({ skillId, onGeneratePrompt }: SkillDetailPagePr
           setContent(`*加载内容失败： ${skill.name}*\n\n\`\`\`\n${e}\n\`\`\``);
         } finally {
           setLoading(false);
-        }
-
-        try {
-          const capacityData = await invoke<SkillCapacity>("get_skill_token_count", { skillId: skill.id });
-          setCapacity(capacityData);
-        } catch (e) {
-          console.error("Token count failed:", e);
-          setCapacity(null);
         }
       };
       loadContent();
@@ -276,121 +251,61 @@ export function SkillDetailPage({ skillId, onGeneratePrompt }: SkillDetailPagePr
 
   return (
     <div className="flex-1 flex flex-col h-full min-w-0 bg-white relative">
-      <div className="flex items-start justify-between px-8 py-6 border-b border-[var(--color-border)] shrink-0 gap-4">
-        <div className="flex items-start space-x-3 min-w-0 flex-1">
-          <div className={`shrink-0 w-12 h-12 rounded-xl flex items-center justify-center ${skill.source_type === 'github' ? 'bg-[#024ad8]/10 text-[#024ad8]' : 'bg-fuchsia-500/10 text-fuchsia-600'}`}>
-            {skill.source_type === 'github' ? <FolderGit2 className="w-6 h-6" /> : <HardDrive className="w-6 h-6" />}
+      <div className="flex items-center justify-between px-8 py-3.5 border-b border-[var(--color-border)] shrink-0 gap-4">
+        <div className="flex items-center space-x-3 min-w-0 flex-1">
+          <div className={`shrink-0 w-10 h-10 rounded-xl flex items-center justify-center ${skill.source_type === 'github' ? 'bg-[#024ad8]/10 text-[#024ad8]' : 'bg-fuchsia-500/10 text-fuchsia-600'}`}>
+            {skill.source_type === 'github' ? <FolderGit2 className="w-5 h-5" /> : <HardDrive className="w-5 h-5" />}
           </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 mb-2">
-              <h2 className="text-2xl font-medium text-[var(--foreground)] leading-none truncate">{skill.name}</h2>
-              <button
-                onClick={async () => {
-                  try {
-                    await invoke("toggle_skill_favorite", { id: skill.id });
-                    setSkill({ ...skill, is_favorite: !skill.is_favorite });
-                  } catch (e) {
-                    showToast(`操作失败: ${e}`, "error");
-                  }
-                }}
-                className={`p-1 rounded-md transition-colors ${skill.is_favorite ? 'text-yellow-500' : 'text-[var(--color-muted)] hover:text-yellow-500 hover:bg-yellow-50'}`}
-              >
-                <Star className={`w-5 h-5 ${skill.is_favorite ? 'fill-current' : ''}`} />
-              </button>
-            </div>
-            <div className="flex items-center space-x-1.5 mb-2">
-              <Tooltip content={skill.local_path || ""} side="bottom">
-                <p className="text-xs text-[var(--color-muted)] truncate max-w-[400px] cursor-default">{skill.local_path}</p>
-              </Tooltip>
-              {skill.local_path && (
-                <div className="flex items-center space-x-1 shrink-0">
-                  <Tooltip content="在本地打开">
-                    <button
-                      onClick={async (e) => {
-                        e.stopPropagation();
-                        try {
-                          await invoke("reveal_in_finder", { path: skill.local_path });
-                        } catch (err) {
-                          console.error("Failed to open folder:", err);
-                        }
-                      }}
-                      className="p-1 rounded hover:bg-black/5 text-[var(--color-muted)] hover:text-[var(--foreground)] transition-colors"
-                    >
-                      <Folder size={14} />
-                    </button>
-                  </Tooltip>
-                  <Tooltip content="复制路径">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        navigator.clipboard.writeText(skill.local_path);
-                        showToast("skill文件路径已复制到剪切板");
-                        invoke('increment_skill_use_count', { id: skill.id });
-                      }}
-                      className="p-1 rounded hover:bg-black/5 text-[var(--color-muted)] hover:text-[var(--foreground)] transition-colors"
-                    >
-                      <Copy size={14} />
-                    </button>
-                  </Tooltip>
-                </div>
-              )}
-            </div>
-            
-            {/* Capacity Display */}
-            {capacity && (
-              <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-[var(--color-border)]/50">
-                <Tooltip
-                  content={
-                    <div className="flex flex-col gap-1.5 min-w-[200px]">
-                      <div className="font-medium pb-1 border-b border-white/20">上下文占用</div>
-                      <div className="flex justify-between items-center text-[11px]">
-                        <span>主文档 ({capacity.main_doc_file_count} 个):</span>
-                        <span>约 {formatTokens(capacity.main_doc_token_count)} Tokens</span>
-                      </div>
-                      {capacity.knowledge_file_count > 0 && (
-                        <div className="flex justify-between items-center text-[11px]">
-                          <span>知识库 ({capacity.knowledge_file_count} 个):</span>
-                          <span>约 {formatTokens(capacity.knowledge_token_count)} Tokens</span>
-                        </div>
-                      )}
-                      {capacity.script_file_count > 0 && (
-                        <div className="flex justify-between items-center text-[11px]">
-                          <span>配套脚本 ({capacity.script_file_count} 个):</span>
-                          <span>约 {formatTokens(capacity.script_token_count)} Tokens</span>
-                        </div>
-                      )}
-                      <div className="flex justify-between items-center text-[11px] font-medium pt-1 border-t border-white/10 mt-1">
-                        <span>总基础占用:</span>
-                        <span>~{formatTokens(capacity.token_count)} Tokens</span>
-                      </div>
-                      <div className="text-[10px] opacity-70 mt-1 italic leading-relaxed">
-                        * 仅统计当前目录及子目录下的文本实体<br />
-                        * 无关依赖已自动过滤 (如 node_modules 等)
-                      </div>
-                    </div>
-                  }
-                >
-                  <div className="flex flex-wrap items-center gap-2 cursor-help hover:opacity-80 transition-opacity">
-                    <span className="text-xs font-medium text-[var(--foreground)] opacity-70 flex items-center">
-                      <FileText className="w-3.5 h-3.5 mr-1" />
-                      {capacity.file_count} 个文本文件
-                    </span>
-                    <span className="text-[10px] text-[var(--color-muted)]">•</span>
-                    <span className="text-xs font-medium text-[var(--foreground)] opacity-70 flex items-center">
-                      <List className="w-3.5 h-3.5 mr-1" />
-                      {capacity.line_count.toLocaleString()} 行内容
-                    </span>
-                    <span className="text-[10px] text-[var(--color-muted)]">•</span>
-                    <span className="text-[11px] font-medium text-blue-500 bg-blue-500/10 px-1.5 py-0.5 rounded cursor-help">
-                      ~{formatTokens(capacity.token_count)} Tokens
-                    </span>
-                  </div>
-                </Tooltip>
-              </div>
-            )}
+          <div className="flex items-center gap-2 min-w-0">
+            <h2 className="text-xl font-semibold text-[var(--foreground)] leading-none truncate">{skill.name}</h2>
+            <button
+              onClick={async () => {
+                try {
+                  await invoke("toggle_skill_favorite", { id: skill.id });
+                  setSkill({ ...skill, is_favorite: !skill.is_favorite });
+                } catch (e) {
+                  showToast(`操作失败: ${e}`, "error");
+                }
+              }}
+              className={`p-1 rounded-md transition-colors ${skill.is_favorite ? 'text-yellow-500' : 'text-[var(--color-muted)] hover:text-yellow-500 hover:bg-yellow-50'}`}
+            >
+              <Star className={`w-4 h-4 ${skill.is_favorite ? 'fill-current' : ''}`} />
+            </button>
           </div>
         </div>
-        <div className="flex items-center space-x-1 shrink-0 mt-0.5">
+        <div className="flex items-center space-x-1.5 shrink-0">
+          {/* 翻译工具小胶囊：移至顶栏右侧 */}
+          {!isEditing && detectedLang && (
+            <div className="flex items-center bg-black/5 hover:bg-black/[0.08] rounded-lg p-0.5 transition-colors mr-1">
+              <Tooltip content={`文档源语言: ${detectedLang === 'cmn' ? '中文' : detectedLang === 'eng' ? '英文' : detectedLang}`}>
+                <select
+                  value={targetLang}
+                  onChange={(e) => setTargetLang(e.target.value)}
+                  className="h-7 pl-2 pr-1 text-[12px] bg-transparent border-none focus:outline-none text-[var(--foreground)] font-medium cursor-pointer"
+                >
+                  <option value="original">🌐 原文</option>
+                  <option value="zh-CN">🇨🇳 中文</option>
+                  <option value="en">🇺🇸 English</option>
+                  <option value="ja">🇯🇵 日本語</option>
+                  <option value="ko">🇰🇷 한국어</option>
+                  <option value="fr">🇫🇷 Français</option>
+                  <option value="es">🇪🇸 Español</option>
+                  <option value="de">🇩🇪 Deutsch</option>
+                  <option value="ru">🇷🇺 Русский</option>
+                </select>
+              </Tooltip>
+              <div className="w-[1px] h-3.5 bg-black/10 mx-0.5" />
+              <button
+                onClick={handleTranslate}
+                disabled={isTranslating || targetLang === "original"}
+                title={targetLang === "original" ? "请先选择目标语言后点击翻译" : "翻译此文档"}
+                className="w-7 h-7 rounded-md hover:bg-white flex items-center justify-center text-[var(--color-muted)] hover:text-[var(--color-primary)] disabled:opacity-30 transition-all shadow-none hover:shadow-xs"
+              >
+                {isTranslating ? <Loader2 size={13} className="animate-spin" /> : <Languages size={13} />}
+              </button>
+            </div>
+          )}
+
           <Tooltip content="智能引用提示词">
             <button
               onClick={() => onGeneratePrompt?.(skill)}
@@ -455,7 +370,7 @@ export function SkillDetailPage({ skillId, onGeneratePrompt }: SkillDetailPagePr
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto p-10 relative flex flex-col" ref={contentScrollRef} onScroll={handleScroll}>
+      <div className="flex-1 overflow-y-auto pt-6 px-10 pb-10 relative flex flex-col" ref={contentScrollRef} onScroll={handleScroll}>
         {(!loading && !isEditing && files.length > 1) && (
           <div className="mb-8 shrink-0 w-full overflow-hidden">
             <div className="flex space-x-1.5 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] w-full p-1 bg-black/5 rounded-lg border border-black/5">
@@ -503,75 +418,6 @@ export function SkillDetailPage({ skillId, onGeneratePrompt }: SkillDetailPagePr
           </div>
         ) : (
           <div className="max-w-4xl mx-auto w-full">
-            {/* 翻译模块 */}
-            {detectedLang && (
-              <div className="flex items-center gap-3 mb-6 pb-4 border-b border-[var(--color-border)]/50">
-                <div className="flex items-center gap-1.5 text-[var(--color-muted)]">
-                  <Languages className="w-4 h-4" />
-                  <span className="text-xs font-medium">语言: {detectedLang === 'cmn' ? '中文' : detectedLang === 'eng' ? '英文' : detectedLang}</span>
-                </div>
-                
-                <div className="flex items-center overflow-hidden bg-white border border-[var(--color-border)] rounded-lg shadow-sm">
-                  <select
-                    value={targetLang}
-                    onChange={(e) => {
-                      setTargetLang(e.target.value);
-                      setTranslationText(""); // 切换语言时重置翻译
-                    }}
-                    className="h-[28px] pl-2 pr-6 text-[12px] bg-transparent border-none focus:outline-none text-gray-600 appearance-none cursor-pointer"
-                  >
-                    <option value="zh-CN">🇨🇳 中文</option>
-                    <option value="en">🇺🇸 English</option>
-                    <option value="ja">🇯🇵 日本語</option>
-                    <option value="ko">🇰🇷 한국어</option>
-                    <option value="fr">🇫🇷 Français</option>
-                    <option value="es">🇪🇸 Español</option>
-                    <option value="ru">🇷🇺 Русский</option>
-                  </select>
-                  <div className="w-[1px] h-4 bg-gray-200"></div>
-                  <button
-                    onClick={() => {
-                      if (!translationText) {
-                        handleTranslate();
-                      } else {
-                        setIsTranslationVisible(!isTranslationVisible);
-                      }
-                    }}
-                    disabled={isTranslating}
-                    title={translationText ? (isTranslationVisible ? "收起" : "展开") : "翻译此文档"}
-                    className="px-3 h-[28px] bg-white hover:bg-gray-50 disabled:bg-gray-50 flex items-center justify-center text-gray-600 disabled:text-gray-400 hover:text-[var(--color-primary)] transition-colors"
-                  >
-                    {isTranslating ? <Loader2 size={14} className="animate-spin" /> : <Languages size={14} />}
-                  </button>
-                  {translationText && isTranslationVisible && (
-                    <>
-                      <div className="w-[1px] h-4 bg-gray-200"></div>
-                      <button
-                        onClick={() => {
-                          navigator.clipboard.writeText(translationText);
-                          showToast("翻译结果已复制到剪切板");
-                        }}
-                        title="复制翻译"
-                        className="px-3 h-[28px] bg-white hover:bg-gray-50 flex items-center justify-center text-gray-600 hover:text-[var(--color-primary)] transition-colors"
-                      >
-                        <Copy size={14} />
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
-            )}
-            
-            {translationText && isTranslationVisible && (
-              <div className="mb-6 bg-gray-50/50 rounded-xl p-6 border border-[var(--color-border)]">
-                <div className="prose max-w-none prose-headings:text-left prose-a:text-[#024ad8] prose-p:leading-relaxed">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
-                    {translationText}
-                  </ReactMarkdown>
-                </div>
-              </div>
-            )}
-            
             <div className="prose max-w-none prose-headings:text-left prose-a:text-[#024ad8] prose-p:leading-relaxed pb-12">
               <ReactMarkdown 
                 remarkPlugins={[remarkGfm]} 
@@ -585,7 +431,7 @@ export function SkillDetailPage({ skillId, onGeneratePrompt }: SkillDetailPagePr
                   h6: HeadingRenderer(6),
                 }}
               >
-                {content ? content.replace(/^\s*---\r?\n[\s\S]*?\r?\n---\r?\n?/, '') : ""}
+                {displayedContent}
               </ReactMarkdown>
             </div>
           </div>
