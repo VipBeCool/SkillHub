@@ -64,6 +64,15 @@ export function ContextMenu({ items, position, onClose }: ContextMenuProps) {
 
   const finalPos = adjustedPos || position;
 
+  // 智能过滤连续或首尾多余的分割线
+  const cleanedItems = items.filter((item, index, arr) => {
+    if (!item.separator) return true;
+    if (index === 0) return false;
+    if (arr[index - 1].separator) return false;
+    if (index === arr.length - 1) return false;
+    return true;
+  });
+
   return (
     <div
       ref={menuRef}
@@ -71,7 +80,7 @@ export function ContextMenu({ items, position, onClose }: ContextMenuProps) {
       style={{ left: finalPos.x, top: finalPos.y }}
       onClick={(e) => e.stopPropagation()}
     >
-      {items.map((item) => {
+      {cleanedItems.map((item) => {
         if (item.separator) {
           return <div key={item.id} className="my-1 mx-2 border-t border-black/8" />;
         }

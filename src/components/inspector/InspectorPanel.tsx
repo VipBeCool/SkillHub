@@ -362,7 +362,7 @@ export function InspectorPanel({
     const onlineCount = allRepos.filter(r => r.source_type === 'online').length;
 
     return (
-      <div className="w-64 border-l border-[var(--color-border)] bg-transparent flex flex-col shrink-0 h-full overflow-hidden">
+      <div className="w-64 border-l border-[var(--color-border)] bg-transparent flex flex-col shrink-0 h-full overflow-hidden inspector-container">
         {/* 头部 */}
         <div 
           data-tauri-drag-region
@@ -375,7 +375,7 @@ export function InspectorPanel({
           {toggleButton}
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="flex-1 overflow-y-auto p-4 inspector-scroll-area">
           {/* 库名称 */}
           <div className="mb-5">
             <div className="flex items-center space-x-2 mb-1">
@@ -562,7 +562,7 @@ export function InspectorPanel({
     // online 就只有一个技能，取其 online_url
     const onlineUrl = isOnline ? (selectedRepo.skills[0]?.online_url || selectedRepo.path) : null;
     return (
-      <div className="w-64 border-l border-[var(--color-border)] bg-transparent flex flex-col shrink-0 h-full overflow-hidden">
+      <div className="w-64 border-l border-[var(--color-border)] bg-transparent flex flex-col shrink-0 h-full overflow-hidden inspector-container">
         {/* 头部 */}
         <div 
           data-tauri-drag-region
@@ -575,7 +575,7 @@ export function InspectorPanel({
           {toggleButton}
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="flex-1 overflow-y-auto p-4 inspector-scroll-area">
           {/* 仓库名与图标及同步按钮 */}
           <div className="flex items-center space-x-2.5 mb-4">
             <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
@@ -760,7 +760,7 @@ export function InspectorPanel({
                 </button>
               )}
             </div>
-            <div className="space-y-0.5 max-h-[300px] overflow-y-auto">
+            <div className="space-y-0.5 max-h-[300px] overflow-y-auto inspector-scroll-area">
               {(isSkillsExpanded ? selectedRepo.skills : selectedRepo.skills.slice(0, 5)).map(skill => (
                 <button
                   key={skill.id}
@@ -865,7 +865,7 @@ export function InspectorPanel({
   // ========== 多选模式 (技能) ==========
   if (selectedItemType === 'skill' && selectedSkills.length > 1) {
     return (
-      <div className="w-64 border-l border-[var(--color-border)] bg-transparent flex flex-col shrink-0 h-full overflow-hidden">
+      <div className="w-64 border-l border-[var(--color-border)] bg-transparent flex flex-col shrink-0 h-full overflow-hidden inspector-container">
         <div 
           data-tauri-drag-region
           onPointerDown={(e) => { if (e.target === e.currentTarget) getCurrentWindow().startDragging(); }}
@@ -892,7 +892,7 @@ export function InspectorPanel({
     const selectedSkill = selectedSkills[0];
     const parentRepo = allRepos.find(r => r.skills.some(s => s.id === selectedSkill.id));
     return (
-      <div className="w-64 border-l border-[var(--color-border)] bg-transparent flex flex-col shrink-0 h-full overflow-hidden">
+      <div className="w-64 border-l border-[var(--color-border)] bg-transparent flex flex-col shrink-0 h-full overflow-hidden inspector-container">
         {/* 头部 */}
         <div 
           data-tauri-drag-region
@@ -905,7 +905,7 @@ export function InspectorPanel({
           {toggleButton}
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="flex-1 overflow-y-auto p-4 inspector-scroll-area">
           {/* 技能名 */}
           <div className="mb-4">
             <div className="flex items-center space-x-2.5 mb-2">
@@ -1084,41 +1084,67 @@ export function InspectorPanel({
           {/* 标签 */}
           <div className="mb-4">
             <h4 className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider mb-2">标签</h4>
-            <div className="flex flex-wrap gap-1.5 items-center relative" ref={tagDropdownRef}>
-              {tags.split(',').map(t => t.trim()).filter(Boolean).map(tag => (
-                <span key={tag} className="group/tag inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-md bg-[var(--color-primary)]/10 text-[var(--color-primary)] font-medium">
-                  #{tag}
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); removeTag(tag, selectedSkill); }}
-                    className="opacity-0 group-hover/tag:opacity-100 hover:text-red-500 transition-all"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </span>
-              ))}
+            <div className="relative" ref={tagDropdownRef}>
+              {tags.split(',').map(t => t.trim()).filter(Boolean).length === 0 ? (
+                /* 无标签时：展示全宽按钮 */
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsTagDropdownOpen(prev => {
+                      const next = !prev;
+                      if (next) {
+                        setTimeout(() => tagInputRef.current?.focus(), 50);
+                      }
+                      return next;
+                    });
+                  }}
+                  className={`w-full py-1.5 px-3 rounded-md border text-[12px] flex items-center justify-center gap-1.5 transition-all ${
+                    isTagDropdownOpen
+                      ? 'bg-[var(--color-primary)]/5 border-[var(--color-primary)]/40 text-[var(--color-primary)] font-medium'
+                      : 'bg-black/5 hover:bg-black/10 border-transparent text-[var(--color-muted)] hover:text-[var(--foreground)]'
+                  }`}
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>添加标签</span>
+                </button>
+              ) : (
+                /* 拥有1个及以上标签时：展示标签胶囊并在末尾追加小按钮 */
+                <div className="flex flex-wrap gap-1.5 items-center">
+                  {tags.split(',').map(t => t.trim()).filter(Boolean).map(tag => (
+                    <span key={tag} className="group/tag h-6 inline-flex items-center gap-1 text-[11.5px] px-2.5 rounded-md bg-[var(--color-primary)]/10 text-[var(--color-primary)] font-medium border border-transparent box-border">
+                      #{tag}
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); removeTag(tag, selectedSkill); }}
+                        className="opacity-0 group-hover/tag:opacity-100 hover:text-red-500 transition-all"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  ))}
 
-              {/* 紧跟最后一个标签的添加按钮 */}
-              <button
-                type="button"
-                onClick={() => {
-                  setIsTagDropdownOpen(prev => {
-                    const next = !prev;
-                    if (next) {
-                      setTimeout(() => tagInputRef.current?.focus(), 50);
-                    }
-                    return next;
-                  });
-                }}
-                className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-md border border-dashed transition-all ${
-                  isTagDropdownOpen 
-                    ? 'border-[var(--color-primary)] text-[var(--color-primary)] bg-[var(--color-primary)]/10 font-medium' 
-                    : 'border-[var(--color-border)] text-[var(--color-muted)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] hover:bg-[var(--color-primary)]/5'
-                }`}
-                title="添加或搜索标签"
-              >
-                <Plus className="w-3 h-3" />
-                <span>标签</span>
-              </button>
+                  {/* 紧随最后一个标签的添加按钮：极简 + 号图标按钮，极致省空间避免换行 */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsTagDropdownOpen(prev => {
+                        const next = !prev;
+                        if (next) {
+                          setTimeout(() => tagInputRef.current?.focus(), 50);
+                        }
+                        return next;
+                      });
+                    }}
+                    className={`h-6 w-6 inline-flex items-center justify-center rounded-md border border-dashed box-border shrink-0 transition-all ${
+                      isTagDropdownOpen 
+                        ? 'border-[var(--color-primary)] text-[var(--color-primary)] bg-[var(--color-primary)]/10 font-medium' 
+                        : 'border-[var(--color-border)] text-[var(--color-muted)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] hover:bg-[var(--color-primary)]/5'
+                    }`}
+                    title="添加标签"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
               
               {/* 浮动的搜索与选择面板 */}
               {isTagDropdownOpen && (

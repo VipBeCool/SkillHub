@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Loader2, Edit2, Save, X, Type, FileText, Tag, Folder, Copy, Languages } from "lucide-react";
+import { Loader2, Edit2, Save, X, FileText, Folder, Copy, Languages, Star, ChevronDown } from "lucide-react";
 import { Tooltip } from '../ui/Tooltip';
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -65,7 +65,7 @@ export function PromptDetailPage({ promptId, isEditingInit = false, onSaveSucces
   const [activeId, setActiveId] = useState<string>("");
   const [isTocHovered, setIsTocHovered] = useState(false);
 
-  const displayedContent = targetLang === "original" ? prompt?.content : (translations[targetLang] || prompt?.content);
+  const displayedContent = targetLang === "original" ? (prompt?.content || "") : (translations[targetLang] || prompt?.content || "");
 
   // 解析 Markdown 提取标题
   useEffect(() => {
@@ -256,6 +256,7 @@ export function PromptDetailPage({ promptId, isEditingInit = false, onSaveSucces
           group_id: groupId || undefined,
           tags: tags.trim() || undefined,
         });
+        window.dispatchEvent(new CustomEvent('skillhub:prompt-tags-changed'));
       } else {
         // 新建
         await invoke("create_prompt", {
@@ -264,7 +265,7 @@ export function PromptDetailPage({ promptId, isEditingInit = false, onSaveSucces
           tags: tags.trim() || null, variables: null,
         });
         showToast("已创建", "success");
-        // 通知外部（例如 App.tsx）刷新列表并可能关闭这个"新建"标签
+        window.dispatchEvent(new CustomEvent('skillhub:prompt-tags-changed'));
         if (onSaveSuccess) onSaveSuccess();
       }
     } catch (e) {
@@ -276,48 +277,120 @@ export function PromptDetailPage({ promptId, isEditingInit = false, onSaveSucces
 
   if (loading) {
     return (
-      <div className="flex-1 flex items-center justify-center h-full">
+      <div className="flex-1 flex items-center justify-center h-full bg-white">
         <Loader2 className="w-8 h-8 text-[var(--color-primary)] animate-spin opacity-50" />
       </div>
     );
   }
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-white relative">
-      {/* 顶部操作栏 */}
-      <div className="h-14 border-b border-[var(--color-border)] px-8 flex items-center justify-between shrink-0 bg-white sticky top-0 z-10">
-        <div className="flex items-center space-x-3">
-          <FileText className="w-5 h-5 text-[var(--color-primary)] opacity-80" />
-          <h1 className="text-[15px] font-medium tracking-tight text-[var(--foreground)] truncate max-w-md">
-            {isEditing ? (prompt ? "编辑提示词" : "新建提示词") : (prompt?.title || "提示词详情")}
-          </h1>
+    <div className="flex-1 flex flex-col h-full min-w-0 bg-white relative">
+      {/* 顶部操作栏：与技能详情页完全统一的 h-12 紧凑栏 */}
+      <div className="h-12 px-6 border-b border-[var(--color-border)] shrink-0 flex items-center justify-between gap-3 bg-white">
+        <div className="flex items-center space-x-2.5 min-w-0 flex-1">
+          <div className="shrink-0 w-7 h-7 rounded-lg flex items-center justify-center bg-[#024ad8]/10 text-[#024ad8]">
+            <FileText className="w-4 h-4" />
+          </div>
+          <div className="flex items-center gap-1.5 min-w-0 py-0.5">
+            <h2 className="text-[16px] font-semibold text-[var(--foreground)] leading-normal truncate">
+              {title || prompt?.title || (isEditing ? (promptId ? "编辑提示词" : "新建提示词") : "提示词详情")}
+            </h2>
+            {prompt && (
+              <button
+                onClick={async () => {
+                  try {
+                    await invoke("toggle_prompt_favorite", { id: prompt.id });
+                    setPrompt({ ...prompt, is_favorite: !prompt.is_favorite });
+                  } catch (e) {
+                    showToast(`操作失败: ${e}`, "error");
+                  }
+                }}
+                className={`p-0.5 rounded-md transition-colors ${prompt.is_favorite ? 'text-yellow-500' : 'text-[var(--color-muted)] hover:text-yellow-500 hover:bg-yellow-50'}`}
+              >
+                <Star className={`w-3.5 h-3.5 ${prompt.is_favorite ? 'fill-current' : ''}`} />
+              </button>
+            )}
+          </div>
         </div>
         
-        <div className="flex items-center space-x-2 shrink-0">
+        <div className="flex items-center shrink-0 gap-1">
           {!isEditing ? (
             <>
+              {/* 翻译工具小胶囊 */}
+              {prompt?.content && (
+                <div className="flex items-center bg-black/5 hover:bg-black/[0.08] rounded-lg p-0.5 transition-colors mr-1.5">
+                  <Tooltip content="选择目标语言">
+                    <select
+                      value={targetLang}
+                      onChange={(e) => {
+                        const newLang = e.target.value;
+                        setTargetLang(newLang);
+                        if (newLang !== "original") {
+                          handleTranslate();
+                        }
+                      }}
+                      className="h-6 pl-1.5 pr-0.5 text-[11.5px] bg-transparent border-none focus:outline-none text-[var(--foreground)] font-medium cursor-pointer"
+                    >
+                      <option value="original">🌐 原文</option>
+                      <option value="zh-CN">🇨🇳 中文</option>
+                      <option value="en">🇺🇸 English</option>
+                      <option value="ja">🇯🇵 日本語</option>
+                      <option value="ko">🇰🇷 한국어</option>
+                      <option value="fr">🇫🇷 Français</option>
+                      <option value="es">🇪🇸 Español</option>
+                      <option value="de">🇩🇪 Deutsch</option>
+                      <option value="ru">🇷🇺 Русский</option>
+                    </select>
+                  </Tooltip>
+                  
+                  <div className="w-[1px] h-3 bg-black/10 mx-0.5" />
+                  
+                  <Tooltip content={targetLang === "original" ? "请先选择目标语言" : translating ? "翻译中..." : "重新翻译"}>
+                    <button
+                      onClick={handleTranslate}
+                      disabled={translating}
+                      className={`w-6 h-6 rounded-md flex items-center justify-center transition-all ${
+                        targetLang !== "original"
+                          ? 'bg-white text-[var(--color-primary)] shadow-xs font-semibold hover:bg-white/90 hover:scale-105'
+                          : 'text-gray-700 hover:text-black hover:bg-white/60'
+                      }`}
+                    >
+                      {translating ? (
+                        <Loader2 size={12} className="animate-spin text-[var(--color-primary)]" />
+                      ) : (
+                        <Languages size={13} className={targetLang !== "original" ? "text-[var(--color-primary)]" : "text-gray-700"} />
+                      )}
+                    </button>
+                  </Tooltip>
+                </div>
+              )}
+
               <Tooltip content="复制提示词内容">
-                <button onClick={handleCopy} className="flex items-center space-x-1.5 px-3 py-1.5 rounded-md text-[13px] font-medium text-[var(--color-muted)] hover:bg-[var(--color-primary)]/10 hover:text-[var(--color-primary)] transition-colors border border-transparent">
+                <button 
+                  onClick={handleCopy} 
+                  className="p-1.5 rounded-lg text-[var(--color-muted)] hover:bg-[var(--color-primary)]/10 hover:text-[var(--color-primary)] transition-colors"
+                >
                   <Copy className="w-4 h-4" />
-                  <span>复制</span>
                 </button>
               </Tooltip>
+
               <Tooltip content="编辑提示词">
-                <button onClick={() => setIsEditing(true)} className="flex items-center space-x-1.5 px-3 py-1.5 rounded-md text-[13px] font-medium text-[var(--color-muted)] hover:bg-[var(--color-primary)]/10 hover:text-[var(--color-primary)] transition-colors border border-transparent">
+                <button 
+                  onClick={() => setIsEditing(true)} 
+                  className="p-1.5 rounded-lg text-[var(--color-muted)] hover:bg-[var(--color-primary)]/10 hover:text-[var(--color-primary)] transition-colors"
+                >
                   <Edit2 className="w-4 h-4" />
-                  <span>编辑</span>
                 </button>
               </Tooltip>
             </>
           ) : (
-            <>
+            <div className="flex items-center space-x-2">
               <button 
                 onClick={() => {
                   if (!prompt) {
                     onCancelNew?.();
                   } else {
                     setIsEditing(false);
-                    // 恢复表单数据
                     setTitle(prompt.title);
                     setContent(prompt.content);
                     setDescription(prompt.description || "");
@@ -325,273 +398,238 @@ export function PromptDetailPage({ promptId, isEditingInit = false, onSaveSucces
                     setTags(prompt.tags || "");
                   }
                 }} 
-                className="px-3 py-1.5 rounded-md text-[13px] font-medium text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-all"
+                className="px-2.5 py-1 rounded-md text-[12px] font-medium text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-all"
               >
                 取消
               </button>
               <button 
                 onClick={handleSave} 
                 disabled={saving} 
-                className="flex items-center px-4 py-1.5 bg-blue-500 text-white rounded-md text-[13px] font-medium hover:bg-blue-600 transition-all shadow-sm shadow-blue-500/20"
+                className="flex items-center space-x-1 bg-[var(--color-primary)] text-white px-2.5 py-1 rounded-md text-[12px] font-medium hover:bg-[var(--color-primary-hover)] shadow-sm shadow-blue-500/20 transition-all disabled:opacity-50"
               >
-                {saving ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Save className="w-4 h-4 mr-1.5" />}
-                保存
+                {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                <span>保存</span>
               </button>
-            </>
+            </div>
           )}
         </div>
       </div>
 
-      {/* 主体内容区 */}
-      <div className="flex-1 overflow-y-auto pt-6 px-10 pb-10 relative flex flex-col">
-        <div className="max-w-4xl mx-auto w-full flex flex-col h-full">
+      {/* 内容展示区包裹容器：建立独立的定位上下文，严格位于顶栏红线下方 */}
+      <div className="flex-1 relative min-h-0 flex flex-col overflow-hidden">
+        {/* TOC 侧边导航指示器 (向下平移至正文右侧，横坐标与交互与技能页完全一致) */}
+        {headings.length > 0 && !isEditing && (
+          <div className="absolute right-2 top-28 z-20 pointer-events-none flex flex-col justify-start items-end">
+            <div 
+              className="pointer-events-auto flex flex-col items-end"
+              onMouseEnter={() => setIsTocHovered(true)}
+              onMouseLeave={() => setIsTocHovered(false)}
+            >
+              <div className={`flex flex-col transition-all duration-300 ${
+                isTocHovered 
+                  ? 'bg-white/95 backdrop-blur-md rounded-xl p-3 shadow-xl border border-[var(--color-border)] w-64' 
+                  : 'w-8 py-2 items-end gap-[6px] border border-transparent shadow-none bg-transparent'
+              }`}>
+                {isTocHovered ? (
+                   <div className="max-h-[min(360px,calc(100vh-200px))] w-full overflow-y-auto overflow-x-hidden space-y-0.5 custom-scrollbar pr-1">
+                      <div className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider mb-2 px-1">大纲导航</div>
+                      {headings.map(h => (
+                        <button
+                          key={h.id}
+                          onClick={() => {
+                            const el = document.getElementById(h.id);
+                            if (el && contentScrollRef.current) {
+                              const container = contentScrollRef.current;
+                              const topPos = el.offsetTop - 20;
+                              container.scrollTo({ top: topPos, behavior: 'smooth' });
+                            }
+                          }}
+                          className={`w-full text-left truncate px-2 py-1.5 rounded-lg text-[12px] transition-colors ${activeId === h.id ? 'text-gray-700 bg-black/5 font-medium' : 'text-[var(--foreground)] hover:bg-black/5'}`}
+                          style={{ paddingLeft: `${(h.level - 1) * 12 + 8}px` }}
+                        >
+                          {h.text}
+                        </button>
+                      ))}
+                   </div>
+                ) : (
+                   headings.map(h => (
+                      <div 
+                        key={h.id} 
+                        className={`h-[2px] rounded-full transition-all ${
+                          h.level === 1 ? 'w-5' : h.level === 2 ? 'w-4' : h.level === 3 ? 'w-3' : 'w-2.5'
+                        } ${activeId === h.id ? 'bg-gray-400' : 'bg-gray-200/60'}`}
+                      />
+                   ))
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 滚动的正文区域 */}
+        <div className="flex-1 overflow-y-auto pt-4 px-8 pb-8 relative flex flex-col" ref={contentScrollRef} onScroll={handleScroll}>
           {isEditing ? (
-            <div className="flex flex-col space-y-5 flex-1 pb-10 animate-in fade-in duration-300">
-              <div className="flex space-x-4">
-                <div className="flex-1 relative">
-                  <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
-                    <Type className="h-4 w-4 text-[var(--color-muted)]/50" />
-                  </div>
+            <div className="max-w-4xl mx-auto w-full flex-1 flex flex-col h-full animate-in fade-in duration-200">
+              <div className="flex items-center justify-between mb-4 shrink-0">
+                <span className="text-sm font-medium text-[var(--color-muted)]">
+                  {prompt ? `编辑 ${prompt.title}` : "新建提示词"}
+                </span>
+              </div>
+
+              <div className="space-y-3 mb-4 shrink-0">
+                <div className="flex space-x-3">
                   <input
                     type="text"
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
-                    className="w-full pl-9 pr-3 py-2.5 bg-white border border-[var(--color-border)] rounded-xl text-[15px] text-[var(--foreground)] font-medium outline-none focus:border-[var(--color-primary)]/50 focus:ring-2 focus:ring-[var(--color-primary)]/10 transition-all shadow-sm"
-                    placeholder="提示词标题，例如：英文校对助手"
+                    className="flex-1 px-3.5 py-2 bg-white border border-[var(--color-border)] rounded-lg text-[14px] text-[var(--foreground)] font-medium outline-none focus:border-[var(--color-primary)]/50 focus:ring-2 focus:ring-[var(--color-primary)]/10 transition-all placeholder:text-[var(--color-muted)]/60"
+                    placeholder="提示词标题，例如：自然风格润色"
                   />
-                </div>
-                
-                <div className="w-48 relative" ref={dropdownRef}>
-                  <button
-                    onClick={() => setShowGroupDropdown(!showGroupDropdown)}
-                    className="w-full h-full flex items-center justify-between px-3 py-2.5 bg-white border border-[var(--color-border)] rounded-xl text-[13px] text-[var(--foreground)] outline-none hover:bg-black/[0.02] transition-colors shadow-sm"
-                  >
-                    <div className="flex items-center truncate mr-2">
-                      <Folder className="w-4 h-4 text-[var(--color-muted)]/70 mr-2 shrink-0" />
-                      <span className="truncate">{groupId ? groups.find(g => g.id === groupId)?.name || "未分组" : "未分组"}</span>
-                    </div>
-                  </button>
-                  {showGroupDropdown && (
-                    <div className="absolute top-full right-0 mt-1 w-full bg-white border border-[var(--color-border)] rounded-xl shadow-lg z-50 py-1 overflow-hidden">
-                      <button
-                        onClick={() => { setGroupId(""); setShowGroupDropdown(false); }}
-                        className={`w-full text-left px-3 py-2 text-[13px] hover:bg-black/5 transition-colors ${!groupId ? "text-[var(--color-primary)] font-medium bg-[var(--color-primary)]/5" : "text-[var(--foreground)]"}`}
-                      >
-                        未分组
-                      </button>
-                      {groups.map(group => (
-                        <button
-                          key={group.id}
-                          onClick={() => { setGroupId(group.id); setShowGroupDropdown(false); }}
-                          className={`w-full text-left px-3 py-2 text-[13px] hover:bg-black/5 transition-colors truncate ${groupId === group.id ? "text-[var(--color-primary)] font-medium bg-[var(--color-primary)]/5" : "text-[var(--foreground)]"}`}
-                        >
-                          {group.name}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <input
-                type="text"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                className="w-full px-3 py-2.5 bg-white border border-[var(--color-border)] rounded-xl text-[13px] text-[var(--foreground)] outline-none focus:border-[var(--color-primary)]/50 focus:ring-2 focus:ring-[var(--color-primary)]/10 transition-all shadow-sm"
-                placeholder="一句话描述这个提示词的作用（可选）"
-              />
-
-              <div className="flex-1 flex flex-col min-h-[300px]">
-                <textarea
-                  ref={textareaRef}
-                  value={content}
-                  onChange={(e) => setContent(e.target.value)}
-                  className="flex-1 w-full p-4 bg-white border border-[var(--color-border)] rounded-xl outline-none focus:border-[var(--color-primary)]/50 focus:ring-2 focus:ring-[var(--color-primary)]/10 resize-none font-mono text-[14px] text-[var(--foreground)] leading-relaxed shadow-sm transition-all"
-                  placeholder="在此输入提示词内容..."
-                />
-              </div>
-
-              <div className="bg-white border border-[var(--color-border)] rounded-xl p-4 shadow-sm">
-                <div className="flex items-center text-[13px] font-medium text-[var(--color-muted)] mb-3">
-                  <Tag className="w-4 h-4 mr-1.5" />
-                  <span>标签</span>
-                </div>
-                <div className="flex flex-wrap gap-2 mb-3">
-                  {tagList.map(t => (
-                    <span key={t} className="inline-flex items-center px-2.5 py-1 rounded-md border border-[var(--color-border)] bg-gray-50 text-[12px] font-medium text-gray-700">
-                      {t}
-                      <button onClick={() => removeTag(t)} className="ml-1.5 text-gray-400 hover:text-red-500 transition-colors">
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    </span>
-                  ))}
-                </div>
-                <div className="flex items-center">
-                  <input
-                    type="text"
-                    value={tagInput}
-                    onChange={(e) => setTagInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        if (tagInput.trim()) addTag(tagInput.trim());
-                      }
-                    }}
-                    placeholder="输入标签后按回车"
-                    className="flex-1 bg-transparent text-[13px] text-[var(--foreground)] outline-none placeholder:text-[var(--color-muted)]/50"
-                  />
-                </div>
-              </div>
-            </div>
-          ) : (
-            // 详情模式
-            <div className="flex flex-col flex-1 pb-10 animate-in fade-in duration-300">
-              {prompt?.description && (
-                <div className="mb-4">
-                  <p className="text-[14px] text-[var(--color-muted)] leading-relaxed max-w-3xl">{prompt.description}</p>
-                </div>
-              )}
-
-              <div className="flex-1 flex flex-col bg-white border border-[var(--color-border)] rounded-2xl shadow-sm overflow-hidden flex-shrink-0 min-h-[300px]">
-                {/* 内容工具栏 */}
-                <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--color-border)] bg-gray-50/50 shrink-0">
-                  <div className="flex items-center text-[13px] font-medium text-gray-500">
-                    <FileText className="w-4 h-4 mr-2 opacity-70" />
-                    提示词内容
-                  </div>
                   
-                  {prompt?.content && (
-                    <div className="flex items-center gap-2">
-                      <div className="flex items-center bg-white border border-[var(--color-border)] rounded-lg shadow-sm overflow-hidden focus-within:border-[var(--color-primary)]/50 focus-within:ring-1 focus-within:ring-[var(--color-primary)]/20 transition-all">
-                        <select 
-                          value={targetLang}
-                          onChange={e => setTargetLang(e.target.value)}
-                          className="h-[30px] text-[12px] bg-transparent pl-3 pr-2 focus:outline-none text-gray-600 font-medium cursor-pointer outline-none"
-                        >
-                          <option value="original">🌐 原文</option>
-                          <option value="zh-CN">🇨🇳 中文</option>
-                          <option value="en">🇺🇸 English</option>
-                          <option value="ja">🇯🇵 日本語</option>
-                          <option value="ko">🇰🇷 한국어</option>
-                        </select>
-                        <div className="w-[1px] h-4 bg-gray-200"></div>
-                        <button 
-                          onClick={handleTranslate}
-                          disabled={translating || targetLang === "original"}
-                          title={targetLang === "original" ? "选择目标语言后翻译" : "翻译此提示词"}
-                          className="px-3 h-[30px] bg-white hover:bg-gray-50 disabled:bg-gray-50 flex items-center justify-center text-gray-600 disabled:text-gray-400 hover:text-[var(--color-primary)] transition-colors"
-                        >
-                          {translating ? <Loader2 size={15} className="animate-spin" /> : <Languages size={15} />}
-                        </button>
+                  <div className="w-48 relative" ref={dropdownRef}>
+                    <button
+                      type="button"
+                      onClick={() => setShowGroupDropdown(!showGroupDropdown)}
+                      className="w-full h-full flex items-center justify-between px-3 py-2 bg-white border border-[var(--color-border)] rounded-lg text-[13px] text-[var(--foreground)] outline-none hover:bg-black/[0.02] transition-colors"
+                    >
+                      <div className="flex items-center truncate mr-2">
+                        <Folder className="w-4 h-4 text-[var(--color-muted)]/70 mr-1.5 shrink-0" />
+                        <span className="truncate">{groupId ? groups.find(g => g.id === groupId)?.name || "未分组" : "未分组"}</span>
                       </div>
-                      
-                      <button 
-                        onClick={handleCopy}
-                        title="复制内容"
-                        className="flex items-center justify-center w-[30px] h-[30px] bg-white border border-[var(--color-border)] rounded-lg text-gray-500 hover:text-[var(--color-primary)] hover:bg-gray-50 shadow-sm transition-colors"
-                      >
-                        <Copy size={15} />
-                      </button>
-                    </div>
-                  )}
+                      <ChevronDown className="w-3.5 h-3.5 text-[var(--color-muted)] shrink-0" />
+                    </button>
+                    {showGroupDropdown && (
+                      <div className="absolute top-full right-0 mt-1 w-full bg-white border border-[var(--color-border)] rounded-xl shadow-lg z-50 py-1 overflow-hidden">
+                        <button
+                          type="button"
+                          onClick={() => { setGroupId(""); setShowGroupDropdown(false); }}
+                          className={`w-full text-left px-3 py-1.5 text-[12.5px] hover:bg-black/5 transition-colors ${!groupId ? "text-[var(--color-primary)] font-medium bg-[var(--color-primary)]/5" : "text-[var(--foreground)]"}`}
+                        >
+                          未分组
+                        </button>
+                        {groups.map(group => (
+                          <button
+                            key={group.id}
+                            type="button"
+                            onClick={() => { setGroupId(group.id); setShowGroupDropdown(false); }}
+                            className={`w-full text-left px-3 py-1.5 text-[12.5px] hover:bg-black/5 transition-colors truncate ${groupId === group.id ? "text-[var(--color-primary)] font-medium bg-[var(--color-primary)]/5" : "text-[var(--foreground)]"}`}
+                          >
+                            {group.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
 
-                {/* TOC 侧边导航指示器 */}
-                {headings.length > 0 && !isEditing && (
-                  <div className="absolute right-2 top-[30%] -translate-y-1/2 z-20 pointer-events-none flex flex-col justify-start items-end pt-2">
-                    <div 
-                      className="pointer-events-auto flex flex-col items-end"
-                      onMouseEnter={() => setIsTocHovered(true)}
-                      onMouseLeave={() => setIsTocHovered(false)}
-                    >
-                      <div className={`flex flex-col transition-all duration-300 ${isTocHovered ? 'bg-white/90 backdrop-blur-md rounded-xl p-3 shadow-xl border border-[var(--color-border)] w-64' : 'w-8 py-2 items-end gap-[6px] border border-transparent shadow-none bg-transparent'}`}>
-                        {isTocHovered ? (
-                           <div className="max-h-[60vh] w-full overflow-y-auto overflow-x-hidden space-y-0.5 custom-scrollbar">
-                              <div className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider mb-2 px-1">大纲导航</div>
-                              {headings.map(h => (
-                                <button
-                                  key={h.id}
-                                  onClick={() => {
-                                    const el = document.getElementById(h.id);
-                                    if (el && contentScrollRef.current) {
-                                      // Scroll container
-                                      const container = contentScrollRef.current;
-                                      const topPos = el.offsetTop - 20; // some padding
-                                      container.scrollTo({ top: topPos, behavior: 'smooth' });
-                                    }
-                                  }}
-                                  className={`w-full text-left truncate px-2 py-1.5 rounded-lg text-[12px] transition-colors ${activeId === h.id ? 'text-gray-700 bg-black/5 font-medium' : 'text-[var(--foreground)] hover:bg-black/5'}`}
-                                  style={{ paddingLeft: `${(h.level - 1) * 12 + 8}px` }}
-                                >
-                                  {h.text}
-                                </button>
-                              ))}
-                           </div>
-                        ) : (
-                           headings.map(h => (
-                              <div 
-                                key={h.id} 
-                                className={`h-[2px] rounded-full transition-all ${
-                                  h.level === 1 ? 'w-5' : h.level === 2 ? 'w-4' : h.level === 3 ? 'w-3' : 'w-2.5'
-                                } ${activeId === h.id ? 'bg-gray-400' : 'bg-gray-200/60'}`}
-                              />
-                           ))
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
+                <input
+                  type="text"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  className="w-full px-3.5 py-2 bg-white border border-[var(--color-border)] rounded-lg text-[13px] text-[var(--foreground)] outline-none focus:border-[var(--color-primary)]/50 focus:ring-2 focus:ring-[var(--color-primary)]/10 transition-all placeholder:text-[var(--color-muted)]/60"
+                  placeholder="一句话描述这个提示词的作用（可选）"
+                />
 
-                {/* 内容区域 */}
-                <div className="flex-1 pt-2 px-6 pb-6 overflow-y-auto relative" ref={contentScrollRef} onScroll={handleScroll}>
-                  {displayedContent ? (
-                    <div className="prose prose-sm max-w-none text-[var(--foreground)] prose-p:leading-relaxed prose-pre:bg-gray-50 prose-pre:border prose-pre:border-gray-200 prose-pre:rounded-xl">
-                      <ReactMarkdown 
-                        remarkPlugins={[remarkGfm]}
-                        rehypePlugins={[rehypeRaw]}
-                        components={{
-                          h1: HeadingRenderer(1),
-                          h2: HeadingRenderer(2),
-                          h3: HeadingRenderer(3),
-                          h4: HeadingRenderer(4),
-                          h5: HeadingRenderer(5),
-                          h6: HeadingRenderer(6),
-                          code({node, inline, className, children, ...props}: any) {
-                            return !inline ? (
-                              <div className="relative group/code mt-3 mb-5 bg-gray-50 rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                                <pre className="p-4 m-0 overflow-x-auto text-[13px] leading-relaxed" {...props}>
-                                  <code className={className}>{children}</code>
-                                </pre>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    navigator.clipboard.writeText(String(children));
-                                    showToast("代码已复制", "success");
-                                  }}
-                                  className="absolute top-2.5 right-2.5 p-1.5 bg-white border border-gray-200 rounded-md text-gray-400 hover:text-gray-700 opacity-0 group-hover/code:opacity-100 transition-opacity shadow-sm"
-                                >
-                                  <Copy className="w-4 h-4" />
-                                </button>
-                              </div>
-                            ) : (
-                              <code className="bg-gray-100 text-[13px] px-1.5 py-0.5 rounded-md text-gray-800 font-mono" {...props}>
-                                {children}
-                              </code>
-                            )
+                <div className="bg-gray-50/60 border border-[var(--color-border)] rounded-lg px-3 py-2">
+                  <div className="flex flex-wrap gap-1.5 items-center">
+                    {tagList.map(t => (
+                      <span key={t} className="h-6 inline-flex items-center gap-1 text-[11.5px] px-2.5 rounded-md bg-[var(--color-primary)]/10 text-[var(--color-primary)] font-medium border border-transparent box-border">
+                        #{t}
+                        <button type="button" onClick={() => removeTag(t)} className="hover:text-red-500 transition-colors">
+                          <X className="w-3 h-3" />
+                        </button>
+                      </span>
+                    ))}
+                    <div className="flex items-center flex-1 min-w-[120px]">
+                      <input
+                        type="text"
+                        value={tagInput}
+                        onChange={(e) => setTagInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            if (tagInput.trim()) addTag(tagInput.trim());
                           }
                         }}
-                      >
-                        {displayedContent}
-                      </ReactMarkdown>
+                        placeholder="输入标签按回车添加..."
+                        className="w-full bg-transparent text-[12px] text-[var(--foreground)] outline-none placeholder:text-[var(--color-muted)]/60"
+                      />
                     </div>
-                  ) : (
-                    <div className="flex flex-col items-center justify-center h-full text-[var(--color-muted)] opacity-60 py-10">
-                      <FileText className="w-12 h-12 mb-3 opacity-20" />
-                      <span className="text-[14px]">暂无提示词内容</span>
-                    </div>
-                  )}
+                  </div>
                 </div>
               </div>
+
+              <textarea 
+                ref={textareaRef}
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                className="flex-1 w-full p-5 bg-[var(--color-muted-bg)]/50 border border-[var(--color-border)] rounded-xl outline-none focus:ring-2 focus:ring-[var(--color-primary)]/20 resize-none font-mono text-[13.5px] text-[var(--foreground)] leading-relaxed shadow-inner"
+                placeholder="在此编写提示词 Markdown 内容..."
+              />
+            </div>
+          ) : (
+            <div className="max-w-4xl mx-auto w-full">
+              {/* 大标题：像技能详情页一样展示标题（若正文开头未自带 # 标题） */}
+              {(prompt?.title || title) && !displayedContent.trim().startsWith('# ') && (
+                <h1 className="text-3xl font-bold tracking-tight text-[var(--foreground)] mb-6">
+                  {prompt?.title || title}
+                </h1>
+              )}
+
+              {/* 描述 */}
+              {(prompt?.description || description) && (
+                <p className="text-[15px] text-[var(--color-muted)] leading-relaxed mb-6">
+                  {prompt?.description || description}
+                </p>
+              )}
+
+              {/* 正文 Markdown 渲染 */}
+              {displayedContent ? (
+                <div className="prose max-w-none prose-headings:text-left prose-a:text-[#024ad8] prose-p:leading-relaxed pb-12">
+                  <ReactMarkdown 
+                    remarkPlugins={[remarkGfm]}
+                    rehypePlugins={[rehypeRaw]}
+                    components={{
+                      h1: HeadingRenderer(1),
+                      h2: HeadingRenderer(2),
+                      h3: HeadingRenderer(3),
+                      h4: HeadingRenderer(4),
+                      h5: HeadingRenderer(5),
+                      h6: HeadingRenderer(6),
+                      code({node, inline, className, children, ...props}: any) {
+                        return !inline ? (
+                          <div className="relative group/code mt-3 mb-5 bg-gray-50 rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                            <pre className="p-4 m-0 overflow-x-auto text-[13px] leading-relaxed" {...props}>
+                              <code className={className}>{children}</code>
+                            </pre>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigator.clipboard.writeText(String(children));
+                                showToast("代码已复制", "success");
+                              }}
+                              className="absolute top-2.5 right-2.5 p-1.5 bg-white border border-gray-200 rounded-md text-gray-400 hover:text-gray-700 opacity-0 group-hover/code:opacity-100 transition-opacity shadow-sm"
+                            >
+                              <Copy className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ) : (
+                          <code className="bg-gray-100 text-[13px] px-1.5 py-0.5 rounded-md text-gray-800 font-mono" {...props}>
+                            {children}
+                          </code>
+                        );
+                      }
+                    }}
+                  >
+                    {displayedContent}
+                  </ReactMarkdown>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-20 text-[var(--color-muted)] opacity-60">
+                  <FileText className="w-12 h-12 mb-3 opacity-20" />
+                  <span className="text-[14px]">暂无提示词内容</span>
+                </div>
+              )}
             </div>
           )}
         </div>

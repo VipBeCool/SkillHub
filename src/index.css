@@ -175,3 +175,28 @@ body > div[style*="overflow: hidden"][style*="position: fixed"] {
   border-radius: 10px;
   transition: background-color 0.15s ease;
 }
+
+/* 鼠标移入左边栏或右边栏时才显示滚动条滑块 */
+.sidebar-container .sidebar-scroll-area::-webkit-scrollbar-thumb,
+.inspector-container .inspector-scroll-area::-webkit-scrollbar-thumb,
+.hover-scrollbar::-webkit-scrollbar-thumb {
+  background-color: transparent !important;
+  transition: background-color 0.2s ease-in-out;
+}
+
+.sidebar-container:hover .sidebar-scroll-area::-webkit-scrollbar-thumb,
+.inspector-container:hover .inspector-scroll-area::-webkit-scrollbar-thumb,
+.hover-scrollbar:hover::-webkit-scrollbar-thumb,
+.sidebar-scroll-area:hover::-webkit-scrollbar-thumb,
+.inspector-scroll-area:hover::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0.15) !important;
+}
+
+.sidebar-container:hover .sidebar-scroll-area::-webkit-scrollbar-thumb:hover,
+.inspector-container:hover .inspector-scroll-area::-webkit-scrollbar-thumb:hover,
+.hover-scrollbar:hover::-webkit-scrollbar-thumb:hover,
+.sidebar-scroll-area:hover::-webkit-scrollbar-thumb:hover,
+.inspector-scroll-area:hover::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(0, 0, 0, 0.3) !important;
+}
+

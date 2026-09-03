@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
-import { Plus, Download, Star, LayoutGrid, Trash2, Trash, FolderPlus, MoreHorizontal, X, Folder, Edit2, FolderX, Tag, PanelRightClose, ChevronRight, Search } from "lucide-react";
+import { Plus, Download, Star, LayoutGrid, Trash2, Trash, FolderPlus, MoreHorizontal, X, Folder, Edit2, FolderX, Tag, PanelRightClose, ChevronRight, Search, Loader2, Copy, RotateCcw, MessageSquareText } from "lucide-react";
 import { Prompt, PromptGroup, PromptVersion } from "./types";
 import { PromptCard } from "./components/prompt/PromptCard";
 import { SelectionArea, SelectionEvent } from "@viselect/react";
@@ -35,6 +35,41 @@ export function PromptSidebarNav({
   const [contextMenuGroup, setContextMenuGroup] = useState<PromptGroup | null>(null);
   const [editGroup, setEditGroup] = useState<PromptGroup | null>(null);
   const [deleteGroup, setDeleteGroup] = useState<PromptGroup | null>(null);
+
+  const [tagList, setTagList] = useState<{ name: string; count: number }[]>([]);
+
+  const fetchTags = useCallback(async () => {
+    try {
+      const all = await invoke<Prompt[]>("get_prompts", { groupId: null, search: null });
+      const map = new Map<string, number>();
+      all.forEach(p => {
+        if (p.tags) {
+          p.tags.split(',').forEach(t => {
+            const tr = t.trim();
+            if (tr) {
+              map.set(tr, (map.get(tr) || 0) + 1);
+            }
+          });
+        }
+      });
+      const sorted = Array.from(map.entries())
+        .map(([name, count]) => ({ name, count }))
+        .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+      setTagList(sorted);
+    } catch (e) {
+      console.error("加载提示词标签失败", e);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchTags();
+  }, [fetchTags, filter]);
+
+  useEffect(() => {
+    const handler = () => fetchTags();
+    window.addEventListener('skillhub:prompt-tags-changed', handler);
+    return () => window.removeEventListener('skillhub:prompt-tags-changed', handler);
+  }, [fetchTags]);
 
   const handleDeleteGroup = async () => {
     if (!deleteGroup) return;
@@ -74,6 +109,36 @@ export function PromptSidebarNav({
               <span>{item.label}</span>
             </button>
           ))}
+        </div>
+      </div>
+
+      {/* 标签栏（与技能左侧栏对齐） */}
+      <div className="px-3 mb-5">
+        <h3 className="text-[11px] font-semibold text-[var(--color-muted)]/60 mb-1 px-2 uppercase tracking-wide">
+          标签
+        </h3>
+        <div className="space-y-0.5">
+          {tagList.map(({ name, count }) => (
+            <button
+              key={name}
+              onClick={(e) => onFilterChange(`tag:${name}` as PromptFilter, e)}
+              onAuxClick={(e) => { if (e.button === 1) onFilterChange(`tag:${name}` as PromptFilter, e); }}
+              className={`w-full flex items-center justify-between px-2 py-1 rounded-md transition-colors outline-none select-none text-[13px] ${
+                filter === `tag:${name}`
+                  ? "bg-black/5 text-[var(--foreground)] font-semibold"
+                  : "text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] font-medium"
+              }`}
+            >
+              <span className="flex items-center gap-1.5 truncate min-w-0">
+                <Tag className="w-3.5 h-3.5 opacity-70 shrink-0" />
+                <span className="truncate">{name}</span>
+              </span>
+              <span className="text-[11px] text-[var(--color-muted)] shrink-0 ml-1">{count}</span>
+            </button>
+          ))}
+          {tagList.length === 0 && (
+            <div className="text-[11px] text-[var(--color-muted)]/50 px-2 py-1">暂无标签</div>
+          )}
         </div>
       </div>
 
@@ -177,6 +242,7 @@ export function PromptSidebarNav({
 interface PromptModuleProps {
   filter: PromptFilter;
   refreshKey?: number;
+  activePromptId?: string;
   onGroupsChange: (groups: PromptGroup[]) => void;
   onFilterChange: (filter: PromptFilter) => void;
   onTitleChange: (title: string, icon: string) => void;
@@ -189,15 +255,35 @@ interface PromptInspectorData {
   versions: PromptVersion[];
 }
 
-export function PromptModule({ filter, refreshKey, onGroupsChange, onTitleChange, onToggleInspector, onOpenPromptDetail }: PromptModuleProps) {
+export function PromptModule({ filter, refreshKey, activePromptId, onGroupsChange, onTitleChange, onToggleInspector, onOpenPromptDetail }: PromptModuleProps) {
   const [prompts, setPrompts] = useState<Prompt[]>([]);
   const [groups, setGroups] = useState<PromptGroup[]>([]);
   const [search] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [lastSelectedId, setLastSelectedId] = useState<string | null>(null);
   const [inspectorData, setInspectorData] = useState<PromptInspectorData | null>(null);
+  const [detailPromptCache, setDetailPromptCache] = useState<Prompt | null>(null);
   const isDraggingRef = useRef(false); // 追踪框选状态，避免干扰
   const [quickLookOpen, setQuickLookOpen] = useState(false);
+
+  // 当处于 prompt-detail 时，确保能拿到当前详情对应的 prompt 对象，哪怕它不在被当前过滤条件的 prompts 列表中
+  useEffect(() => {
+    if (activePromptId) {
+      const found = prompts.find(p => p.id === activePromptId);
+      if (found) {
+        setDetailPromptCache(found);
+      } else {
+        invoke<Prompt[]>("get_prompts", { groupId: null, search: null })
+          .then(all => {
+            const f = all.find(p => p.id === activePromptId);
+            if (f) setDetailPromptCache(f);
+          })
+          .catch(console.error);
+      }
+    } else {
+      setDetailPromptCache(null);
+    }
+  }, [activePromptId, prompts]);
 
   // 弹窗状态
 
@@ -243,6 +329,7 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onTitleChange
         variables: prompt.variables || null,
         changeNote: "添加标签" 
       });
+      window.dispatchEvent(new CustomEvent('skillhub:prompt-tags-changed'));
     } catch (e) {
       showToast("更新标签失败", "error");
       fetchData(); // Revert
@@ -268,6 +355,7 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onTitleChange
         variables: prompt.variables || null,
         changeNote: "移除标签" 
       });
+      window.dispatchEvent(new CustomEvent('skillhub:prompt-tags-changed'));
     } catch (e) {
       showToast("更新标签失败", "error");
       fetchData(); // Revert
@@ -413,7 +501,7 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onTitleChange
 
   const fetchData = useCallback(async () => {
     try {
-      const backendGroupId = filter === "all" || filter === "favorites" ? null 
+      const backendGroupId = filter === "all" || filter === "favorites" || filter.startsWith("tag:") ? null 
         : filter.startsWith("group:") ? filter.split(":")[1] 
         : filter;
       
@@ -421,8 +509,17 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onTitleChange
         invoke<Prompt[]>("get_prompts", { groupId: backendGroupId, search: search || null }),
         invoke<PromptGroup[]>("get_prompt_groups"),
       ]);
-      // 收藏筛选在前端做
-      const filtered = filter === "favorites" ? ps.filter(p => p.is_favorite) : ps;
+      // 收藏与标签筛选在前端做
+      let filtered = ps;
+      if (filter === "favorites") {
+        filtered = ps.filter(p => p.is_favorite);
+      } else if (filter.startsWith("tag:")) {
+        const targetTag = filter.slice(4);
+        filtered = ps.filter(p => {
+          if (!p.tags) return false;
+          return p.tags.split(',').map(t => t.trim()).includes(targetTag);
+        });
+      }
       setPrompts(filtered);
       setGroups(gs);
       onGroupsChange(gs);
@@ -438,6 +535,65 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onTitleChange
     if (refreshKey && refreshKey > 0) fetchData();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshKey]);
+
+  // 提示词库整体概览统计（未选中时在右侧检查器展示）
+  const [overviewStats, setOverviewStats] = useState<{
+    total: number;
+    favorites: number;
+    grouped: number;
+    ungrouped: number;
+    tagged: number;
+    topTags: { name: string; count: number }[];
+  }>({ total: 0, favorites: 0, grouped: 0, ungrouped: 0, tagged: 0, topTags: [] });
+
+  const fetchOverviewStats = useCallback(async () => {
+    try {
+      const all = await invoke<Prompt[]>("get_prompts", { groupId: null, search: null });
+      const tagMap = new Map<string, number>();
+      let fav = 0;
+      let grp = 0;
+      let ungrp = 0;
+      let tagCount = 0;
+
+      all.forEach(p => {
+        if (p.is_favorite) fav++;
+        if (p.group_id) grp++; else ungrp++;
+        if (p.tags) {
+          const tags = p.tags.split(',').map(t => t.trim()).filter(Boolean);
+          if (tags.length > 0) {
+            tagCount++;
+            tags.forEach(t => tagMap.set(t, (tagMap.get(t) || 0) + 1));
+          }
+        }
+      });
+
+      const topTags = Array.from(tagMap.entries())
+        .map(([name, count]) => ({ name, count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 8);
+
+      setOverviewStats({
+        total: all.length,
+        favorites: fav,
+        grouped: grp,
+        ungrouped: ungrp,
+        tagged: tagCount,
+        topTags,
+      });
+    } catch (e) {
+      console.error("获取提示词概览失败", e);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchOverviewStats();
+  }, [fetchOverviewStats, refreshKey]);
+
+  useEffect(() => {
+    const handler = () => fetchOverviewStats();
+    window.addEventListener('skillhub:prompt-tags-changed', handler);
+    return () => window.removeEventListener('skillhub:prompt-tags-changed', handler);
+  }, [fetchOverviewStats]);
 
   // 当 filter 切换时清空选中和 inspector
   useEffect(() => {
@@ -548,6 +704,7 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onTitleChange
     if (inspectorData?.prompt.id === id) {
       setInspectorData(prev => prev ? { ...prev, prompt: { ...prev.prompt, is_favorite: newVal } } : null);
     }
+    fetchOverviewStats();
   };
 
   const filterLabel = filter === "all" ? "全部提示词"
@@ -556,6 +713,7 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onTitleChange
     : filter === "untagged" ? "未标签"
     : filter === "trash" ? "回收站"
     : filter.startsWith("group:") ? groups.find(g => g.id === filter.split(":")[1])?.name || "未知分组"
+    : filter.startsWith("tag:") ? filter.slice(4)
     : "提示词";
 
   const getFilterIconStr = () => {
@@ -565,6 +723,7 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onTitleChange
     if (filter === "untagged") return 'Tag';
     if (filter === "trash") return 'Trash2';
     if (filter.startsWith("group:")) return 'Folder';
+    if (filter.startsWith("tag:")) return 'Tag';
     return 'MessageSquareText';
   };
 
@@ -775,93 +934,212 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onTitleChange
         {/* Inspector 面板 */}
         {document.getElementById('global-inspector-slot') ? createPortal(
           (() => {
-            if (selectedIds.size === 0) {
-              return (
-                <div className="bg-transparent border-l border-[var(--color-border)] flex flex-col shrink-0 h-full overflow-hidden w-64">
-                  <div 
-                    className="px-4 h-10 flex items-center justify-between shrink-0"
-                    data-tauri-drag-region
-                    style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
-                    onPointerDown={(e) => { if (e.target === e.currentTarget) import('@tauri-apps/api/window').then(m => m.getCurrentWindow().startDragging()); }}
-                    onDoubleClick={(e) => { if (e.target === e.currentTarget) import('@tauri-apps/api/window').then(m => m.getCurrentWindow().toggleMaximize()); }}
-                  >
-                    <span className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wide"></span>
-                    {onToggleInspector && (
-                      <Tooltip content="收起检查器 (⌘/)">
-                        <button
-                          onClick={onToggleInspector}
-                          className="p-1.5 rounded-md text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/[0.06] transition-colors"
-                        >
-                          <PanelRightClose className="w-4 h-4" />
-                        </button>
-                      </Tooltip>
-                    )}
-                  </div>
-                  <div className="flex-1 flex items-center justify-center p-4">
-                    <p className="text-[12px] text-[var(--color-muted)] text-center">选择一个提示词查看详情</p>
-                  </div>
-                </div>
-              );
-            }
-            
-            if (selectedIds.size > 1) {
-              return (
-                <div className="bg-transparent border-l border-[var(--color-border)] flex flex-col shrink-0 h-full overflow-hidden w-64">
-                  <div 
-                    className="px-4 h-10 flex items-center justify-between shrink-0"
-                    data-tauri-drag-region
-                    style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
-                    onPointerDown={(e) => { if (e.target === e.currentTarget) import('@tauri-apps/api/window').then(m => m.getCurrentWindow().startDragging()); }}
-                    onDoubleClick={(e) => { if (e.target === e.currentTarget) import('@tauri-apps/api/window').then(m => m.getCurrentWindow().toggleMaximize()); }}
-                  >
-                    <span className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wide"></span>
-                    {onToggleInspector && (
-                      <Tooltip content="收起检查器 (⌘/)">
-                        <button
-                          onClick={onToggleInspector}
-                          className="p-1.5 rounded-md text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/[0.06] transition-colors"
-                        >
-                          <PanelRightClose className="w-4 h-4" />
-                        </button>
-                      </Tooltip>
-                    )}
-                  </div>
-                  <div className="flex-1 flex flex-col items-center justify-center p-4">
-                    <div className="w-16 h-16 bg-[var(--color-primary)]/10 rounded-full flex items-center justify-center mb-4">
-                       <span className="text-2xl font-bold text-[var(--color-primary)]">{selectedIds.size}</span>
-                    </div>
-                    <h3 className="text-[15px] font-semibold text-[var(--foreground)] mb-1">已选 {selectedIds.size} 个</h3>
-                    <p className="text-[12px] text-[var(--color-muted)] text-center mb-6">你可以进行批量操作</p>
-                  </div>
-                  <div className="p-4 border-t border-[var(--color-border)]/60 shrink-0">
-                    <div className="flex items-center space-x-2">
-                      {filter !== "trash" && (
-                        <button
-                          onClick={() => { setExportingPrompts(selectedPrompts); setIsExportDialogOpen(true); }}
-                          className="flex-1 flex items-center justify-center space-x-1.5 py-1.5 bg-[var(--color-primary)]/10 hover:bg-[var(--color-primary)]/20 text-[var(--color-primary)] rounded-lg transition-colors text-[12px] font-medium"
-                        >
-                          <Download size={12} />
-                          <span>导出 ({selectedIds.size})</span>
-                        </button>
+            const isDetailMode = Boolean(activePromptId);
+            const detailTargetPrompt = isDetailMode ? (prompts.find(x => x.id === activePromptId) || detailPromptCache) : null;
+
+            if (!isDetailMode) {
+              if (selectedIds.size === 0) {
+                const overviewTitle = filter === "all" ? "我的提示词库"
+                  : filter === "favorites" ? "星标收藏"
+                  : filter === "ungrouped" ? "未分组提示词"
+                  : filter === "untagged" ? "未标签提示词"
+                  : filter === "trash" ? "回收站"
+                  : filter.startsWith("group:") ? (groups.find(g => g.id === filter.split(":")[1])?.name || "提示词分组")
+                  : filter.startsWith("tag:") ? `#${filter.slice(4)}`
+                  : "提示词库";
+
+                const overviewSubtitle = filter === "all" ? "本地提示词统一存储与管理"
+                  : filter === "favorites" ? "已收藏的高频提示词"
+                  : filter === "ungrouped" ? "暂未分配到任何分组"
+                  : filter === "untagged" ? "暂未添加任何标签"
+                  : filter === "trash" ? "已移入回收站的提示词"
+                  : filter.startsWith("group:") ? "自定义提示词分组"
+                  : filter.startsWith("tag:") ? "按标签智能分类"
+                  : "提示词管理";
+
+                const currentGroup = filter.startsWith("group:") ? groups.find(g => g.id === filter.split(":")[1]) : null;
+                const iconBgColor = currentGroup?.color || 'var(--color-primary)';
+
+                return (
+                  <div className="w-64 border-l border-[var(--color-border)] bg-transparent flex flex-col shrink-0 h-full overflow-hidden inspector-container">
+                    {/* 头部 */}
+                    <div 
+                      className="px-4 h-10 flex items-center justify-between shrink-0"
+                      data-tauri-drag-region
+                      style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+                      onPointerDown={(e) => { if (e.target === e.currentTarget) import('@tauri-apps/api/window').then(m => m.getCurrentWindow().startDragging()); }}
+                      onDoubleClick={(e) => { if (e.target === e.currentTarget) import('@tauri-apps/api/window').then(m => m.getCurrentWindow().toggleMaximize()); }}
+                    >
+                      <span className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider"></span>
+                      {onToggleInspector && (
+                        <Tooltip content="收起检查器 (⌘/)">
+                          <button
+                            onClick={onToggleInspector}
+                            className="p-1.5 rounded-md text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/[0.06] transition-colors"
+                          >
+                            <PanelRightClose className="w-4 h-4" />
+                          </button>
+                        </Tooltip>
                       )}
-                      <button
-                        onClick={handleDeleteSelected}
-                        className="flex-1 flex items-center justify-center space-x-1.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg transition-colors text-[12px] font-medium"
-                      >
-                        <Trash2 size={12} />
-                        <span>{filter === "trash" ? "彻底删除" : "删除"}</span>
-                      </button>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto p-4 inspector-scroll-area">
+                      {/* 库/分组名称 */}
+                      <div className="mb-5">
+                        <div className="flex items-center space-x-2 mb-1">
+                          <div 
+                            className="w-5 h-5 rounded-md flex items-center justify-center shrink-0 text-white shadow-sm"
+                            style={{ backgroundColor: iconBgColor }}
+                          >
+                            <MessageSquareText className="w-3 h-3" />
+                          </div>
+                          <span className="text-[14px] font-semibold text-[var(--foreground)] truncate">
+                            {overviewTitle}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-[var(--color-muted)] truncate ml-7">
+                          {overviewSubtitle}
+                        </p>
+                      </div>
+
+                      {/* 统计卡片 */}
+                      <div className="grid grid-cols-2 gap-2 mb-5">
+                        <div className="bg-black/[0.03] rounded-lg p-3 text-center">
+                          <div className="text-[20px] font-bold text-[var(--foreground)]">{groups.length}</div>
+                          <div className="text-[11px] text-[var(--color-muted)]">分组</div>
+                        </div>
+                        <div className="bg-black/[0.03] rounded-lg p-3 text-center">
+                          <div className="text-[20px] font-bold text-[var(--foreground)]">{overviewStats.total}</div>
+                          <div className="text-[11px] text-[var(--color-muted)]">提示词</div>
+                        </div>
+                      </div>
+
+                      {/* 分类分布 */}
+                      <div className="mb-5">
+                        <h4 className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider mb-2">分类分布</h4>
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between text-[12px]">
+                            <div className="flex items-center space-x-1.5">
+                              <span className="w-2 h-2 rounded-full bg-amber-400" />
+                              <span className="text-[var(--foreground)]">星标收藏</span>
+                            </div>
+                            <span className="text-[var(--color-muted)] font-medium">{overviewStats.favorites}</span>
+                          </div>
+                          <div className="flex items-center justify-between text-[12px]">
+                            <div className="flex items-center space-x-1.5">
+                              <span className="w-2 h-2 rounded-full bg-[var(--color-primary)]" />
+                              <span className="text-[var(--foreground)]">已分组</span>
+                            </div>
+                            <span className="text-[var(--color-muted)] font-medium">{overviewStats.grouped}</span>
+                          </div>
+                          <div className="flex items-center justify-between text-[12px]">
+                            <div className="flex items-center space-x-1.5">
+                              <span className="w-2 h-2 rounded-full bg-[#86868B]" />
+                              <span className="text-[var(--foreground)]">未分组</span>
+                            </div>
+                            <span className="text-[var(--color-muted)] font-medium">{overviewStats.ungrouped}</span>
+                          </div>
+                          <div className="flex items-center justify-between text-[12px]">
+                            <div className="flex items-center space-x-1.5">
+                              <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                              <span className="text-[var(--foreground)]">已标签</span>
+                            </div>
+                            <span className="text-[var(--color-muted)] font-medium">{overviewStats.tagged}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 热门标签 */}
+                      {overviewStats.topTags.length > 0 && (
+                        <div>
+                          <h4 className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider mb-2">热门标签</h4>
+                          <div className="flex flex-wrap gap-1.5">
+                            {overviewStats.topTags.map(t => (
+                              <span
+                                key={t.name}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-black/[0.03] text-[11px] text-[var(--foreground)]"
+                              >
+                                <Tag className="w-2.5 h-2.5 opacity-60 text-[var(--color-muted)]" />
+                                <span>{t.name}</span>
+                                <span className="text-[var(--color-muted)] text-[10px]">({t.count})</span>
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
-                </div>
-              );
+                );
+              }
+              
+              if (selectedIds.size > 1) {
+                return (
+                  <div className="bg-transparent border-l border-[var(--color-border)] flex flex-col shrink-0 h-full overflow-hidden w-64 inspector-container">
+                    <div 
+                      className="px-4 h-10 flex items-center justify-between shrink-0"
+                      data-tauri-drag-region
+                      style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+                      onPointerDown={(e) => { if (e.target === e.currentTarget) import('@tauri-apps/api/window').then(m => m.getCurrentWindow().startDragging()); }}
+                      onDoubleClick={(e) => { if (e.target === e.currentTarget) import('@tauri-apps/api/window').then(m => m.getCurrentWindow().toggleMaximize()); }}
+                    >
+                      <span className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wide"></span>
+                      {onToggleInspector && (
+                        <Tooltip content="收起检查器 (⌘/)">
+                          <button
+                            onClick={onToggleInspector}
+                            className="p-1.5 rounded-md text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/[0.06] transition-colors"
+                          >
+                            <PanelRightClose className="w-4 h-4" />
+                          </button>
+                        </Tooltip>
+                      )}
+                    </div>
+                    <div className="flex-1 flex flex-col items-center justify-center p-4">
+                      <div className="w-16 h-16 bg-[var(--color-primary)]/10 rounded-full flex items-center justify-center mb-4">
+                         <span className="text-2xl font-bold text-[var(--color-primary)]">{selectedIds.size}</span>
+                      </div>
+                      <h3 className="text-[15px] font-semibold text-[var(--foreground)] mb-1">已选 {selectedIds.size} 个</h3>
+                      <p className="text-[12px] text-[var(--color-muted)] text-center mb-6">你可以进行批量操作</p>
+                    </div>
+                    <div className="p-4 border-t border-[var(--color-border)]/60 shrink-0">
+                      <div className="flex items-center space-x-2">
+                        {filter !== "trash" && (
+                          <button
+                            onClick={() => { setExportingPrompts(selectedPrompts); setIsExportDialogOpen(true); }}
+                            className="flex-1 flex items-center justify-center space-x-1.5 py-1.5 bg-[var(--color-primary)]/10 hover:bg-[var(--color-primary)]/20 text-[var(--color-primary)] rounded-lg transition-colors text-[12px] font-medium"
+                          >
+                            <Download size={12} />
+                            <span>导出 ({selectedIds.size})</span>
+                          </button>
+                        )}
+                        <button
+                          onClick={handleDeleteSelected}
+                          className="flex-1 flex items-center justify-center space-x-1.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg transition-colors text-[12px] font-medium"
+                        >
+                          <Trash2 size={12} />
+                          <span>{filter === "trash" ? "彻底删除" : "删除"}</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
             }
 
-            const p = selectedPrompts[0];
-            if (!p) return null;
+            const p = isDetailMode ? detailTargetPrompt : selectedPrompts[0];
+            if (!p) {
+              if (isDetailMode) {
+                return (
+                  <div className="bg-transparent border-l border-[var(--color-border)] flex flex-col shrink-0 h-full overflow-hidden w-64 items-center justify-center p-4">
+                    <Loader2 className="w-5 h-5 text-[var(--color-muted)] animate-spin" />
+                  </div>
+                );
+              }
+              return null;
+            }
 
             return (
-              <div className="bg-transparent border-l border-[var(--color-border)] flex flex-col shrink-0 h-full overflow-hidden w-64">
+              <div className="bg-transparent border-l border-[var(--color-border)] flex flex-col shrink-0 h-full overflow-hidden w-64 inspector-container">
                 <div 
                   className="px-4 h-10 flex items-center justify-between shrink-0"
                   data-tauri-drag-region
@@ -884,14 +1162,14 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onTitleChange
                     )}
                   </div>
                 </div>
-                <div className="flex-1 overflow-y-auto px-6 pt-3 pb-20 space-y-4">
+                <div className="flex-1 overflow-y-auto px-6 pt-3 pb-20 space-y-4 inspector-scroll-area">
                   <div>
                     <h3 className="text-[14px] font-semibold text-[var(--foreground)] mb-1">{p.title}</h3>
                     {p.description && (
                       <p className="text-[12px] text-[var(--color-muted)] leading-relaxed">{p.description}</p>
                     )}
                   </div>
-                  <div className="bg-[var(--color-background)] rounded-lg p-3 max-h-[300px] overflow-y-auto relative group/prompt">
+                  <div className="bg-[var(--color-background)] rounded-lg p-3 max-h-[300px] overflow-y-auto relative group/prompt inspector-scroll-area">
                     <p className="text-[12px] text-[var(--foreground)] leading-relaxed whitespace-pre-wrap font-mono">
                       {p.content}
                     </p>
@@ -899,41 +1177,67 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onTitleChange
                   
                   <div>
                     <h4 className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wide mb-2">标签</h4>
-                    <div className="flex flex-wrap gap-1.5 items-center relative" ref={inspectorTagDropdownRef}>
-                      {(p.tags ? p.tags.split(",").map(t => t.trim()).filter(Boolean) : []).map(tag => (
-                        <span key={tag} className="group/tag inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-md bg-[var(--color-primary)]/10 text-[var(--color-primary)] font-medium">
-                          #{tag}
-                          <button 
-                            onClick={(e) => { e.stopPropagation(); handleInspectorRemoveTag(p, tag); }}
-                            className="opacity-0 group-hover/tag:opacity-100 hover:text-red-500 transition-all"
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
-                        </span>
-                      ))}
+                    <div className="relative" ref={inspectorTagDropdownRef}>
+                      {(p.tags ? p.tags.split(",").map(t => t.trim()).filter(Boolean) : []).length === 0 ? (
+                        /* 无标签时：展示全宽按钮 */
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsInspectorTagDropdownOpen(prev => {
+                              const next = !prev;
+                              if (next) {
+                                setTimeout(() => inspectorTagInputRef.current?.focus(), 50);
+                              }
+                              return next;
+                            });
+                          }}
+                          className={`w-full py-1.5 px-3 rounded-md border text-[12px] flex items-center justify-center gap-1.5 transition-all ${
+                            isInspectorTagDropdownOpen
+                              ? 'bg-[var(--color-primary)]/5 border-[var(--color-primary)]/40 text-[var(--color-primary)] font-medium'
+                              : 'bg-black/5 hover:bg-black/10 border-transparent text-[var(--color-muted)] hover:text-[var(--foreground)]'
+                          }`}
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>添加标签</span>
+                        </button>
+                      ) : (
+                        /* 拥有1个及以上标签时：展示标签胶囊并在末尾追加小按钮 */
+                        <div className="flex flex-wrap gap-1.5 items-center">
+                          {(p.tags ? p.tags.split(",").map(t => t.trim()).filter(Boolean) : []).map(tag => (
+                            <span key={tag} className="group/tag h-6 inline-flex items-center gap-1 text-[11.5px] px-2.5 rounded-md bg-[var(--color-primary)]/10 text-[var(--color-primary)] font-medium border border-transparent box-border">
+                              #{tag}
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); handleInspectorRemoveTag(p, tag); }}
+                                className="opacity-0 group-hover/tag:opacity-100 hover:text-red-500 transition-all"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </span>
+                          ))}
 
-                      {/* 紧随最后一个标签的添加按钮 */}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsInspectorTagDropdownOpen(prev => {
-                            const next = !prev;
-                            if (next) {
-                              setTimeout(() => inspectorTagInputRef.current?.focus(), 50);
-                            }
-                            return next;
-                          });
-                        }}
-                        className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-md border border-dashed transition-all ${
-                          isInspectorTagDropdownOpen 
-                            ? 'border-[var(--color-primary)] text-[var(--color-primary)] bg-[var(--color-primary)]/10 font-medium' 
-                            : 'border-[var(--color-border)] text-[var(--color-muted)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] hover:bg-[var(--color-primary)]/5'
-                        }`}
-                        title="添加或搜索标签"
-                      >
-                        <Plus className="w-3 h-3" />
-                        <span>标签</span>
-                      </button>
+                          {/* 紧随最后一个标签的添加按钮：极简 + 号图标按钮，极致省空间避免换行 */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsInspectorTagDropdownOpen(prev => {
+                                const next = !prev;
+                                if (next) {
+                                  setTimeout(() => inspectorTagInputRef.current?.focus(), 50);
+                                }
+                                return next;
+                              });
+                            }}
+                            className={`h-6 w-6 inline-flex items-center justify-center rounded-md border border-dashed box-border shrink-0 transition-all ${
+                              isInspectorTagDropdownOpen 
+                                ? 'border-[var(--color-primary)] text-[var(--color-primary)] bg-[var(--color-primary)]/10 font-medium' 
+                                : 'border-[var(--color-border)] text-[var(--color-muted)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] hover:bg-[var(--color-primary)]/5'
+                            }`}
+                            title="添加标签"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
                       
                       {/* 浮动的搜索与选择面板 */}
                       {isInspectorTagDropdownOpen && (
@@ -1077,7 +1381,7 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onTitleChange
         items={
           contextPrompt && selectedIds.size > 1 ? (
             filter === "trash" ? [
-              { id: 'restore_multi', label: `恢复选中的 ${selectedIds.size} 项`, onClick: () => {
+              { id: 'restore_multi', label: `恢复选中的 ${selectedIds.size} 项`, icon: <RotateCcw size={14} />, onClick: () => {
                   const ids = Array.from(selectedIds);
                   invoke("restore_prompts", { ids }).then(() => {
                     showToast(`已恢复 ${ids.length} 项`, "success");
@@ -1088,7 +1392,7 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onTitleChange
                 }
               },
               { separator: true, id: 'sep1', label: '' },
-              { id: 'hard_delete_multi', label: `彻底删除选中的 ${selectedIds.size} 项`, danger: true, onClick: async () => {
+              { id: 'hard_delete_multi', label: `彻底删除选中的 ${selectedIds.size} 项`, danger: true, icon: <Trash2 size={14} className="text-red-500" />, onClick: async () => {
                   const ids = Array.from(selectedIds);
                   if (!(await waitConfirm(`确认彻底删除选中的 ${ids.length} 个提示词吗？此操作不可恢复！`, "彻底删除"))) { hideContextMenu(); return; }
                   invoke("hard_delete_prompts", { ids }).then(() => {
@@ -1100,14 +1404,14 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onTitleChange
                 }
               }
             ] : [
-              { id: 'export_multi', label: `导出选中的 ${selectedIds.size} 项`, onClick: () => { 
+              { id: 'export_multi', label: `导出选中的 ${selectedIds.size} 项`, icon: <Download size={14} />, onClick: () => { 
                   setExportingPrompts(prompts.filter(p => selectedIds.has(p.id))); 
                   setIsExportDialogOpen(true); 
                   hideContextMenu(); 
                 } 
               },
               { separator: true, id: 'sep1', label: '' },
-              { id: 'delete_multi', label: `删除选中的 ${selectedIds.size} 项`, danger: true, onClick: () => {
+              { id: 'delete_multi', label: `删除选中的 ${selectedIds.size} 项`, danger: true, icon: <Trash2 size={14} className="text-red-500" />, onClick: () => {
                   const ids = Array.from(selectedIds);
                   invoke("delete_prompts", { ids }).then(() => {
                     showToast(`已移入回收站 ${ids.length} 项`, "success", {
@@ -1127,7 +1431,7 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onTitleChange
             ]
           ) : contextPrompt ? (
             filter === "trash" ? [
-              { id: 'restore', label: '恢复', onClick: () => {
+              { id: 'restore', label: '恢复', icon: <RotateCcw size={14} />, onClick: () => {
                   invoke("restore_prompts", { ids: [contextPrompt.id] }).then(() => {
                     showToast("已恢复", "success");
                     setSelectedIds(new Set());
@@ -1137,7 +1441,7 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onTitleChange
                 }
               },
               { separator: true, id: 'sep1', label: '' },
-              { id: 'hard_delete', label: '彻底删除', danger: true, onClick: async () => {
+              { id: 'hard_delete', label: '彻底删除', danger: true, icon: <Trash2 size={14} className="text-red-500" />, onClick: async () => {
                   if (!(await waitConfirm("确认彻底删除该提示词吗？此操作不可恢复！", "彻底删除"))) { hideContextMenu(); return; }
                   invoke("hard_delete_prompts", { ids: [contextPrompt.id] }).then(() => {
                     showToast("已彻底删除", "success");
@@ -1150,14 +1454,14 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onTitleChange
             ] : [
               { id: 'open', label: '打开', icon: <ChevronRight size={14} />, onClick: () => { onOpenPromptDetail?.(contextPrompt.title || '无标题', contextPrompt.id, false); hideContextMenu(); } },
               ...(onOpenPromptDetail ? [{ id: 'open_new_tab', label: '在新标签页中打开', icon: <Plus size={14} />, onClick: () => { onOpenPromptDetail(contextPrompt.title || '无标题提示词', contextPrompt.id, false, true); hideContextMenu(); } }] : []),
-              { id: 'edit', label: '编辑', onClick: () => { onOpenPromptDetail?.(contextPrompt.title || '无标题', contextPrompt.id, true); hideContextMenu(); } },
-              { id: 'copy', label: '复制内容', onClick: async () => { 
+              { id: 'edit', label: '编辑', icon: <Edit2 size={14} />, onClick: () => { onOpenPromptDetail?.(contextPrompt.title || '无标题', contextPrompt.id, true); hideContextMenu(); } },
+              { id: 'copy', label: '复制内容', icon: <Copy size={14} />, onClick: async () => { 
                   await navigator.clipboard.writeText(contextPrompt.content); 
                   showToast("已复制", "success"); 
                   hideContextMenu(); 
                 } 
               },
-              { id: 'favorite', label: contextPrompt.is_favorite ? '取消收藏' : '收藏', onClick: async () => {
+              { id: 'favorite', label: contextPrompt.is_favorite ? '取消收藏' : '收藏', icon: <Star size={14} className={contextPrompt.is_favorite ? "fill-amber-400 text-amber-500" : ""} />, onClick: async () => {
                   try {
                     const newVal = await invoke<boolean>("toggle_prompt_favorite", { id: contextPrompt.id });
                     handleFavoriteToggle(contextPrompt.id, newVal);
@@ -1165,8 +1469,14 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onTitleChange
                   hideContextMenu();
                 }
               },
+              { id: 'export', label: '导出', icon: <Download size={14} />, onClick: () => {
+                  setExportingPrompts([contextPrompt]);
+                  setIsExportDialogOpen(true);
+                  hideContextMenu();
+                }
+              },
               { separator: true, id: 'sep1', label: '' },
-              { id: 'delete', label: '删除', danger: true, onClick: () => {
+              { id: 'delete', label: '删除', danger: true, icon: <Trash2 size={14} className="text-red-500" />, onClick: () => {
                   // 根据 Option B 的决策，移入回收站不再弹窗
                   invoke("delete_prompts", { ids: [contextPrompt.id] }).then(() => {
                     showToast("已移入回收站", "success", {
@@ -1186,7 +1496,7 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onTitleChange
             ]
           ) : (
             filter === "trash" ? [
-              { id: 'empty_trash', label: '清空回收站', danger: true, onClick: async () => {
+              { id: 'empty_trash', label: '清空回收站', danger: true, icon: <Trash2 size={14} className="text-red-500" />, onClick: async () => {
                   if (!(await waitConfirm("确认清空回收站吗？清空后所有提示词将永久丢失！", "清空回收站"))) { hideContextMenu(); return; }
                   invoke("empty_trash").then(() => {
                     showToast("回收站已清空", "success");
@@ -1198,7 +1508,7 @@ export function PromptModule({ filter, refreshKey, onGroupsChange, onTitleChange
                 }
               }
             ] : [
-              { id: 'new', label: '新建提示词', onClick: () => { onOpenPromptDetail?.('新建提示词', undefined, true); hideContextMenu(); } }
+              { id: 'new', label: '新建提示词', icon: <Plus size={14} />, onClick: () => { onOpenPromptDetail?.('新建提示词', undefined, true); hideContextMenu(); } }
             ]
           )
         }

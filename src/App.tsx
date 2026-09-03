@@ -52,10 +52,14 @@ function App() {
   const currentTabModule = (currentTab?.type?.startsWith('prompt') ? 'prompts' : (currentTab?.type?.startsWith('resource') ? 'resources' : 'skills')) as AppModule;
   
   useEffect(() => {
-    if (currentTabModule) {
-      setActiveModuleState(currentTabModule);
+    if (currentTab?.type?.startsWith('prompt')) {
+      setActiveModuleState('prompts');
+    } else if (currentTab?.type?.startsWith('resource')) {
+      setActiveModuleState('resources');
+    } else if (currentTab?.type) {
+      setActiveModuleState('skills');
     }
-  }, [currentTabModule]);
+  }, [currentTab?.id, currentTab?.type]);
   
   const isSidebarMatch = activeModule === currentTabModule;
   const activeTab = currentTab?.context?.filter || "all";
@@ -80,7 +84,7 @@ function App() {
   const activeView = (currentTab?.context?.activeView as "all" | "starred" | "recent" | "untagged") || "all";
   const setActiveView = (view: "all" | "starred" | "recent" | "untagged", _title: string = "全部技能", icon: string = "LayoutGrid", e?: React.MouseEvent) => handleSidebarNav('skill-home', '技能库', { activeView: view, selectedTag: "all", repoId: undefined }, icon, e);
   const isFlatView = activeView !== "all" || selectedTag !== "all";
-  const [, setSkills] = useState<Skill[]>([]);
+  const [skills, setSkills] = useState<Skill[]>([]);
   const [directories, setDirectories] = useState<SourceDirectory[]>([]);
   const [agents, setAgents] = useState<AgentConfig[]>([]);
   const [syncRecords, setSyncRecords] = useState<SyncRecord[]>([]);
@@ -225,6 +229,17 @@ function App() {
       return [];
     }
   };
+
+  // 当处于技能详情页时，确保当前技能在全局缓存中存在
+  useEffect(() => {
+    if (currentTab?.type === 'skill-detail' && currentTab.context?.skillId) {
+      const targetId = currentTab.context.skillId;
+      const exists = skills.some(s => s.id === targetId) || groupedRepos.some(r => r.skills.some(s => s.id === targetId));
+      if (!exists && skills.length === 0) {
+        fetchData();
+      }
+    }
+  }, [currentTab?.type, currentTab?.context?.skillId, skills, groupedRepos, fetchData]);
 
   useEffect(() => {
     invoke("cleanup_expired_trash").catch(console.error);
@@ -756,11 +771,12 @@ function App() {
           showToast(isMulti ? '多个路径已复制' : '路径已复制');
         }
       },
-      { id: 'sep1', label: '', separator: true },
-      ...(agents.length > 0 ? [{
-        id: 'sync_to_agent',
-        label: isMulti ? `将 ${targetRepos.length} 个仓库同步至 Agent` : '同步至 AI Agent',
-        icon: <LinkIcon size={14} />,
+      ...(agents.length > 0 ? [
+        { id: 'sep1', label: '', separator: true },
+        {
+          id: 'sync_to_agent',
+          label: isMulti ? `将 ${targetRepos.length} 个仓库同步至 Agent` : '同步至 AI Agent',
+          icon: <LinkIcon size={14} />,
         children: agents.map(agent => {
           const syncedCount = targetRepos.flatMap(r => r.skills).filter(skill => syncRecords.some(sr => sr.skill_id === skill.id && sr.agent_id === agent.id)).length;
           return {
@@ -1334,7 +1350,7 @@ function App() {
     <div className="flex h-screen w-full bg-[var(--color-background)] text-[var(--foreground)] overflow-hidden font-sans">
 
       {isLeftSidebarOpen && (
-      <div className="w-64 bg-transparent flex flex-col h-full shrink-0 relative z-20 text-[13px] border-r border-[var(--color-border)]">
+      <div className="w-64 bg-transparent flex flex-col h-full shrink-0 relative z-20 text-[13px] border-r border-[var(--color-border)] sidebar-container">
         <div 
           data-tauri-drag-region 
           className="h-10 w-full shrink-0"
@@ -1403,7 +1419,7 @@ function App() {
             />
 
 
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1 overflow-y-auto sidebar-scroll-area">
               <div className="px-3 mt-1 mb-5 space-y-0.5">
                 <h3 className="text-[11px] font-semibold text-[var(--color-muted)]/60 mb-1 px-2 uppercase tracking-wide">
                   快捷筛选
@@ -1511,7 +1527,7 @@ function App() {
             </div>
           </>
         ) : (
-          <div className="flex-1 overflow-y-auto px-0">
+          <div className="flex-1 overflow-y-auto px-0 sidebar-scroll-area">
             {activeModule === 'prompts' && (
               <PromptSidebarNav
                 filter={isSidebarMatch ? promptFilter : null as any}
@@ -2088,6 +2104,7 @@ function App() {
                 <PromptModule
                   refreshKey={promptRefreshKey}
                   filter={promptFilter}
+                  activePromptId={currentTab?.type === 'prompt-detail' ? currentTab.context?.promptId : undefined}
                   onGroupsChange={setPromptGroups}
                   onFilterChange={setPromptFilter}
                   onTitleChange={(title, icon) => {
@@ -2133,7 +2150,10 @@ function App() {
         {/* Global Inspector Panel Area (Currently just for skills) */}
         {currentTabModule === 'skills' && (() => {
           const isDetailView = currentTab?.type === 'skill-detail' && currentTab.context.skillId;
-          const detailSkill = isDetailView ? filteredGroupedRepos.flatMap(r => r.skills).find(s => s.id === currentTab.context.skillId) : null;
+          // 核心修复：优先从全局 skills 或 groupedRepos 中查找当前详情技能，绝不能从被筛选器过滤的 filteredGroupedRepos 查找！
+          const detailSkill = isDetailView 
+            ? (skills.find(s => s.id === currentTab.context.skillId) || groupedRepos.flatMap(r => r.skills).find(s => s.id === currentTab.context.skillId) || null)
+            : null;
           
           return (
             <InspectorPanel
@@ -2143,7 +2163,7 @@ function App() {
               agents={agents}
               syncRecords={syncRecords}
               currentLibrary={selectedWorkspaceDir || null}
-              allRepos={filteredGroupedRepos}
+              allRepos={groupedRepos}
               onOpenDrawer={(skill) => { navigateTo('skill-detail', skill.name, { ...currentTab?.context, skillId: skill.id }, 'FileText'); }}
               onSelectRepo={(repoId) => setSelectedRepoId(repoId)}
               onRefreshData={fetchData}

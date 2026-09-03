@@ -161,16 +161,18 @@ export function SkillDetailPage({ skillId, onGeneratePrompt }: SkillDetailPagePr
     }
   }, [content]);
 
-  const handleTranslate = async () => {
-    if (!content || targetLang === "original") return;
+  const handleTranslate = async (langToTranslate?: string) => {
+    const lang = langToTranslate || targetLang;
+    if (!content || lang === "original") return;
+    if (translations[lang]) return; // 已有翻译缓存直接使用
     setIsTranslating(true);
     try {
       const cleanText = content.replace(/^\s*---\r?\n[\s\S]*?\r?\n---\r?\n?/, '');
       const res = await invoke<string>("translate_text", {
         text: cleanText,
-        targetLang: targetLang
+        targetLang: lang
       });
-      setTranslations(prev => ({ ...prev, [targetLang]: res }));
+      setTranslations(prev => ({ ...prev, [lang]: res }));
     } catch (e) {
       showToast("翻译失败", "error");
       console.error(e);
@@ -251,13 +253,13 @@ export function SkillDetailPage({ skillId, onGeneratePrompt }: SkillDetailPagePr
 
   return (
     <div className="flex-1 flex flex-col h-full min-w-0 bg-white relative">
-      <div className="flex items-center justify-between px-8 py-3.5 border-b border-[var(--color-border)] shrink-0 gap-4">
-        <div className="flex items-center space-x-3 min-w-0 flex-1">
-          <div className={`shrink-0 w-10 h-10 rounded-xl flex items-center justify-center ${skill.source_type === 'github' ? 'bg-[#024ad8]/10 text-[#024ad8]' : 'bg-fuchsia-500/10 text-fuchsia-600'}`}>
-            {skill.source_type === 'github' ? <FolderGit2 className="w-5 h-5" /> : <HardDrive className="w-5 h-5" />}
+      <div className="h-12 px-6 border-b border-[var(--color-border)] shrink-0 flex items-center justify-between gap-3 bg-white">
+        <div className="flex items-center space-x-2.5 min-w-0 flex-1">
+          <div className={`shrink-0 w-7 h-7 rounded-lg flex items-center justify-center ${skill.source_type === 'github' ? 'bg-[#024ad8]/10 text-[#024ad8]' : 'bg-fuchsia-500/10 text-fuchsia-600'}`}>
+            {skill.source_type === 'github' ? <FolderGit2 className="w-4 h-4" /> : <HardDrive className="w-4 h-4" />}
           </div>
-          <div className="flex items-center gap-2 min-w-0">
-            <h2 className="text-xl font-semibold text-[var(--foreground)] leading-none truncate">{skill.name}</h2>
+          <div className="flex items-center gap-1.5 min-w-0 py-0.5">
+            <h2 className="text-[16px] font-semibold text-[var(--foreground)] leading-normal truncate">{skill.name}</h2>
             <button
               onClick={async () => {
                 try {
@@ -267,21 +269,27 @@ export function SkillDetailPage({ skillId, onGeneratePrompt }: SkillDetailPagePr
                   showToast(`操作失败: ${e}`, "error");
                 }
               }}
-              className={`p-1 rounded-md transition-colors ${skill.is_favorite ? 'text-yellow-500' : 'text-[var(--color-muted)] hover:text-yellow-500 hover:bg-yellow-50'}`}
+              className={`p-0.5 rounded-md transition-colors ${skill.is_favorite ? 'text-yellow-500' : 'text-[var(--color-muted)] hover:text-yellow-500 hover:bg-yellow-50'}`}
             >
-              <Star className={`w-4 h-4 ${skill.is_favorite ? 'fill-current' : ''}`} />
+              <Star className={`w-3.5 h-3.5 ${skill.is_favorite ? 'fill-current' : ''}`} />
             </button>
           </div>
         </div>
-        <div className="flex items-center space-x-1.5 shrink-0">
+        <div className="flex items-center shrink-0 gap-1">
           {/* 翻译工具小胶囊：移至顶栏右侧 */}
           {!isEditing && detectedLang && (
-            <div className="flex items-center bg-black/5 hover:bg-black/[0.08] rounded-lg p-0.5 transition-colors mr-1">
+            <div className="flex items-center bg-black/5 hover:bg-black/[0.08] rounded-lg p-0.5 transition-colors mr-1.5">
               <Tooltip content={`文档源语言: ${detectedLang === 'cmn' ? '中文' : detectedLang === 'eng' ? '英文' : detectedLang}`}>
                 <select
                   value={targetLang}
-                  onChange={(e) => setTargetLang(e.target.value)}
-                  className="h-7 pl-2 pr-1 text-[12px] bg-transparent border-none focus:outline-none text-[var(--foreground)] font-medium cursor-pointer"
+                  onChange={(e) => {
+                    const newLang = e.target.value;
+                    setTargetLang(newLang);
+                    if (newLang !== "original") {
+                      handleTranslate(newLang);
+                    }
+                  }}
+                  className="h-6 pl-1.5 pr-0.5 text-[11.5px] bg-transparent border-none focus:outline-none text-[var(--foreground)] font-medium cursor-pointer"
                 >
                   <option value="original">🌐 原文</option>
                   <option value="zh-CN">🇨🇳 中文</option>
@@ -294,15 +302,26 @@ export function SkillDetailPage({ skillId, onGeneratePrompt }: SkillDetailPagePr
                   <option value="ru">🇷🇺 Русский</option>
                 </select>
               </Tooltip>
-              <div className="w-[1px] h-3.5 bg-black/10 mx-0.5" />
-              <button
-                onClick={handleTranslate}
-                disabled={isTranslating || targetLang === "original"}
-                title={targetLang === "original" ? "请先选择目标语言后点击翻译" : "翻译此文档"}
-                className="w-7 h-7 rounded-md hover:bg-white flex items-center justify-center text-[var(--color-muted)] hover:text-[var(--color-primary)] disabled:opacity-30 transition-all shadow-none hover:shadow-xs"
-              >
-                {isTranslating ? <Loader2 size={13} className="animate-spin" /> : <Languages size={13} />}
-              </button>
+              
+              <div className="w-[1px] h-3 bg-black/10 mx-0.5" />
+              
+              <Tooltip content={targetLang === "original" ? "请先选择目标语言" : isTranslating ? "翻译中..." : "重新翻译"}>
+                <button
+                  onClick={() => handleTranslate(targetLang)}
+                  disabled={isTranslating}
+                  className={`w-6 h-6 rounded-md flex items-center justify-center transition-all ${
+                    targetLang !== "original"
+                      ? 'bg-white text-[var(--color-primary)] shadow-xs font-semibold hover:bg-white/90 hover:scale-105'
+                      : 'text-gray-700 hover:text-black hover:bg-white/60'
+                  }`}
+                >
+                  {isTranslating ? (
+                    <Loader2 size={12} className="animate-spin text-[var(--color-primary)]" />
+                  ) : (
+                    <Languages size={13} className={targetLang !== "original" ? "text-[var(--color-primary)]" : "text-gray-700"} />
+                  )}
+                </button>
+              </Tooltip>
             </div>
           )}
 
@@ -310,33 +329,39 @@ export function SkillDetailPage({ skillId, onGeneratePrompt }: SkillDetailPagePr
             <button
               onClick={() => onGeneratePrompt?.(skill)}
               disabled={!onGeneratePrompt}
-              className="p-2 rounded-lg text-[var(--color-muted)] hover:bg-[var(--color-primary)]/10 hover:text-[var(--color-primary)] transition-colors disabled:opacity-30"
+              className="p-1.5 rounded-lg text-[var(--color-muted)] hover:bg-[var(--color-primary)]/10 hover:text-[var(--color-primary)] transition-colors disabled:opacity-30"
             >
-              <Sparkles className="w-5 h-5" />
+              <Sparkles className="w-4 h-4" />
             </button>
           </Tooltip>
           {!isEditing && (
             <Tooltip content="编辑文档">
-              <button onClick={() => setIsEditing(true)} className="p-2 rounded-lg text-[var(--color-muted)] hover:bg-[var(--color-primary)]/10 hover:text-[var(--color-primary)] transition-colors">
-                <Edit2 className="w-5 h-5" />
+              <button onClick={() => setIsEditing(true)} className="p-1.5 rounded-lg text-[var(--color-muted)] hover:bg-[var(--color-primary)]/10 hover:text-[var(--color-primary)] transition-colors">
+                <Edit2 className="w-4 h-4" />
               </button>
             </Tooltip>
           )}
         </div>
       </div>
 
-      {/* TOC 侧边导航指示器 (移出滚动容器以保持固定) */}
-      {headings.length > 0 && !isEditing && (
-        <div className="absolute right-2 top-[30%] -translate-y-1/2 z-20 pointer-events-none flex flex-col justify-start items-end pt-2">
-          <div 
-            className="pointer-events-auto flex flex-col items-end"
-            onMouseEnter={() => setIsTocHovered(true)}
-            onMouseLeave={() => setIsTocHovered(false)}
-          >
-            <div className={`flex flex-col transition-all duration-300 ${isTocHovered ? 'bg-white/90 backdrop-blur-md rounded-xl p-3 shadow-xl border border-[var(--color-border)] w-64' : 'w-8 py-2 items-end gap-[6px] border border-transparent shadow-none bg-transparent'}`}>
-              {isTocHovered ? (
-                 <div className="max-h-[60vh] w-full overflow-y-auto overflow-x-hidden space-y-0.5 custom-scrollbar">
-                    <div className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider mb-2 px-1">大纲导航</div>
+      {/* 内容展示区包裹容器：建立独立的定位上下文，严格位于顶栏红线下方 */}
+      <div className="flex-1 relative min-h-0 flex flex-col overflow-hidden">
+        {/* TOC 侧边导航指示器 (向下平移至正文右侧，横坐标与交互保持不变) */}
+        {headings.length > 0 && !isEditing && (
+          <div className="absolute right-2 top-28 z-20 pointer-events-none flex flex-col justify-start items-end">
+            <div 
+              className="pointer-events-auto flex flex-col items-end"
+              onMouseEnter={() => setIsTocHovered(true)}
+              onMouseLeave={() => setIsTocHovered(false)}
+            >
+              <div className={`flex flex-col transition-all duration-300 ${
+                isTocHovered 
+                  ? 'bg-white/95 backdrop-blur-md rounded-xl p-3 shadow-xl border border-[var(--color-border)] w-64' 
+                  : 'w-8 py-2 items-end gap-[6px] border border-transparent shadow-none bg-transparent'
+              }`}>
+                {isTocHovered ? (
+                   <div className="max-h-[min(360px,calc(100vh-200px))] w-full overflow-y-auto overflow-x-hidden space-y-0.5 custom-scrollbar pr-1">
+                      <div className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider mb-2 px-1">大纲导航</div>
                     {headings.map(h => (
                       <button
                         key={h.id}
@@ -370,7 +395,7 @@ export function SkillDetailPage({ skillId, onGeneratePrompt }: SkillDetailPagePr
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto pt-6 px-10 pb-10 relative flex flex-col" ref={contentScrollRef} onScroll={handleScroll}>
+      <div className="flex-1 overflow-y-auto pt-4 px-8 pb-8 relative flex flex-col" ref={contentScrollRef} onScroll={handleScroll}>
         {(!loading && !isEditing && files.length > 1) && (
           <div className="mb-8 shrink-0 w-full overflow-hidden">
             <div className="flex space-x-1.5 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] w-full p-1 bg-black/5 rounded-lg border border-black/5">
@@ -400,12 +425,12 @@ export function SkillDetailPage({ skillId, onGeneratePrompt }: SkillDetailPagePr
             <div className="flex items-center justify-between mb-4 shrink-0">
               <span className="text-sm font-medium text-[var(--color-muted)]">编辑 {activeFile}</span>
               <div className="flex items-center space-x-2">
-                <button onClick={() => setIsEditing(false)} className="px-3 py-1.5 rounded-md text-[13px] font-medium text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-all">
+                <button onClick={() => setIsEditing(false)} className="px-2.5 py-1 rounded-md text-[12px] font-medium text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-all">
                   取消
                 </button>
-                <button onClick={handleSave} disabled={saving} className="flex items-center px-3 py-1.5 bg-[var(--color-foreground)] text-white rounded-md text-[13px] font-medium hover:bg-black transition-all">
-                  {saving ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Save className="w-4 h-4 mr-1.5" />}
-                  保存
+                <button onClick={handleSave} disabled={saving} className="flex items-center space-x-1 bg-[var(--color-primary)] text-white px-2.5 py-1 rounded-md text-[12px] font-medium hover:bg-[var(--color-primary-hover)] shadow-sm shadow-blue-500/20 transition-all disabled:opacity-50">
+                  {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                  <span>保存</span>
                 </button>
               </div>
             </div>
@@ -438,5 +463,6 @@ export function SkillDetailPage({ skillId, onGeneratePrompt }: SkillDetailPagePr
         )}
       </div>
     </div>
-  );
+  </div>
+);
 }
