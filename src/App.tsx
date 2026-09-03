@@ -1350,7 +1350,11 @@ function App() {
     <div className="flex h-screen w-full bg-[var(--color-background)] text-[var(--foreground)] overflow-hidden font-sans">
 
       {isLeftSidebarOpen && (
-      <div className="w-64 bg-transparent flex flex-col h-full shrink-0 relative z-20 text-[13px] border-r border-[var(--color-border)] sidebar-container">
+      <div 
+        className="w-64 bg-transparent flex flex-col h-full shrink-0 relative z-20 text-[13px] border-r border-[var(--color-border)] sidebar-container"
+        onMouseEnter={e => e.currentTarget.style.setProperty('--scroll-thumb-color', 'rgba(0,0,0,0.18)')}
+        onMouseLeave={e => e.currentTarget.style.setProperty('--scroll-thumb-color', 'transparent')}
+      >
         <div 
           data-tauri-drag-region 
           className="h-10 w-full shrink-0"
@@ -2021,7 +2025,7 @@ function App() {
                       setIsSyncingAll(false);
                     }
                     setSyncLogs([]);
-                  }} className="p-1.5 rounded-lg text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-colors ml-2 border-l border-[var(--color-border)] rounded-none pl-2">
+                  }} className="p-1.5 rounded-lg text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-colors ml-2 border-l border-[var(--color-border)] pl-2">
                     <X className="w-4 h-4" />
                   </button>
                 </>

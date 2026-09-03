@@ -362,7 +362,11 @@ export function InspectorPanel({
     const onlineCount = allRepos.filter(r => r.source_type === 'online').length;
 
     return (
-      <div className="w-64 border-l border-[var(--color-border)] bg-transparent flex flex-col shrink-0 h-full overflow-hidden inspector-container">
+      <div 
+        className="w-64 border-l border-[var(--color-border)] bg-transparent flex flex-col shrink-0 h-full overflow-hidden inspector-container"
+        onMouseEnter={e => e.currentTarget.style.setProperty('--scroll-thumb-color', 'rgba(0,0,0,0.18)')}
+        onMouseLeave={e => e.currentTarget.style.setProperty('--scroll-thumb-color', 'transparent')}
+      >
         {/* 头部 */}
         <div 
           data-tauri-drag-region
@@ -562,7 +566,11 @@ export function InspectorPanel({
     // online 就只有一个技能，取其 online_url
     const onlineUrl = isOnline ? (selectedRepo.skills[0]?.online_url || selectedRepo.path) : null;
     return (
-      <div className="w-64 border-l border-[var(--color-border)] bg-transparent flex flex-col shrink-0 h-full overflow-hidden inspector-container">
+      <div 
+        className="w-64 border-l border-[var(--color-border)] bg-transparent flex flex-col shrink-0 h-full overflow-hidden inspector-container"
+        onMouseEnter={e => e.currentTarget.style.setProperty('--scroll-thumb-color', 'rgba(0,0,0,0.18)')}
+        onMouseLeave={e => e.currentTarget.style.setProperty('--scroll-thumb-color', 'transparent')}
+      >
         {/* 头部 */}
         <div 
           data-tauri-drag-region
@@ -865,7 +873,11 @@ export function InspectorPanel({
   // ========== 多选模式 (技能) ==========
   if (selectedItemType === 'skill' && selectedSkills.length > 1) {
     return (
-      <div className="w-64 border-l border-[var(--color-border)] bg-transparent flex flex-col shrink-0 h-full overflow-hidden inspector-container">
+      <div 
+        className="w-64 border-l border-[var(--color-border)] bg-transparent flex flex-col shrink-0 h-full overflow-hidden inspector-container"
+        onMouseEnter={e => e.currentTarget.style.setProperty('--scroll-thumb-color', 'rgba(0,0,0,0.18)')}
+        onMouseLeave={e => e.currentTarget.style.setProperty('--scroll-thumb-color', 'transparent')}
+      >
         <div 
           data-tauri-drag-region
           onPointerDown={(e) => { if (e.target === e.currentTarget) getCurrentWindow().startDragging(); }}
@@ -892,7 +904,11 @@ export function InspectorPanel({
     const selectedSkill = selectedSkills[0];
     const parentRepo = allRepos.find(r => r.skills.some(s => s.id === selectedSkill.id));
     return (
-      <div className="w-64 border-l border-[var(--color-border)] bg-transparent flex flex-col shrink-0 h-full overflow-hidden inspector-container">
+      <div 
+        className="w-64 border-l border-[var(--color-border)] bg-transparent flex flex-col shrink-0 h-full overflow-hidden inspector-container"
+        onMouseEnter={e => e.currentTarget.style.setProperty('--scroll-thumb-color', 'rgba(0,0,0,0.18)')}
+        onMouseLeave={e => e.currentTarget.style.setProperty('--scroll-thumb-color', 'transparent')}
+      >
         {/* 头部 */}
         <div 
           data-tauri-drag-region
@@ -1111,13 +1127,19 @@ export function InspectorPanel({
                 /* 拥有1个及以上标签时：展示标签胶囊并在末尾追加小按钮 */
                 <div className="flex flex-wrap gap-1.5 items-center">
                   {tags.split(',').map(t => t.trim()).filter(Boolean).map(tag => (
-                    <span key={tag} className="group/tag h-6 inline-flex items-center gap-1 text-[11.5px] px-2.5 rounded-md bg-[var(--color-primary)]/10 text-[var(--color-primary)] font-medium border border-transparent box-border">
-                      #{tag}
+                    <span 
+                      key={tag} 
+                      className="group/tag h-6 inline-flex items-center text-[11.5px] px-2 rounded-md bg-[var(--color-primary)]/10 text-[var(--color-primary)] font-medium border border-transparent box-border transition-all duration-150"
+                    >
+                      <span className="opacity-60 mr-0.5 select-none">#</span>
+                      <span className="truncate max-w-[120px]">{tag}</span>
                       <button 
+                        type="button"
                         onClick={(e) => { e.stopPropagation(); removeTag(tag, selectedSkill); }}
-                        className="opacity-0 group-hover/tag:opacity-100 hover:text-red-500 transition-all"
+                        className="w-0 opacity-0 group-hover/tag:w-3.5 group-hover/tag:opacity-100 group-hover/tag:ml-1 overflow-hidden inline-flex items-center justify-center text-[var(--color-primary)] hover:text-red-500 transition-all duration-150"
+                        title={`删除标签 #${tag}`}
                       >
-                        <X className="w-3 h-3" />
+                        <X className="w-3 h-3 shrink-0" />
                       </button>
                     </span>
                   ))}

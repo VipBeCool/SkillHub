@@ -1590,13 +1590,173 @@ pub fn add_online_skill(
     crate::db::add_online_skill(&db, &id, &url, &name, &description, &source_dir_id, &now)
 }
 
+use std::sync::atomic::{AtomicI64, Ordering};
+static GOOGLE_FAIL_TIMESTAMP: AtomicI64 = AtomicI64::new(0);
+
+fn unescape_html(s: &str) -> String {
+    s.replace("&quot;", "\"")
+     .replace("&#39;", "'")
+     .replace("&apos;", "'")
+     .replace("&lt;", "<")
+     .replace("&gt;", ">")
+     .replace("&amp;", "&")
+}
+
+async fn translate_chunk_google(client: &reqwest::Client, chunk: &str, target_lang: &str) -> Result<String, String> {
+    use serde_json::Value;
+
+    let url = format!(
+        "https://translate.googleapis.com/translate_a/single?client=dict-chrome-ex&sl=auto&tl={}&dt=t",
+        target_lang
+    );
+    let body = format!("q={}", urlencoding::encode(chunk));
+
+    let res = client
+        .post(&url)
+        .timeout(std::time::Duration::from_millis(2500))
+        .header("Content-Type", "application/x-www-form-urlencoded")
+        .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
+        .body(body)
+        .send()
+        .await
+        .map_err(|e| format!("Google network error: {}", e))?;
+
+    let status = res.status();
+    let text_response = res.text().await.unwrap_or_default();
+
+    if !status.is_success() {
+        return Err(format!("Google API status {}: {}", status, text_response));
+    }
+
+    let json: Value = serde_json::from_str(&text_response)
+        .map_err(|e| format!("Failed to parse Google JSON: {}", e))?;
+
+    let mut translated = String::new();
+    if let Some(array) = json.as_array() {
+        if let Some(sentences) = array.get(0).and_then(|v| v.as_array()) {
+            for sentence in sentences {
+                if let Some(text_part) = sentence.get(0).and_then(|v| v.as_str()) {
+                    translated.push_str(text_part);
+                }
+            }
+        }
+    }
+
+    if translated.is_empty() {
+        Err("Empty translation from Google".to_string())
+    } else {
+        Ok(translated)
+    }
+}
+
+async fn translate_chunk_tencent(client: &reqwest::Client, chunk: &str, target_lang: &str) -> Result<String, String> {
+    use serde_json::Value;
+
+    let tgt = if target_lang.starts_with("zh") { "zh" } else { target_lang };
+
+    let url = "https://transmart.qq.com/api/imt";
+    let payload = serde_json::json!({
+        "header": {
+            "fn": "auto_translation",
+            "client_key": "browser-chrome-122.0.0-Mac_OS"
+        },
+        "type": "plain",
+        "model_category": "normal",
+        "source": {
+            "lang": "auto",
+            "text_list": [chunk]
+        },
+        "target": {
+            "lang": tgt
+        }
+    });
+
+    let res = client
+        .post(url)
+        .timeout(std::time::Duration::from_millis(3000))
+        .json(&payload)
+        .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
+        .send()
+        .await
+        .map_err(|e| format!("Tencent network error: {}", e))?;
+
+    let status = res.status();
+    let text_response = res.text().await.unwrap_or_default();
+
+    if !status.is_success() {
+        return Err(format!("Tencent status {}: {}", status, text_response));
+    }
+
+    let json: Value = serde_json::from_str(&text_response)
+        .map_err(|e| format!("Failed to parse Tencent JSON: {}", e))?;
+
+    if let Some(list) = json["auto_translation"].as_array() {
+        let mut translated = String::new();
+        for item in list {
+            if let Some(s) = item.as_str() {
+                translated.push_str(s);
+            }
+        }
+        if !translated.is_empty() {
+            return Ok(translated);
+        }
+    }
+
+    Err(format!("Tencent response missing translation: {}", text_response))
+}
+
+async fn translate_chunk_mymemory(client: &reqwest::Client, chunk: &str, target_lang: &str) -> Result<String, String> {
+    use serde_json::Value;
+
+    // MyMemory 目标语言映射 (如 zh-CN, en, ja, ko)
+    let lang_pair = if target_lang.starts_with("zh") {
+        "autodetect|zh-CN"
+    } else {
+        &format!("autodetect|{}", target_lang)
+    };
+
+    let url = "https://api.mymemory.translated.net/get";
+    let body = format!("q={}&langpair={}", urlencoding::encode(chunk), lang_pair);
+
+    let res = client
+        .post(url)
+        .timeout(std::time::Duration::from_secs(6))
+        .header("Content-Type", "application/x-www-form-urlencoded")
+        .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
+        .body(body)
+        .send()
+        .await
+        .map_err(|e| format!("MyMemory network error: {}", e))?;
+
+    let status = res.status();
+    let text_response = res.text().await.unwrap_or_default();
+
+    if !status.is_success() {
+        return Err(format!("MyMemory status {}: {}", status, text_response));
+    }
+
+    let json: Value = serde_json::from_str(&text_response)
+        .map_err(|e| format!("Failed to parse MyMemory JSON: {}", e))?;
+
+    if let Some(translated_text) = json["responseData"]["translatedText"].as_str() {
+        if !translated_text.is_empty() && !translated_text.starts_with("MYMEMORY WARNING:") {
+            return Ok(unescape_html(translated_text));
+        }
+    }
+
+    Err(format!("MyMemory response invalid: {}", text_response))
+}
+
 #[tauri::command]
 pub async fn translate_text(text: String, target_lang: String) -> Result<String, String> {
     use reqwest::Client;
-    use serde_json::Value;
 
-    let client = Client::new();
-    let max_len = 2000;
+    let client = Client::builder()
+        .timeout(std::time::Duration::from_secs(8))
+        .build()
+        .unwrap_or_else(|_| Client::new());
+
+    let max_len = 1000;
     
     let mut chunks = Vec::new();
     let mut current_chunk = String::new();
@@ -1621,56 +1781,69 @@ pub async fn translate_text(text: String, target_lang: String) -> Result<String,
         chunks.push(current_chunk);
     }
     
+    let now = chrono::Utc::now().timestamp();
+    let last_fail = GOOGLE_FAIL_TIMESTAMP.load(Ordering::Relaxed);
+    // 如果在 10 分钟 (600 秒) 内曾判定 Google 不可用，直接开启熔断直连国内源，避免白等 2.5 秒
+    let is_google_cooled_down = (now - last_fail).abs() > 600;
+
     let mut full_translated_text = String::new();
     
     for chunk in chunks {
-        let url = format!(
-            "https://translate.googleapis.com/translate_a/single?client=dict-chrome-ex&sl=auto&tl={}&dt=t",
-            target_lang
-        );
+        let mut translated_chunk = None;
 
-        let body = format!("q={}", urlencoding::encode(&chunk));
-
-        let res = client
-            .post(&url)
-            .header("Content-Type", "application/x-www-form-urlencoded")
-            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-            .body(body)
-            .send()
-            .await
-            .map_err(|e| e.to_string())?;
-
-        let status = res.status();
-        let text_response = res.text().await.unwrap_or_default();
-        
-        if !status.is_success() {
-            let err_msg = format!("Translate API failed with status {}: {}", status, text_response);
-            println!("{}", err_msg);
-            return Err(err_msg);
-        }
-
-        let json: Value = serde_json::from_str(&text_response).map_err(|e| {
-            let err_msg = format!("Failed to parse translate JSON: {}\nResponse: {}", e, text_response);
-            println!("{}", err_msg);
-            e.to_string()
-        })?;
-
-        if let Some(array) = json.as_array() {
-            if let Some(sentences) = array.get(0).and_then(|v| v.as_array()) {
-                for sentence in sentences {
-                    if let Some(text_part) = sentence.get(0).and_then(|v| v.as_str()) {
-                        full_translated_text.push_str(text_part);
-                    }
+        // 1. 如果 Google 处于可用状态，优先尝试 Google (2.5 秒极速判定)
+        if is_google_cooled_down {
+            match translate_chunk_google(&client, &chunk, &target_lang).await {
+                Ok(res) => {
+                    GOOGLE_FAIL_TIMESTAMP.store(0, Ordering::Relaxed);
+                    translated_chunk = Some(res);
+                }
+                Err(err) => {
+                    eprintln!("[Translate] Google API unavailable ({}), switching to domestic fallback...", err);
+                    GOOGLE_FAIL_TIMESTAMP.store(chrono::Utc::now().timestamp(), Ordering::Relaxed);
                 }
             }
         }
-        full_translated_text.push('\n');
-        
-        // Sleep for 100ms to avoid Google API 429 rate limit
-        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+        // 2. 如果 Google 失败或处于熔断期，优先无缝走国内直连主力源 (腾讯交互翻译 Tencent Transmart)
+        if translated_chunk.is_none() {
+            match translate_chunk_tencent(&client, &chunk, &target_lang).await {
+                Ok(res) => {
+                    translated_chunk = Some(res);
+                }
+                Err(err) => {
+                    eprintln!("[Translate] Tencent provider failed ({}), trying MyMemory fallback...", err);
+                }
+            }
+        }
+
+        // 3. 若腾讯也偶发失败，无缝走第三备选源 (MyMemory Neural)
+        if translated_chunk.is_none() {
+            match translate_chunk_mymemory(&client, &chunk, &target_lang).await {
+                Ok(res) => {
+                    translated_chunk = Some(res);
+                }
+                Err(err) => {
+                    eprintln!("[Translate] MyMemory provider failed: {}", err);
+                    translated_chunk = Some(chunk.clone());
+                }
+            }
+        }
+
+        if let Some(res) = translated_chunk {
+            full_translated_text.push_str(&res);
+            full_translated_text.push('\n');
+        }
+
+        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
     }
 
-    Ok(full_translated_text.trim_end().to_string())
+    let result = full_translated_text.trim_end().to_string();
+    if result.is_empty() {
+        Err("翻译结果为空".to_string())
+    } else {
+        Ok(result)
+    }
 }
 
 #[derive(serde::Serialize)]

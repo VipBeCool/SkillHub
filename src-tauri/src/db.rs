@@ -194,6 +194,7 @@ fn run_migrations(conn: &mut Connection) -> Result<()> {
         migrate_v0_to_v1(conn)?;
         conn.execute("PRAGMA user_version = 1", [])?;
         user_version = 1;
+        let _ = user_version;
     }
     
     // Future migrations go here:

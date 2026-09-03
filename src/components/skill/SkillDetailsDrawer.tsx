@@ -277,13 +277,19 @@ export function SkillDetailsDrawer({ skill, isOpen, onClose, onGeneratePrompt }:
               <div className="mt-4">
                 <div className="flex flex-wrap gap-1.5 items-center">
                   {tags.split(',').map(t => t.trim()).filter(Boolean).map(tag => (
-                    <span key={tag} className="group/tag inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-md bg-[var(--color-primary)]/10 text-[var(--color-primary)] font-medium">
-                      #{tag}
+                    <span 
+                      key={tag} 
+                      className="group/tag inline-flex items-center text-[11px] px-2 py-0.5 rounded-md bg-[var(--color-primary)]/10 text-[var(--color-primary)] font-medium transition-all duration-150"
+                    >
+                      <span className="opacity-60 mr-0.5 select-none">#</span>
+                      <span className="truncate max-w-[120px]">{tag}</span>
                       <button 
+                        type="button"
                         onClick={(e) => { e.stopPropagation(); removeTag(tag); }}
-                        className="opacity-0 group-hover/tag:opacity-100 hover:text-red-500 transition-all"
+                        className="w-0 opacity-0 group-hover/tag:w-3.5 group-hover/tag:opacity-100 group-hover/tag:ml-1 overflow-hidden inline-flex items-center justify-center text-[var(--color-primary)] hover:text-red-500 transition-all duration-150"
+                        title={`删除标签 #${tag}`}
                       >
-                        <X className="w-3 h-3" />
+                        <X className="w-3 h-3 shrink-0" />
                       </button>
                     </span>
                   ))}

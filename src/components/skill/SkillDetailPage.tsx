@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { FolderGit2, HardDrive, Edit2, Save, Loader2, Sparkles, Languages, Star } from "lucide-react";
 import { Tooltip } from '../ui/Tooltip';
@@ -6,26 +6,6 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
 import { showToast } from '../ui/Toast';
-import { franc } from "franc-min";
-
-const extractText = (children: any): string => {
-  if (typeof children === 'string') return children;
-  if (Array.isArray(children)) return children.map(extractText).join('');
-  if (children && typeof children === 'object' && 'props' in children) {
-    return extractText(children.props.children);
-  }
-  return '';
-};
-
-const generateId = (text: string) => encodeURIComponent(text.trim().toLowerCase());
-
-const HeadingRenderer = (level: number) => ({children, ...props}: any) => {
-  const text = extractText(children);
-  const id = generateId(text);
-  const Tag = `h${level}` as any;
-  return <Tag id={id} className="scroll-mt-4" {...props}>{children}</Tag>;
-};
-
 import { Skill } from "../../types";
 
 interface SkillFile {
@@ -52,50 +32,81 @@ export function SkillDetailPage({ skillId, onGeneratePrompt }: SkillDetailPagePr
   const [activeFile, setActiveFile] = useState<string>("");
   const contentScrollRef = useRef<HTMLDivElement>(null);
 
+  // 翻译状态
+  const [translations, setTranslations] = useState<Record<string, string>>({});
+  const [isTranslating, setIsTranslating] = useState(false);
+  const [targetLang, setTargetLang] = useState("original");
+
+  // 切换技能或查看文件变更时，重置翻译状态为原文
+  useEffect(() => {
+    setTargetLang("original");
+    setTranslations({});
+  }, [skillId, activeFile]);
+
+  const displayedContent = targetLang === "original" 
+    ? (content ? content.replace(/^\s*---\r?\n[\s\S]*?\r?\n---\r?\n?/, '') : "") 
+    : (translations[targetLang] || (content ? content.replace(/^\s*---\r?\n[\s\S]*?\r?\n---\r?\n?/, '') : ""));
+
   // TOC 状态
   const [headings, setHeadings] = useState<{ id: string, text: string, level: number }[]>([]);
   const [activeId, setActiveId] = useState<string>("");
   const [isTocHovered, setIsTocHovered] = useState(false);
 
-  // 解析 Markdown 提取标题
+  // 基于 DOM 真实渲染提取标题，确保与页面 100% 对应，不论是原文还是多语言译文
   useEffect(() => {
-    if (!displayedContent) {
-      setHeadings([]);
-      return;
-    }
-    // 移除代码块，防止将代码内的注释或内容当做标题
-    const withoutCodeBlocks = displayedContent.replace(/```[\s\S]*?```/g, '').replace(/~~~[\s\S]*?~~~/g, '');
-    const regex = /^(#{1,6})\s+(.+)$/gm;
-    let match;
-    const newHeadings = [];
-    const idCount: Record<string, number> = {};
-    
-    while ((match = regex.exec(withoutCodeBlocks)) !== null) {
-      const text = match[2].trim();
-      let id = generateId(text);
-      if (idCount[id]) {
-        idCount[id]++;
-        id = `${id}-${idCount[id]}`;
-      } else {
-        idCount[id] = 1;
-      }
-      newHeadings.push({
-        level: match[1].length,
-        text,
-        id
+    const timer = setTimeout(() => {
+      if (!contentScrollRef.current) return;
+      const container = contentScrollRef.current;
+      const elements = container.querySelectorAll<HTMLElement>('.prose h1, .prose h2, .prose h3, .prose h4, .prose h5, .prose h6');
+      const list: { id: string; text: string; level: number }[] = [];
+      elements.forEach((el, index) => {
+        const id = `toc-heading-${index}`;
+        el.id = id;
+        el.classList.add('scroll-mt-4');
+        const level = parseInt(el.tagName.replace('H', ''), 10) || 2;
+        list.push({
+          id,
+          text: el.innerText.trim(),
+          level
+        });
       });
-    }
-    setHeadings(newHeadings);
-  }, [content]);
+      setHeadings(list);
+    }, 60);
+    return () => clearTimeout(timer);
+  }, [displayedContent, activeFile, isEditing]);
 
-  // 处理滚动联动
+  const isClickScrollingRef = useRef(false);
+
+  // 处理滚动联动（触底感知与视口倒序匹配，解决页面底部标题无法选中的顽疾）
   const handleScroll = useCallback(() => {
     if (!contentScrollRef.current || headings.length === 0) return;
-    const container = contentScrollRef.current;
-    const containerTop = container.getBoundingClientRect().top;
-    const threshold = containerTop + 60;
+    if (isClickScrollingRef.current) return;
     
-    let currentActive = "";
+    const container = contentScrollRef.current;
+    const scrollBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+    
+    // 1. 触底检测（距离最底部小于 45px）
+    if (scrollBottom < 45) {
+      const containerRect = container.getBoundingClientRect();
+      for (let i = headings.length - 1; i >= 0; i--) {
+        const el = document.getElementById(headings[i].id);
+        if (el) {
+          const rect = el.getBoundingClientRect();
+          if (rect.top < containerRect.bottom - 30) {
+            setActiveId(headings[i].id);
+            return;
+          }
+        }
+      }
+      setActiveId(headings[headings.length - 1].id);
+      return;
+    }
+
+    // 2. 常规顶部阈值检测
+    const containerTop = container.getBoundingClientRect().top;
+    const threshold = containerTop + 90;
+    
+    let currentActive = headings[0].id;
     for (const h of headings) {
       const el = document.getElementById(h.id);
       if (el) {
@@ -106,9 +117,6 @@ export function SkillDetailPage({ skillId, onGeneratePrompt }: SkillDetailPagePr
           break;
         }
       }
-    }
-    if (!currentActive && headings.length > 0) {
-      currentActive = headings[0].id;
     }
     setActiveId(currentActive);
   }, [headings]);
@@ -139,25 +147,24 @@ export function SkillDetailPage({ skillId, onGeneratePrompt }: SkillDetailPagePr
     fetchSkill();
   }, [skillId]);
 
-  // 翻译状态
-  const [detectedLang, setDetectedLang] = useState<string>("");
-  const [translations, setTranslations] = useState<Record<string, string>>({});
-  const [isTranslating, setIsTranslating] = useState(false);
-  const [targetLang, setTargetLang] = useState("original");
-
-  const displayedContent = targetLang === "original" 
-    ? (content ? content.replace(/^\s*---\r?\n[\s\S]*?\r?\n---\r?\n?/, '') : "") 
-    : (translations[targetLang] || (content ? content.replace(/^\s*---\r?\n[\s\S]*?\r?\n---\r?\n?/, '') : ""));
 
 
-  useEffect(() => {
-    if (content) {
-      const cleanText = content.replace(/^\s*---\r?\n[\s\S]*?\r?\n---\r?\n?/, '');
-      const langCode = franc(cleanText);
-      setDetectedLang(langCode);
-      // setTargetLang("original"); // keep default targetLang to original
+  // 智能推导推荐目标语言（严谨计算字符占比，彻底杜绝混排文本误判）
+  const suggestedTarget = useMemo(() => {
+    const cleanText = content ? content.replace(/^\s*---\r?\n[\s\S]*?\r?\n---\r?\n?/, '') : '';
+    const chineseChars = cleanText.match(/[\u4e00-\u9fa5]/g) || [];
+    const englishWords = cleanText.match(/[a-zA-Z]+/g) || [];
+    
+    // 中文字符数与英文单词数的相对权重
+    const totalTokens = chineseChars.length + englishWords.length;
+    
+    // 只有当汉字数量在有效词元中占比达到 45% 以上，且总汉字数不少于 20 个时，才确认为中文文章
+    const isChineseContent = totalTokens > 0 && (chineseChars.length / totalTokens) >= 0.45 && chineseChars.length >= 20;
+
+    if (isChineseContent) {
+      return { lang: 'en', label: 'English', flag: '🇺🇸', name: '英文' };
     } else {
-      setDetectedLang("");
+      return { lang: 'zh-CN', label: '中文', flag: '🇨🇳', name: '中文' };
     }
   }, [content]);
 
@@ -178,6 +185,22 @@ export function SkillDetailPage({ skillId, onGeneratePrompt }: SkillDetailPagePr
       console.error(e);
     } finally {
       setIsTranslating(false);
+    }
+  };
+
+  // 一键快捷翻译 / 切换原文
+  const handleQuickTranslateToggle = async () => {
+    if (isTranslating) return;
+    if (targetLang !== "original") {
+      // 当前在查看译文，一键切回原文
+      setTargetLang("original");
+    } else {
+      // 当前在查看原文，一键翻译并切换为推荐目标语言
+      const target = suggestedTarget.lang;
+      setTargetLang(target);
+      if (!translations[target]) {
+        await handleTranslate(target);
+      }
     }
   };
 
@@ -276,10 +299,10 @@ export function SkillDetailPage({ skillId, onGeneratePrompt }: SkillDetailPagePr
           </div>
         </div>
         <div className="flex items-center shrink-0 gap-1">
-          {/* 翻译工具小胶囊：移至顶栏右侧 */}
-          {!isEditing && detectedLang && (
+          {/* 翻译工具小胶囊：智能语言识别与一键快捷翻译 */}
+          {!isEditing && (
             <div className="flex items-center bg-black/5 hover:bg-black/[0.08] rounded-lg p-0.5 transition-colors mr-1.5">
-              <Tooltip content={`文档源语言: ${detectedLang === 'cmn' ? '中文' : detectedLang === 'eng' ? '英文' : detectedLang}`}>
+              <Tooltip content={targetLang === 'original' ? `源内容: ${suggestedTarget.lang === 'en' ? '中文' : '外文'}` : `当前显示: ${targetLang === 'zh-CN' ? '中文译文' : targetLang}`}>
                 <select
                   value={targetLang}
                   onChange={(e) => {
@@ -305,21 +328,28 @@ export function SkillDetailPage({ skillId, onGeneratePrompt }: SkillDetailPagePr
               
               <div className="w-[1px] h-3 bg-black/10 mx-0.5" />
               
-              <Tooltip content={targetLang === "original" ? "请先选择目标语言" : isTranslating ? "翻译中..." : "重新翻译"}>
+              <Tooltip content={
+                isTranslating 
+                  ? "正在极速翻译中..." 
+                  : targetLang !== "original"
+                  ? "点击切回原文" 
+                  : `一键翻译为${suggestedTarget.name} (${suggestedTarget.flag})`
+              }>
                 <button
-                  onClick={() => handleTranslate(targetLang)}
+                  onClick={handleQuickTranslateToggle}
                   disabled={isTranslating}
-                  className={`w-6 h-6 rounded-md flex items-center justify-center transition-all ${
+                  className={`h-6 px-2 rounded-md flex items-center gap-1 text-[11px] transition-all ${
                     targetLang !== "original"
-                      ? 'bg-white text-[var(--color-primary)] shadow-xs font-semibold hover:bg-white/90 hover:scale-105'
-                      : 'text-gray-700 hover:text-black hover:bg-white/60'
+                      ? 'bg-[var(--color-primary)] text-white shadow-xs font-semibold hover:bg-[var(--color-primary)]/90'
+                      : 'bg-white text-[var(--color-primary)] shadow-xs font-medium hover:bg-white/90 hover:scale-105'
                   }`}
                 >
                   {isTranslating ? (
-                    <Loader2 size={12} className="animate-spin text-[var(--color-primary)]" />
+                    <Loader2 size={12} className="animate-spin text-current" />
                   ) : (
-                    <Languages size={13} className={targetLang !== "original" ? "text-[var(--color-primary)]" : "text-gray-700"} />
+                    <Languages size={13} className="text-current" />
                   )}
+                  <span>{targetLang !== "original" ? "原文" : "翻译"}</span>
                 </button>
               </Tooltip>
             </div>
@@ -346,34 +376,44 @@ export function SkillDetailPage({ skillId, onGeneratePrompt }: SkillDetailPagePr
 
       {/* 内容展示区包裹容器：建立独立的定位上下文，严格位于顶栏红线下方 */}
       <div className="flex-1 relative min-h-0 flex flex-col overflow-hidden">
-        {/* TOC 侧边导航指示器 (向下平移至正文右侧，横坐标与交互保持不变) */}
+        {/* TOC 侧边导航指示器：下移至正文右侧舒适视野区，支持长章节多标题自适应 */}
         {headings.length > 0 && !isEditing && (
-          <div className="absolute right-2 top-28 z-20 pointer-events-none flex flex-col justify-start items-end">
+          <div className="absolute right-3 top-36 bottom-8 z-20 pointer-events-none flex flex-col justify-start items-end">
             <div 
-              className="pointer-events-auto flex flex-col items-end"
+              className="pointer-events-auto flex flex-col items-end max-h-full min-h-0"
               onMouseEnter={() => setIsTocHovered(true)}
               onMouseLeave={() => setIsTocHovered(false)}
             >
-              <div className={`flex flex-col transition-all duration-300 ${
+              <div className={`flex flex-col transition-all duration-200 max-h-full min-h-0 ${
                 isTocHovered 
-                  ? 'bg-white/95 backdrop-blur-md rounded-xl p-3 shadow-xl border border-[var(--color-border)] w-64' 
-                  : 'w-8 py-2 items-end gap-[6px] border border-transparent shadow-none bg-transparent'
+                  ? 'bg-white/95 backdrop-blur-md rounded-xl p-3.5 shadow-xl border border-[var(--color-border)] w-72 flex flex-col' 
+                  : `w-9 py-2 px-1 items-end border border-transparent shadow-none bg-transparent overflow-y-auto no-scrollbar ${
+                      headings.length > 60 ? 'gap-1' : headings.length > 35 ? 'gap-1.5' : 'gap-2.5'
+                    }`
               }`}>
                 {isTocHovered ? (
-                   <div className="max-h-[min(360px,calc(100vh-200px))] w-full overflow-y-auto overflow-x-hidden space-y-0.5 custom-scrollbar pr-1">
-                      <div className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider mb-2 px-1">大纲导航</div>
+                   <div className="flex-1 min-h-0 w-full overflow-y-auto overflow-x-hidden space-y-0.5 custom-scrollbar pr-1">
+                      <div className="flex items-center justify-between text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider mb-2 px-1">
+                        <span>大纲导航</span>
+                        <span className="text-[10px] opacity-70 font-normal">{headings.length} 节</span>
+                      </div>
                     {headings.map(h => (
                       <button
                         key={h.id}
                         onClick={() => {
+                          setActiveId(h.id);
+                          isClickScrollingRef.current = true;
                           const el = document.getElementById(h.id);
                           if (el && contentScrollRef.current) {
                             const container = contentScrollRef.current;
                             const topPos = el.offsetTop - 20;
                             container.scrollTo({ top: topPos, behavior: 'smooth' });
                           }
+                          setTimeout(() => {
+                            isClickScrollingRef.current = false;
+                          }, 650);
                         }}
-                        className={`w-full text-left truncate px-2 py-1.5 rounded-lg text-[12px] transition-colors ${activeId === h.id ? 'text-gray-700 bg-black/5 font-medium' : 'text-[var(--foreground)] hover:bg-black/5'}`}
+                        className={`w-full text-left truncate px-2 py-1.5 rounded-lg text-[12px] transition-colors ${activeId === h.id ? 'text-[var(--color-primary)] bg-[var(--color-primary)]/10 font-medium' : 'text-[var(--foreground)] hover:bg-black/5'}`}
                         style={{ paddingLeft: `${(h.level - 1) * 12 + 8}px` }}
                       >
                         {h.text}
@@ -384,9 +424,16 @@ export function SkillDetailPage({ skillId, onGeneratePrompt }: SkillDetailPagePr
                  headings.map(h => (
                     <div 
                       key={h.id} 
-                      className={`h-[2px] rounded-full transition-all ${
-                        h.level === 1 ? 'w-5' : h.level === 2 ? 'w-4' : h.level === 3 ? 'w-3' : 'w-2.5'
-                      } ${activeId === h.id ? 'bg-gray-400' : 'bg-gray-200/60'}`}
+                      title={h.text}
+                      className={`h-[2px] rounded-full transition-all duration-200 ${
+                        h.level === 1 
+                          ? (activeId === h.id ? 'w-6' : 'w-5') 
+                          : h.level === 2 
+                          ? (activeId === h.id ? 'w-5' : 'w-4') 
+                          : h.level === 3 
+                          ? (activeId === h.id ? 'w-4' : 'w-3') 
+                          : (activeId === h.id ? 'w-3.5' : 'w-2.5')
+                      } ${activeId === h.id ? 'bg-[var(--color-primary)] shadow-[0_0_4px_rgba(2,74,216,0.35)]' : 'bg-gray-300 hover:bg-gray-400'}`}
                     />
                  ))
               )}
@@ -395,7 +442,7 @@ export function SkillDetailPage({ skillId, onGeneratePrompt }: SkillDetailPagePr
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto pt-4 px-8 pb-8 relative flex flex-col" ref={contentScrollRef} onScroll={handleScroll}>
+      <div className="flex-1 overflow-y-auto pt-4 pb-48 relative flex flex-col px-6 sm:px-8 xl:px-[100px]" ref={contentScrollRef} onScroll={handleScroll}>
         {(!loading && !isEditing && files.length > 1) && (
           <div className="mb-8 shrink-0 w-full overflow-hidden">
             <div className="flex space-x-1.5 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] w-full p-1 bg-black/5 rounded-lg border border-black/5">
@@ -421,7 +468,7 @@ export function SkillDetailPage({ skillId, onGeneratePrompt }: SkillDetailPagePr
             <Loader2 className="w-8 h-8 text-[var(--color-primary)] animate-spin opacity-50" />
           </div>
         ) : isEditing ? (
-          <div className="flex-1 flex flex-col h-full">
+          <div className="flex-1 flex flex-col h-full w-full">
             <div className="flex items-center justify-between mb-4 shrink-0">
               <span className="text-sm font-medium text-[var(--color-muted)]">编辑 {activeFile}</span>
               <div className="flex items-center space-x-2">
@@ -442,19 +489,11 @@ export function SkillDetailPage({ skillId, onGeneratePrompt }: SkillDetailPagePr
             />
           </div>
         ) : (
-          <div className="max-w-4xl mx-auto w-full">
+          <div className="w-full">
             <div className="prose max-w-none prose-headings:text-left prose-a:text-[#024ad8] prose-p:leading-relaxed pb-12">
               <ReactMarkdown 
                 remarkPlugins={[remarkGfm]} 
                 rehypePlugins={[rehypeRaw]}
-                components={{
-                  h1: HeadingRenderer(1),
-                  h2: HeadingRenderer(2),
-                  h3: HeadingRenderer(3),
-                  h4: HeadingRenderer(4),
-                  h5: HeadingRenderer(5),
-                  h6: HeadingRenderer(6),
-                }}
               >
                 {displayedContent}
               </ReactMarkdown>

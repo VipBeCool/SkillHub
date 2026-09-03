@@ -169,34 +169,56 @@ body > div[style*="overflow: hidden"][style*="position: fixed"] {
   width: 4px;
 }
 
-/* Hover-activated scrollbars via CSS variable (JS sets --scroll-thumb-color on the element) */
-.hover-scroll::-webkit-scrollbar-thumb {
-  background-color: var(--scroll-thumb-color, transparent);
-  border-radius: 10px;
-  transition: background-color 0.15s ease;
+/* 
+ * 悬停才显示滚动条滑块（左边栏、右边栏检查器、卡片网格等）
+ * 核心机制：通过 CSS 变量 --scroll-thumb-color 驱动
+ * 默认完全透明，鼠标移入容器时由 JS 设置颜色并强制 WebKit 重绘，移出立即清空为 transparent
+ */
+.hover-scroll::-webkit-scrollbar,
+.sidebar-scroll-area::-webkit-scrollbar,
+.inspector-scroll-area::-webkit-scrollbar,
+.hover-scrollbar::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
 }
 
-/* 鼠标移入左边栏或右边栏时才显示滚动条滑块 */
-.sidebar-container .sidebar-scroll-area::-webkit-scrollbar-thumb,
-.inspector-container .inspector-scroll-area::-webkit-scrollbar-thumb,
+.hover-scroll::-webkit-scrollbar-track,
+.sidebar-scroll-area::-webkit-scrollbar-track,
+.inspector-scroll-area::-webkit-scrollbar-track,
+.hover-scrollbar::-webkit-scrollbar-track {
+  background-color: transparent;
+}
+
+.hover-scroll::-webkit-scrollbar-thumb,
+.sidebar-scroll-area::-webkit-scrollbar-thumb,
+.inspector-scroll-area::-webkit-scrollbar-thumb,
 .hover-scrollbar::-webkit-scrollbar-thumb {
-  background-color: transparent !important;
-  transition: background-color 0.2s ease-in-out;
+  background-color: var(--scroll-thumb-color, transparent) !important;
+  border-radius: 10px;
 }
 
-.sidebar-container:hover .sidebar-scroll-area::-webkit-scrollbar-thumb,
-.inspector-container:hover .inspector-scroll-area::-webkit-scrollbar-thumb,
-.hover-scrollbar:hover::-webkit-scrollbar-thumb,
+/* 鼠标悬停在滑块本身时颜色加深 */
+.hover-scroll::-webkit-scrollbar-thumb:hover,
+.sidebar-scroll-area::-webkit-scrollbar-thumb:hover,
+.inspector-scroll-area::-webkit-scrollbar-thumb:hover,
+.hover-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(0, 0, 0, 0.35) !important;
+}
+
+/* 纯 CSS 兜底：当鼠标直接 hover 在滚动区域自身时也显现 */
 .sidebar-scroll-area:hover::-webkit-scrollbar-thumb,
-.inspector-scroll-area:hover::-webkit-scrollbar-thumb {
-  background-color: rgba(0, 0, 0, 0.15) !important;
+.inspector-scroll-area:hover::-webkit-scrollbar-thumb,
+.hover-scrollbar:hover::-webkit-scrollbar-thumb {
+  background-color: var(--scroll-thumb-color, rgba(0, 0, 0, 0.18)) !important;
 }
 
-.sidebar-container:hover .sidebar-scroll-area::-webkit-scrollbar-thumb:hover,
-.inspector-container:hover .inspector-scroll-area::-webkit-scrollbar-thumb:hover,
-.hover-scrollbar:hover::-webkit-scrollbar-thumb:hover,
-.sidebar-scroll-area:hover::-webkit-scrollbar-thumb:hover,
-.inspector-scroll-area:hover::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(0, 0, 0, 0.3) !important;
+/* 隐藏滚动条工具类 */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
 }
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
 
