@@ -63,6 +63,7 @@ export function AboutDialog({ isOpen, onClose, onOpenCommunity }: AboutDialogPro
   const [isDownloading, setIsDownloading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [statusMessage, setStatusMessage] = useState<string>("");
+  const [showFallbackDownload, setShowFallbackDownload] = useState(false);
   const [feedbackMenuOpen, setFeedbackMenuOpen] = useState(false);
   const feedbackMenuRef = useRef<HTMLDivElement>(null);
 
@@ -73,6 +74,7 @@ export function AboutDialog({ isOpen, onClose, onOpenCommunity }: AboutDialogPro
       setIsDownloading(false);
       setProgress(0);
       setStatusMessage("");
+      setShowFallbackDownload(false);
       setFeedbackMenuOpen(false);
     }
   }, [isOpen]);
@@ -125,13 +127,24 @@ export function AboutDialog({ isOpen, onClose, onOpenCommunity }: AboutDialogPro
     } catch {}
   };
 
+  // 带超时熔断的更新检测函数（默认 8 秒）
+  const checkWithTimeout = async (timeoutMs = 8000) => {
+    return Promise.race([
+      check(),
+      new Promise<null>((_, reject) =>
+        setTimeout(() => reject(new Error("Timeout")), timeoutMs)
+      ),
+    ]);
+  };
+
   const handleCheckUpdate = async () => {
     if (isChecking || isDownloading) return;
     
     setIsChecking(true);
+    setShowFallbackDownload(false);
     setStatusMessage("正在检查更新...");
     try {
-      const result = await check();
+      const result = await checkWithTimeout(8000);
       if (result?.available) {
         setUpdate(result);
         setStatusMessage(`发现新版本 v${result.version}`);
@@ -139,10 +152,14 @@ export function AboutDialog({ isOpen, onClose, onOpenCommunity }: AboutDialogPro
         setStatusMessage("当前已是最新版本");
         setTimeout(() => setStatusMessage(""), 3000);
       }
-    } catch (e) {
-      console.error(e);
-      setStatusMessage("检查更新失败");
-      setTimeout(() => setStatusMessage(""), 3000);
+    } catch (e: any) {
+      console.error("检查更新异常:", e);
+      const isTimeout = e?.message === "Timeout";
+      setStatusMessage(isTimeout ? "检查超时 (直连受限)" : "检查更新失败");
+      setShowFallbackDownload(true);
+      setTimeout(() => {
+        setStatusMessage("");
+      }, 6000);
     } finally {
       setIsChecking(false);
     }
@@ -152,6 +169,7 @@ export function AboutDialog({ isOpen, onClose, onOpenCommunity }: AboutDialogPro
     if (!update || isDownloading) return;
     
     setIsDownloading(true);
+    setShowFallbackDownload(false);
     try {
       let totalBytes = 0;
       let downloadedBytes = 0;
@@ -171,8 +189,11 @@ export function AboutDialog({ isOpen, onClose, onOpenCommunity }: AboutDialogPro
     } catch (e) {
       console.error('更新失败:', e);
       setStatusMessage("更新下载失败");
+      setShowFallbackDownload(true);
       setIsDownloading(false);
-      setTimeout(() => setStatusMessage(`发现新版本 v${update.version}`), 3000);
+      setTimeout(() => {
+        if (update) setStatusMessage(`发现新版本 v${update.version}`);
+      }, 4000);
     }
   };
 
@@ -216,26 +237,48 @@ export function AboutDialog({ isOpen, onClose, onOpenCommunity }: AboutDialogPro
                 <span>正在下载... {progress}%</span>
               </div>
             ) : update ? (
-              <button 
-                onClick={handleDownload}
-                className="text-[12px] text-blue-500 hover:text-blue-600 font-semibold transition-colors flex items-center gap-1 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30 px-2.5 py-0.5 rounded-full"
-              >
-                {statusMessage || `下载更新 (v${update.version})`}
-              </button>
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={handleDownload}
+                  className="text-[12px] text-blue-500 hover:text-blue-600 font-semibold transition-colors flex items-center gap-1 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30 px-2.5 py-0.5 rounded-full cursor-pointer"
+                >
+                  {statusMessage || `下载更新 (v${update.version})`}
+                </button>
+                {showFallbackDownload && (
+                  <button
+                    onClick={() => openUrl("https://github.com/VipBeCool/SkillHub/releases/latest")}
+                    className="text-[11px] text-blue-500 hover:text-blue-600 underline underline-offset-2 transition-all cursor-pointer font-medium"
+                    title="若应用内下载受限，可前往网页手动下载最新安装包"
+                  >
+                    前往网页下载
+                  </button>
+                )}
+              </div>
             ) : (
-              <button 
-                onClick={handleCheckUpdate}
-                disabled={isChecking}
-                className={`text-[12px] font-medium transition-colors ${
-                  statusMessage.includes('失败') 
-                    ? 'text-red-500' 
-                    : statusMessage.includes('最新')
-                    ? 'text-green-500'
-                    : 'text-blue-500 hover:text-blue-600'
-                } ${isChecking ? 'opacity-70' : ''}`}
-              >
-                {statusMessage || "检查更新"}
-              </button>
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={handleCheckUpdate}
+                  disabled={isChecking}
+                  className={`text-[12px] font-medium transition-colors cursor-pointer ${
+                    statusMessage.includes('失败') || statusMessage.includes('超时')
+                      ? 'text-red-500' 
+                      : statusMessage.includes('最新')
+                      ? 'text-green-500'
+                      : 'text-blue-500 hover:text-blue-600'
+                  } ${isChecking ? 'opacity-70' : ''}`}
+                >
+                  {statusMessage || "检查更新"}
+                </button>
+                {showFallbackDownload && (
+                  <button
+                    onClick={() => openUrl("https://github.com/VipBeCool/SkillHub/releases/latest")}
+                    className="text-[11px] text-blue-500 hover:text-blue-600 underline underline-offset-2 transition-all cursor-pointer font-medium"
+                    title="国内直连受限时，可在网页手动下载最新安装包"
+                  >
+                    前往网页下载
+                  </button>
+                )}
+              </div>
             )}
           </div>
 

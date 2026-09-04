@@ -958,7 +958,6 @@ export function PromptModule({ filter, refreshKey, activePromptId, onGroupsChang
                   : "提示词管理";
 
                 const currentGroup = filter.startsWith("group:") ? groups.find(g => g.id === filter.split(":")[1]) : null;
-                const iconBgColor = currentGroup?.color || 'var(--color-primary)';
 
                 return (
                   <div 
@@ -992,8 +991,8 @@ export function PromptModule({ filter, refreshKey, activePromptId, onGroupsChang
                       <div className="mb-5">
                         <div className="flex items-center space-x-2 mb-1">
                           <div 
-                            className="w-5 h-5 rounded-md flex items-center justify-center shrink-0 text-white shadow-sm"
-                            style={{ backgroundColor: iconBgColor }}
+                            className={`w-5 h-5 rounded-md flex items-center justify-center shrink-0 text-white shadow-sm ${!currentGroup?.color ? 'bg-blue-500' : ''}`}
+                            style={currentGroup?.color ? { backgroundColor: currentGroup.color } : undefined}
                           >
                             <MessageSquareText className="w-3 h-3" />
                           </div>

@@ -39,8 +39,11 @@ export function PromptDetailPage({ promptId, isEditingInit = false, onSaveSucces
   const [groups, setGroups] = useState<PromptGroup[]>([]);
   const [showGroupDropdown, setShowGroupDropdown] = useState(false);
   const [tagInput, setTagInput] = useState("");
+  const [allTags, setAllTags] = useState<{ name: string; count: number }[]>([]);
+  const [showTagSuggestions, setShowTagSuggestions] = useState(false);
   
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const tagSuggestionsRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const contentScrollRef = useRef<HTMLDivElement>(null);
 
@@ -130,28 +133,79 @@ export function PromptDetailPage({ promptId, isEditingInit = false, onSaveSucces
     }
   }, [headings, handleScroll]);
 
-  // 加载分组数据
+  // 加载全库已有标签列表
+  const fetchAllTags = useCallback(() => {
+    invoke<Prompt[]>("get_prompts", { groupId: null, search: null })
+      .then((prompts) => {
+        const map = new Map<string, number>();
+        prompts.forEach((p) => {
+          if (p.tags) {
+            p.tags.split(/[,，]/).forEach((t) => {
+              const tr = t.trim();
+              if (tr) map.set(tr, (map.get(tr) || 0) + 1);
+            });
+          }
+        });
+        const sorted = Array.from(map.entries())
+          .map(([name, count]) => ({ name, count }))
+          .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+        setAllTags(sorted);
+      })
+      .catch(console.error);
+  }, []);
+
+  // 加载分组数据与全库标签
   useEffect(() => {
     invoke<PromptGroup[]>("get_prompt_groups")
       .then(setGroups)
       .catch(e => console.error("Failed to load prompt groups", e));
     
-    invoke<Prompt[]>("get_prompts", { groupId: null, search: null })
-      .catch(console.error);
-  }, []);
+    fetchAllTags();
+  }, [fetchAllTags]);
 
-  // 点击外部关闭下拉菜单
+  // 监听全库标签变动
+  useEffect(() => {
+    const handler = () => fetchAllTags();
+    window.addEventListener('skillhub:prompt-tags-changed', handler);
+    return () => window.removeEventListener('skillhub:prompt-tags-changed', handler);
+  }, [fetchAllTags]);
+
+  // 点击外部关闭下拉菜单与标签推荐
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (dropdownRef.current && !dropdownRef.current.contains(target)) {
         setShowGroupDropdown(false);
       }
+      if (tagSuggestionsRef.current && !tagSuggestionsRef.current.contains(target)) {
+        setShowTagSuggestions(false);
+      }
     };
-    if (showGroupDropdown) {
+    if (showGroupDropdown || showTagSuggestions) {
       document.addEventListener("mousedown", handleClickOutside);
     }
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [showGroupDropdown]);
+  }, [showGroupDropdown, showTagSuggestions]);
+
+  // 动态自适应 textarea 高度（随内容输入自动撑开，确保全部内容完整展示，绝不截断）
+  useEffect(() => {
+    if (isEditing && textareaRef.current) {
+      const el = textareaRef.current;
+      const adjustHeight = () => {
+        if (!el) return;
+        el.style.height = "0px";
+        const targetH = Math.max(el.scrollHeight, 450);
+        el.style.height = `${targetH}px`;
+      };
+      adjustHeight();
+      const rafId = requestAnimationFrame(adjustHeight);
+      const timer = setTimeout(adjustHeight, 80);
+      return () => {
+        cancelAnimationFrame(rafId);
+        clearTimeout(timer);
+      };
+    }
+  }, [content, isEditing]);
 
   // 加载 Prompt
   useEffect(() => {
@@ -192,11 +246,24 @@ export function PromptDetailPage({ promptId, isEditingInit = false, onSaveSucces
 
   const tagList = tags.split(/[,，]/).map(t => t.trim()).filter(Boolean);
   
+  // 标签候选推荐过滤
+  const filteredSuggestions = useMemo(() => {
+    const trimmed = tagInput.trim().toLowerCase();
+    return allTags.filter((item) => {
+      if (tagList.includes(item.name)) return false;
+      if (!trimmed) return true;
+      return item.name.toLowerCase().includes(trimmed);
+    });
+  }, [allTags, tagList, tagInput]);
+
   const addTag = (newTag: string) => {
-    if (!tagList.includes(newTag)) {
-      setTags([...tagList, newTag].join(","));
+    const trimmed = newTag.trim();
+    if (!trimmed) return;
+    if (!tagList.includes(trimmed)) {
+      setTags([...tagList, trimmed].join(","));
     }
     setTagInput("");
+    setShowTagSuggestions(false);
   };
 
   const removeTag = (tagToRemove: string) => {
@@ -529,111 +596,157 @@ export function PromptDetailPage({ promptId, isEditingInit = false, onSaveSucces
         {/* 滚动的正文区域 */}
         <div className="flex-1 overflow-y-auto pt-4 pb-48 relative flex flex-col px-6 sm:px-8 xl:px-[100px]" ref={contentScrollRef} onScroll={handleScroll}>
           {isEditing ? (
-            <div className="w-full flex-1 flex flex-col h-full animate-in fade-in duration-200">
-              <div className="flex items-center justify-between mb-4 shrink-0">
-                <span className="text-sm font-medium text-[var(--color-muted)]">
-                  {prompt ? `编辑 ${prompt.title}` : "新建提示词"}
-                </span>
+            <div className="w-full min-h-full flex flex-col animate-in fade-in duration-200 pb-16">
+              {/* 大标题与分组胶囊 */}
+              <div className="flex items-start justify-between gap-4 mb-3 shrink-0">
+                <input
+                  type="text"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  className="flex-1 text-2xl sm:text-3xl font-bold tracking-tight text-[var(--foreground)] bg-transparent border-0 outline-none p-0 placeholder:text-[var(--color-muted)]/40 leading-tight"
+                  placeholder="提示词标题..."
+                />
+
+                {/* 分组胶囊选择器 */}
+                <div className="relative shrink-0 pt-1" ref={dropdownRef}>
+                  <button
+                    type="button"
+                    onClick={() => setShowGroupDropdown(!showGroupDropdown)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-black/[0.04] dark:bg-white/[0.06] text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/[0.08] dark:hover:bg-white/[0.1] transition-all cursor-pointer border border-black/5 dark:border-white/5"
+                  >
+                    <Folder className="w-3.5 h-3.5 opacity-70" style={{ color: groups.find(g => g.id === groupId)?.color }} />
+                    <span className="max-w-[120px] truncate">{groupId ? groups.find(g => g.id === groupId)?.name || "未分组" : "选择分组"}</span>
+                    <ChevronDown className="w-3 h-3 opacity-60 ml-0.5" />
+                  </button>
+                  {showGroupDropdown && (
+                    <div className="absolute top-full right-0 mt-1.5 w-44 bg-white dark:bg-[#1E1E1E] border border-black/10 dark:border-white/10 rounded-xl shadow-xl z-50 py-1 overflow-hidden animate-in fade-in-50 zoom-in-95 duration-150">
+                      <button
+                        type="button"
+                        onClick={() => { setGroupId(""); setShowGroupDropdown(false); }}
+                        className={`w-full text-left px-3 py-1.5 text-[12px] hover:bg-black/5 dark:hover:bg-white/5 transition-colors cursor-pointer ${!groupId ? "text-[var(--color-primary)] font-medium bg-[var(--color-primary)]/5" : "text-[var(--foreground)]"}`}
+                      >
+                        未分组
+                      </button>
+                      {groups.map(group => (
+                        <button
+                          key={group.id}
+                          type="button"
+                          onClick={() => { setGroupId(group.id); setShowGroupDropdown(false); }}
+                          className={`w-full flex items-center gap-1.5 text-left px-3 py-1.5 text-[12px] hover:bg-black/5 dark:hover:bg-white/5 transition-colors truncate cursor-pointer ${groupId === group.id ? "text-[var(--color-primary)] font-medium bg-[var(--color-primary)]/5" : "text-[var(--foreground)]"}`}
+                        >
+                          <Folder className="w-3 h-3 shrink-0" style={{ color: group.color || "var(--color-muted)" }} />
+                          <span className="truncate">{group.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
 
-              <div className="space-y-3 mb-4 shrink-0">
-                <div className="flex space-x-3">
-                  <input
-                    type="text"
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    className="flex-1 px-3.5 py-2 bg-white border border-[var(--color-border)] rounded-lg text-[14px] text-[var(--foreground)] font-medium outline-none focus:border-[var(--color-primary)]/50 focus:ring-2 focus:ring-[var(--color-primary)]/10 transition-all placeholder:text-[var(--color-muted)]/60"
-                    placeholder="提示词标题，例如：自然风格润色"
-                  />
-                  
-                  <div className="w-48 relative" ref={dropdownRef}>
-                    <button
-                      type="button"
-                      onClick={() => setShowGroupDropdown(!showGroupDropdown)}
-                      className="w-full h-full flex items-center justify-between px-3 py-2 bg-white border border-[var(--color-border)] rounded-lg text-[13px] text-[var(--foreground)] outline-none hover:bg-black/[0.02] transition-colors"
-                    >
-                      <div className="flex items-center truncate mr-2">
-                        <Folder className="w-4 h-4 text-[var(--color-muted)]/70 mr-1.5 shrink-0" />
-                        <span className="truncate">{groupId ? groups.find(g => g.id === groupId)?.name || "未分组" : "未分组"}</span>
-                      </div>
-                      <ChevronDown className="w-3.5 h-3.5 text-[var(--color-muted)] shrink-0" />
-                    </button>
-                    {showGroupDropdown && (
-                      <div className="absolute top-full right-0 mt-1 w-full bg-white border border-[var(--color-border)] rounded-xl shadow-lg z-50 py-1 overflow-hidden">
-                        <button
-                          type="button"
-                          onClick={() => { setGroupId(""); setShowGroupDropdown(false); }}
-                          className={`w-full text-left px-3 py-1.5 text-[12.5px] hover:bg-black/5 transition-colors ${!groupId ? "text-[var(--color-primary)] font-medium bg-[var(--color-primary)]/5" : "text-[var(--foreground)]"}`}
-                        >
-                          未分组
-                        </button>
-                        {groups.map(group => (
-                          <button
-                            key={group.id}
-                            type="button"
-                            onClick={() => { setGroupId(group.id); setShowGroupDropdown(false); }}
-                            className={`w-full text-left px-3 py-1.5 text-[12.5px] hover:bg-black/5 transition-colors truncate ${groupId === group.id ? "text-[var(--color-primary)] font-medium bg-[var(--color-primary)]/5" : "text-[var(--foreground)]"}`}
-                          >
-                            {group.name}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
+              {/* 描述引言 */}
+              <div className="mb-4 shrink-0">
                 <input
                   type="text"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  className="w-full px-3.5 py-2 bg-white border border-[var(--color-border)] rounded-lg text-[13px] text-[var(--foreground)] outline-none focus:border-[var(--color-primary)]/50 focus:ring-2 focus:ring-[var(--color-primary)]/10 transition-all placeholder:text-[var(--color-muted)]/60"
-                  placeholder="一句话描述这个提示词的作用（可选）"
+                  className="w-full text-[14px] text-[var(--color-muted)] bg-transparent border-0 outline-none p-0 placeholder:text-[var(--color-muted)]/50 leading-relaxed"
+                  placeholder="添加一句话描述（可选）..."
                 />
+              </div>
 
-                <div className="bg-gray-50/60 border border-[var(--color-border)] rounded-lg px-3 py-2">
-                  <div className="flex flex-wrap gap-1.5 items-center">
-                    {tagList.map(t => (
-                      <span 
-                        key={t} 
-                        className="group/tag h-6 inline-flex items-center text-[11.5px] px-2 rounded-md bg-[var(--color-primary)]/10 text-[var(--color-primary)] font-medium border border-transparent box-border transition-all duration-150"
-                      >
-                        <span className="opacity-60 mr-0.5 select-none">#</span>
-                        <span className="truncate max-w-[120px]">{t}</span>
-                        <button 
-                          type="button" 
-                          onClick={() => removeTag(t)} 
-                          className="w-0 opacity-0 group-hover/tag:w-3.5 group-hover/tag:opacity-100 group-hover/tag:ml-1 overflow-hidden inline-flex items-center justify-center text-[var(--color-primary)] hover:text-red-500 transition-all duration-150"
-                          title={`删除标签 #${t}`}
+              {/* 标签区（内联胶囊流 + 搜索联想推荐） */}
+              <div className="flex flex-wrap gap-1.5 items-center relative mb-5 shrink-0" ref={tagSuggestionsRef}>
+                {tagList.map(t => (
+                  <span 
+                    key={t} 
+                    className="group/tag inline-flex items-center text-[11.5px] px-2.5 py-0.5 rounded-full bg-[var(--color-primary)]/10 text-[var(--color-primary)] font-medium transition-all"
+                  >
+                    <span className="opacity-60 mr-0.5 select-none">#</span>
+                    <span className="truncate max-w-[140px]">{t}</span>
+                    <button 
+                      type="button" 
+                      onClick={() => removeTag(t)} 
+                      className="ml-1 text-[var(--color-primary)] hover:text-red-500 cursor-pointer transition-colors"
+                      title={`删除标签 #${t}`}
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+                
+                <div className="relative inline-flex items-center">
+                  <input
+                    type="text"
+                    value={tagInput}
+                    onChange={(e) => {
+                      setTagInput(e.target.value);
+                      setShowTagSuggestions(true);
+                    }}
+                    onFocus={() => setShowTagSuggestions(true)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        if (tagInput.trim()) {
+                          addTag(tagInput.trim());
+                        }
+                      } else if (e.key === 'Escape') {
+                        setShowTagSuggestions(false);
+                      }
+                    }}
+                    placeholder={tagList.length === 0 ? "添加标签（输入或选择）..." : "+ 标签"}
+                    className="text-[12px] bg-transparent outline-none text-[var(--foreground)] placeholder:text-[var(--color-muted)]/50 px-2 py-0.5 min-w-[70px] focus:min-w-[130px] transition-all border border-dashed border-black/15 dark:border-white/15 rounded-full hover:border-[var(--color-primary)]/40 focus:border-[var(--color-primary)]"
+                  />
+
+                  {/* 搜索/推荐下拉浮层 */}
+                  {showTagSuggestions && (filteredSuggestions.length > 0 || tagInput.trim()) && (
+                    <div className="absolute top-full left-0 mt-1.5 w-52 max-h-56 overflow-y-auto bg-white dark:bg-[#1E1E1E] border border-black/10 dark:border-white/10 rounded-xl shadow-xl z-50 p-1 animate-in fade-in-50 zoom-in-95 duration-100">
+                      <div className="px-2 py-1 text-[10.5px] font-semibold text-[var(--color-muted)] border-b border-black/5 dark:border-white/5 mb-0.5 flex items-center justify-between">
+                        <span>{tagInput.trim() ? "匹配标签" : "已有标签推荐"}</span>
+                        {filteredSuggestions.length > 0 && <span className="font-normal text-[10px]">{filteredSuggestions.length} 个</span>}
+                      </div>
+
+                      {/* 若输入了新标签且不匹配任何已有标签，显示创建项 */}
+                      {tagInput.trim() && !allTags.some(t => t.name.toLowerCase() === tagInput.trim().toLowerCase()) && (
+                        <button
+                          type="button"
+                          onClick={() => addTag(tagInput.trim())}
+                          className="w-full flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[12px] text-[var(--color-primary)] hover:bg-[var(--color-primary)]/10 text-left transition-colors cursor-pointer font-medium"
                         >
-                          <X className="w-3 h-3 shrink-0" />
+                          <span>+ 创建新标签</span>
+                          <span className="font-bold truncate">#{tagInput.trim()}</span>
                         </button>
-                      </span>
-                    ))}
-                    <div className="flex items-center flex-1 min-w-[120px]">
-                      <input
-                        type="text"
-                        value={tagInput}
-                        onChange={(e) => setTagInput(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            if (tagInput.trim()) addTag(tagInput.trim());
-                          }
-                        }}
-                        placeholder="输入标签按回车添加..."
-                        className="w-full bg-transparent text-[12px] text-[var(--foreground)] outline-none placeholder:text-[var(--color-muted)]/60"
-                      />
+                      )}
+
+                      {filteredSuggestions.map(item => (
+                        <button
+                          key={item.name}
+                          type="button"
+                          onClick={() => addTag(item.name)}
+                          className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[12px] hover:bg-black/5 dark:hover:bg-white/5 text-left transition-colors text-[var(--foreground)] cursor-pointer"
+                        >
+                          <span className="flex items-center gap-1 truncate">
+                            <span className="text-[var(--color-primary)] font-medium">#</span>
+                            <span className="truncate">{item.name}</span>
+                          </span>
+                          <span className="text-[10px] text-[var(--color-muted)] font-mono ml-1">{item.count}</span>
+                        </button>
+                      ))}
                     </div>
-                  </div>
+                  )}
                 </div>
               </div>
 
+              {/* 分割线 */}
+              <div className="w-full h-px bg-black/[0.06] dark:bg-white/[0.06] mb-5 shrink-0" />
+
+              {/* 沉浸式正文输入（随内容自适应撑开高度，无框中框） */}
               <textarea 
                 ref={textareaRef}
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
-                className="flex-1 w-full p-5 bg-[var(--color-muted-bg)]/50 border border-[var(--color-border)] rounded-xl outline-none focus:ring-2 focus:ring-[var(--color-primary)]/20 resize-none font-mono text-[13.5px] text-[var(--foreground)] leading-relaxed shadow-inner"
+                className="w-full bg-transparent border-0 outline-none p-0 resize-none font-mono text-[14px] text-[var(--foreground)] leading-relaxed placeholder:text-[var(--color-muted)]/40 overflow-y-auto [field-sizing:content]"
                 placeholder="在此编写提示词 Markdown 内容..."
+                style={{ minHeight: "450px" }}
               />
             </div>
           ) : (

@@ -60,10 +60,10 @@ export function PromptCard({ prompt, selected, onSelect, onClick, onDoubleClick,
       onClick={(e) => onClick(e, prompt)}
       onDoubleClick={() => onDoubleClick(prompt)}
       onContextMenu={(e) => onContextMenu(e, prompt)}
-      className={`prompt-card group relative flex flex-col rounded-xl border transition-all duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] cursor-pointer select-none overflow-hidden
+      className={`prompt-card group relative flex flex-col rounded-xl border transition-all duration-200 cursor-pointer select-none overflow-hidden bg-white
         ${selected
-          ? "border-[var(--color-primary)]/40 bg-[var(--color-primary)]/5 shadow-sm ring-1 ring-[var(--color-primary)]/20"
-          : "border-[var(--color-border)] bg-white hover:border-[var(--color-primary)]/20 hover:shadow-sm"
+          ? "border-[var(--color-primary)] shadow-sm shadow-blue-500/10 ring-1 ring-[var(--color-primary)]/20"
+          : "border-black/5 hover:border-black/10 hover:shadow-sm"
         }`}
     >
       {/* 收藏色条 */}

@@ -210,10 +210,9 @@ export function CommunityModal({ isOpen, onClose, defaultTab = "qq" }: Community
           <button
             onClick={handleOpenEmail}
             className="flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-[13px] font-medium bg-black/[0.04] dark:bg-white/[0.04] text-[var(--foreground)] hover:bg-black/[0.08] dark:hover:bg-white/[0.08] transition-all border border-black/5 dark:border-white/5 active:scale-[0.98]"
-            title="拉起邮件客户端"
           >
             <Mail className="w-4 h-4 text-[var(--color-muted)]" />
-            <span>发送邮件</span>
+            <span>给作者发邮件</span>
           </button>
         </div>
       </div>

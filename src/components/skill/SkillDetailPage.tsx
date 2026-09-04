@@ -31,6 +31,28 @@ export function SkillDetailPage({ skillId, onGeneratePrompt }: SkillDetailPagePr
   const [files, setFiles] = useState<SkillFile[]>([]);
   const [activeFile, setActiveFile] = useState<string>("");
   const contentScrollRef = useRef<HTMLDivElement>(null);
+  const editTextareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // 动态自适应 textarea 高度（随内容输入自动撑开，确保全部内容完整展示，绝不截断）
+  useEffect(() => {
+    if (isEditing && editTextareaRef.current) {
+      const el = editTextareaRef.current;
+      const adjustHeight = () => {
+        if (!el) return;
+        // 关键核心：临时将 height 置 0，强制浏览器摆脱原有 height 和 minHeight 约束，精准测量真实 scrollHeight
+        el.style.height = "0px";
+        const targetH = Math.max(el.scrollHeight, 600);
+        el.style.height = `${targetH}px`;
+      };
+      adjustHeight();
+      const rafId = requestAnimationFrame(adjustHeight);
+      const timer = setTimeout(adjustHeight, 80);
+      return () => {
+        cancelAnimationFrame(rafId);
+        clearTimeout(timer);
+      };
+    }
+  }, [editContent, isEditing]);
 
   // 翻译状态
   const [translations, setTranslations] = useState<Record<string, string>>({});
@@ -258,9 +280,10 @@ export function SkillDetailPage({ skillId, onGeneratePrompt }: SkillDetailPagePr
       setFiles(prev => prev.map(f => f.name === activeFile ? { ...f, content: editContent } : f));
       setContent(editContent);
       setIsEditing(false);
+      showToast("保存成功", "success");
     } catch (e) {
       console.error(e);
-      alert(`保存失败: ${e}`);
+      showToast(`保存失败: ${e}`, "error");
     } finally {
       setSaving(false);
     }
@@ -299,77 +322,106 @@ export function SkillDetailPage({ skillId, onGeneratePrompt }: SkillDetailPagePr
           </div>
         </div>
         <div className="flex items-center shrink-0 gap-1">
-          {/* 翻译工具小胶囊：智能语言识别与一键快捷翻译 */}
-          {!isEditing && (
-            <div className="flex items-center bg-black/5 hover:bg-black/[0.08] rounded-lg p-0.5 transition-colors mr-1.5">
-              <Tooltip content={targetLang === 'original' ? `源内容: ${suggestedTarget.lang === 'en' ? '中文' : '外文'}` : `当前显示: ${targetLang === 'zh-CN' ? '中文译文' : targetLang}`}>
-                <select
-                  value={targetLang}
-                  onChange={(e) => {
-                    const newLang = e.target.value;
-                    setTargetLang(newLang);
-                    if (newLang !== "original") {
-                      handleTranslate(newLang);
-                    }
-                  }}
-                  className="h-6 pl-1.5 pr-0.5 text-[11.5px] bg-transparent border-none focus:outline-none text-[var(--foreground)] font-medium cursor-pointer"
-                >
-                  <option value="original">🌐 原文</option>
-                  <option value="zh-CN">🇨🇳 中文</option>
-                  <option value="en">🇺🇸 English</option>
-                  <option value="ja">🇯🇵 日本語</option>
-                  <option value="ko">🇰🇷 한국어</option>
-                  <option value="fr">🇫🇷 Français</option>
-                  <option value="es">🇪🇸 Español</option>
-                  <option value="de">🇩🇪 Deutsch</option>
-                  <option value="ru">🇷🇺 Русский</option>
-                </select>
-              </Tooltip>
-              
-              <div className="w-[1px] h-3 bg-black/10 mx-0.5" />
-              
-              <Tooltip content={
-                isTranslating 
-                  ? "正在极速翻译中..." 
-                  : targetLang !== "original"
-                  ? "点击切回原文" 
-                  : `一键翻译为${suggestedTarget.name} (${suggestedTarget.flag})`
-              }>
+          {!isEditing ? (
+            <>
+              {/* 翻译工具小胶囊：智能语言识别与一键快捷翻译 */}
+              {content && (
+                <div className="flex items-center bg-black/5 hover:bg-black/[0.08] rounded-lg p-0.5 transition-colors mr-1.5">
+                  <Tooltip content={targetLang === 'original' ? `源内容: ${suggestedTarget.lang === 'en' ? '中文' : '外文'}` : `当前显示: ${targetLang === 'zh-CN' ? '中文译文' : targetLang}`}>
+                    <select
+                      value={targetLang}
+                      onChange={(e) => {
+                        const newLang = e.target.value;
+                        setTargetLang(newLang);
+                        if (newLang !== "original") {
+                          handleTranslate(newLang);
+                        }
+                      }}
+                      className="h-6 pl-1.5 pr-0.5 text-[11.5px] bg-transparent border-none focus:outline-none text-[var(--foreground)] font-medium cursor-pointer"
+                    >
+                      <option value="original">🌐 原文</option>
+                      <option value="zh-CN">🇨🇳 中文</option>
+                      <option value="en">🇺🇸 English</option>
+                      <option value="ja">🇯🇵 日本語</option>
+                      <option value="ko">🇰🇷 한국어</option>
+                      <option value="fr">🇫🇷 Français</option>
+                      <option value="es">🇪🇸 Español</option>
+                      <option value="de">🇩🇪 Deutsch</option>
+                      <option value="ru">🇷🇺 Русский</option>
+                    </select>
+                  </Tooltip>
+                  
+                  <div className="w-[1px] h-3 bg-black/10 mx-0.5" />
+                  
+                  <Tooltip content={
+                    isTranslating 
+                      ? "正在极速翻译中..." 
+                      : targetLang !== "original"
+                      ? "点击切回原文" 
+                      : `一键翻译为${suggestedTarget.name} (${suggestedTarget.flag})`
+                  }>
+                    <button
+                      onClick={handleQuickTranslateToggle}
+                      disabled={isTranslating}
+                      className={`h-6 px-2 rounded-md flex items-center gap-1 text-[11px] transition-all ${
+                        targetLang !== "original"
+                          ? 'bg-[var(--color-primary)] text-white shadow-xs font-semibold hover:bg-[var(--color-primary)]/90'
+                          : 'bg-white text-[var(--color-primary)] shadow-xs font-medium hover:bg-white/90 hover:scale-105'
+                      }`}
+                    >
+                      {isTranslating ? (
+                        <Loader2 size={12} className="animate-spin text-current" />
+                      ) : (
+                        <Languages size={13} className="text-current" />
+                      )}
+                      <span>{targetLang !== "original" ? "原文" : "翻译"}</span>
+                    </button>
+                  </Tooltip>
+                </div>
+              )}
+
+              <Tooltip content="智能引用提示词">
                 <button
-                  onClick={handleQuickTranslateToggle}
-                  disabled={isTranslating}
-                  className={`h-6 px-2 rounded-md flex items-center gap-1 text-[11px] transition-all ${
-                    targetLang !== "original"
-                      ? 'bg-[var(--color-primary)] text-white shadow-xs font-semibold hover:bg-[var(--color-primary)]/90'
-                      : 'bg-white text-[var(--color-primary)] shadow-xs font-medium hover:bg-white/90 hover:scale-105'
-                  }`}
+                  onClick={() => onGeneratePrompt?.(skill)}
+                  disabled={!onGeneratePrompt}
+                  className="p-1.5 rounded-lg text-[var(--color-muted)] hover:bg-[var(--color-primary)]/10 hover:text-[var(--color-primary)] transition-colors disabled:opacity-30"
                 >
-                  {isTranslating ? (
-                    <Loader2 size={12} className="animate-spin text-current" />
-                  ) : (
-                    <Languages size={13} className="text-current" />
-                  )}
-                  <span>{targetLang !== "original" ? "原文" : "翻译"}</span>
+                  <Sparkles className="w-4 h-4" />
                 </button>
               </Tooltip>
-            </div>
-          )}
-
-          <Tooltip content="智能引用提示词">
-            <button
-              onClick={() => onGeneratePrompt?.(skill)}
-              disabled={!onGeneratePrompt}
-              className="p-1.5 rounded-lg text-[var(--color-muted)] hover:bg-[var(--color-primary)]/10 hover:text-[var(--color-primary)] transition-colors disabled:opacity-30"
-            >
-              <Sparkles className="w-4 h-4" />
-            </button>
-          </Tooltip>
-          {!isEditing && (
-            <Tooltip content="编辑文档">
-              <button onClick={() => setIsEditing(true)} className="p-1.5 rounded-lg text-[var(--color-muted)] hover:bg-[var(--color-primary)]/10 hover:text-[var(--color-primary)] transition-colors">
-                <Edit2 className="w-4 h-4" />
+              <Tooltip content="编辑文档">
+                <button 
+                  onClick={() => {
+                    setTargetLang("original");
+                    setEditContent(content);
+                    setIsEditing(true);
+                  }} 
+                  className="p-1.5 rounded-lg text-[var(--color-muted)] hover:bg-[var(--color-primary)]/10 hover:text-[var(--color-primary)] transition-colors"
+                >
+                  <Edit2 className="w-4 h-4" />
+                </button>
+              </Tooltip>
+            </>
+          ) : (
+            <div className="flex items-center space-x-2">
+              <button 
+                onClick={() => {
+                  setIsEditing(false);
+                  setEditContent(content);
+                }} 
+                className="px-2.5 py-1 rounded-md text-[12px] font-medium text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-all cursor-pointer"
+              >
+                取消
               </button>
-            </Tooltip>
+              <button 
+                onClick={handleSave} 
+                disabled={saving} 
+                className="flex items-center space-x-1 bg-[var(--color-primary)] text-white px-2.5 py-1 rounded-md text-[12px] font-medium hover:bg-[var(--color-primary-hover)] shadow-sm shadow-blue-500/20 transition-all disabled:opacity-50 cursor-pointer"
+              >
+                {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                <span>保存</span>
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -468,24 +520,14 @@ export function SkillDetailPage({ skillId, onGeneratePrompt }: SkillDetailPagePr
             <Loader2 className="w-8 h-8 text-[var(--color-primary)] animate-spin opacity-50" />
           </div>
         ) : isEditing ? (
-          <div className="flex-1 flex flex-col h-full w-full">
-            <div className="flex items-center justify-between mb-4 shrink-0">
-              <span className="text-sm font-medium text-[var(--color-muted)]">编辑 {activeFile}</span>
-              <div className="flex items-center space-x-2">
-                <button onClick={() => setIsEditing(false)} className="px-2.5 py-1 rounded-md text-[12px] font-medium text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-all">
-                  取消
-                </button>
-                <button onClick={handleSave} disabled={saving} className="flex items-center space-x-1 bg-[var(--color-primary)] text-white px-2.5 py-1 rounded-md text-[12px] font-medium hover:bg-[var(--color-primary-hover)] shadow-sm shadow-blue-500/20 transition-all disabled:opacity-50">
-                  {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                  <span>保存</span>
-                </button>
-              </div>
-            </div>
+          <div className="w-full flex flex-col animate-in fade-in duration-200 pb-32">
             <textarea 
+              ref={editTextareaRef}
               value={editContent}
               onChange={(e) => setEditContent(e.target.value)}
-              className="flex-1 w-full p-5 bg-[var(--color-muted-bg)]/50 border border-[var(--color-border)] rounded-xl outline-none focus:ring-2 focus:ring-[var(--color-primary)]/20 resize-none font-mono text-[13px] text-[var(--foreground)] leading-relaxed shadow-inner"
+              className="w-full bg-transparent border-0 outline-none p-0 resize-none font-mono text-[14px] text-[var(--foreground)] leading-relaxed placeholder:text-[var(--color-muted)]/40 overflow-y-auto [field-sizing:content]"
               placeholder="在此编写您的 Markdown 文档..."
+              style={{ minHeight: "600px" }}
             />
           </div>
         ) : (
