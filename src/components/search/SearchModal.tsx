@@ -25,11 +25,17 @@ const formatDateTime = (dateStr: string) => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 };
 
-const SmartTooltipText: React.FC<{ text: string, className?: string, tooltipContent?: string }> = ({ text, className, tooltipContent }) => {
+const SmartTooltipText: React.FC<{ 
+  text: string; 
+  className?: string; 
+  tooltipContent?: string;
+  delay?: number;
+}> = ({ text, className, tooltipContent, delay = 600 }) => {
   const textRef = useRef<HTMLSpanElement>(null);
   const [isTruncated, setIsTruncated] = useState(false);
   const [showTooltip, setShowTooltip] = useState(false);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  const timerRef = useRef<any>(null);
 
   useEffect(() => {
     const checkTruncation = () => {
@@ -41,28 +47,55 @@ const SmartTooltipText: React.FC<{ text: string, className?: string, tooltipCont
     checkTruncation();
     // Re-check on window resize
     window.addEventListener('resize', checkTruncation);
-    return () => window.removeEventListener('resize', checkTruncation);
+    return () => {
+      window.removeEventListener('resize', checkTruncation);
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
   }, [text]);
+
+  const handleMouseEnter = (e: React.MouseEvent) => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    const targetX = e.clientX;
+    const targetY = e.clientY;
+    // 鼠标必须悬停停留超过 delay（默认 600ms）才显示，避免划过时瞬间弹出打扰
+    timerRef.current = setTimeout(() => {
+      setMousePos({ x: targetX, y: targetY });
+      setShowTooltip(true);
+    }, delay);
+  };
+
+  const handleMouseLeave = () => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    setShowTooltip(false);
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!showTooltip) {
+      setMousePos({ x: e.clientX, y: e.clientY });
+    }
+  };
 
   return (
     <>
       <span 
         ref={textRef} 
         className={className}
-        onMouseEnter={() => setShowTooltip(true)}
-        onMouseLeave={() => setShowTooltip(false)}
-        onMouseMove={(e) => {
-          if (isTruncated) {
-            setMousePos({ x: e.clientX, y: e.clientY });
-          }
-        }}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+        onMouseMove={handleMouseMove}
       >
         {text}
       </span>
       {isTruncated && showTooltip && createPortal(
         <div 
-          style={{ left: mousePos.x, top: mousePos.y + 20 }}
-          className="fixed z-[100] max-w-[300px] rounded-[4px] bg-black/90 backdrop-blur-md px-1.5 py-0.5 text-[12px] font-medium text-white border border-black/5 shadow-sm pointer-events-none"
+          style={{ 
+            left: Math.min(mousePos.x, window.innerWidth - 360), 
+            top: mousePos.y + 16 
+          }}
+          className="fixed z-[100] max-w-[340px] rounded-lg bg-black/90 backdrop-blur-md px-3 py-2 text-[12px] leading-relaxed font-normal text-white border border-white/10 shadow-xl pointer-events-none animate-in fade-in-0 zoom-in-95 duration-150 break-words"
         >
           {tooltipContent || text}
         </div>,
@@ -94,6 +127,66 @@ export const SearchModal: React.FC<SearchModalProps> = ({
   const [showSortDropdown, setShowSortDropdown] = useState(false);
   
   const inputRef = useRef<HTMLInputElement>(null);
+  const listScrollRef = useRef<HTMLDivElement>(null);
+  const reposHeaderRef = useRef<HTMLHeadingElement>(null);
+  const skillsHeaderRef = useRef<HTMLHeadingElement>(null);
+  const promptsHeaderRef = useRef<HTMLHeadingElement>(null);
+  const [stuckGroup, setStuckGroup] = useState<string | null>(null);
+
+  // 键盘导航模式（屏蔽鼠标指针焦点冲突）
+  const isKeyboardNavRef = useRef(false);
+  const lastMousePosRef = useRef({ x: -1, y: -1 });
+  const [isKeyboardNav, setIsKeyboardNav] = useState(false);
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (lastMousePosRef.current.x === -1) {
+      lastMousePosRef.current = { x: e.clientX, y: e.clientY };
+      return;
+    }
+    const dx = Math.abs(e.clientX - lastMousePosRef.current.x);
+    const dy = Math.abs(e.clientY - lastMousePosRef.current.y);
+    // 只有当鼠标产生真实的物理位移（大于 2px）时才解除键盘锁定，恢复鼠标焦点
+    if (dx > 2 || dy > 2) {
+      lastMousePosRef.current = { x: e.clientX, y: e.clientY };
+      if (isKeyboardNavRef.current) {
+        isKeyboardNavRef.current = false;
+        setIsKeyboardNav(false);
+      }
+    }
+  };
+
+  const handleListScroll = () => {
+    if (!listScrollRef.current) return;
+    const container = listScrollRef.current;
+    
+    // 只有当容器已经向下滚动（scrollTop > 4）时，才可能产生吸顶效果
+    if (container.scrollTop <= 4) {
+      if (stuckGroup !== null) setStuckGroup(null);
+      return;
+    }
+
+    const containerTop = container.getBoundingClientRect().top;
+    const groups: { id: string; el: HTMLHeadingElement | null }[] = [
+      { id: 'repos', el: reposHeaderRef.current },
+      { id: 'skills', el: skillsHeaderRef.current },
+      { id: 'prompts', el: promptsHeaderRef.current },
+    ];
+
+    let currentStuck: string | null = null;
+    for (const g of groups) {
+      if (!g.el) continue;
+      const rect = g.el.getBoundingClientRect();
+      // 当标题顶部到达或紧贴容器顶部时（误差 2px 内）
+      if (rect.top <= containerTop + 2) {
+        currentStuck = g.id;
+      }
+    }
+
+    if (stuckGroup !== currentStuck) {
+      setStuckGroup(currentStuck);
+    }
+  };
+
 
   // Focus input when modal opens
   useEffect(() => {
@@ -101,12 +194,14 @@ export const SearchModal: React.FC<SearchModalProps> = ({
       const lastSearch = localStorage.getItem('skillhub_last_search') || '';
       setQuery(lastSearch);
       setHoveredItem(null);
+      setStuckGroup(null);
       setTimeout(() => inputRef.current?.select(), 100);
     }
   }, [isOpen]);
 
   useEffect(() => {
     localStorage.setItem('skillhub_last_search', query);
+    setStuckGroup(null);
   }, [query]);
 
   const { matchedRepos, matchedSkills, matchedPrompts } = useMemo(() => {
@@ -240,11 +335,20 @@ export const SearchModal: React.FC<SearchModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      onMouseMove={handleMouseMove}
+    >
       <div className="absolute inset-0 modal-backdrop transition-opacity" onClick={onClose} />
       <div 
         className="modal-glass w-full max-w-[1000px] rounded-2xl overflow-hidden flex flex-col max-h-[70vh] animate-in fade-in zoom-in-95 duration-200"
         onClick={e => e.stopPropagation()}
+        onMouseDown={() => {
+          if (isKeyboardNavRef.current) {
+            isKeyboardNavRef.current = false;
+            setIsKeyboardNav(false);
+          }
+        }}
       >
           <div className="flex items-center px-4 py-3 border-b border-black/5 shrink-0">
           <Search className="w-5 h-5 text-gray-400 mr-3 shrink-0" />
@@ -266,6 +370,9 @@ export const SearchModal: React.FC<SearchModalProps> = ({
               }
               if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
                 e.preventDefault();
+                // 激活键盘导航模式，屏蔽鼠标指针焦点冲突
+                isKeyboardNavRef.current = true;
+                setIsKeyboardNav(true);
                 const allItems = [
                   ...matchedRepos.map(repo => ({ type: 'repo' as const, repo })),
                   ...matchedSkills.map(s => ({ type: 'skill' as const, skill: s.skill, repo: s.repo })),
@@ -293,11 +400,37 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                 setHoveredItem(nextItem);
                 
                 setTimeout(() => {
+                  const container = listScrollRef.current;
+                  if (!container) return;
+
+                  // 循环回第一个或者跳到第一个时，直接回滚至最顶部（包括分类标题）
+                  if (nextIndex === 0) {
+                    container.scrollTop = 0;
+                    setStuckGroup(null);
+                    return;
+                  }
+
+                  // 循环回最后一个或者跳到最后一个时，直接滚至最底部
+                  if (nextIndex === allItems.length - 1) {
+                    container.scrollTop = container.scrollHeight;
+                    return;
+                  }
+
                   const id = nextItem.type === 'repo' ? `search-item-repo-${nextItem.repo.id}` 
                            : nextItem.type === 'skill' ? `search-item-skill-${nextItem.skill.id}`
                            : `search-item-prompt-${nextItem.prompt.id}`;
                   const el = document.getElementById(id);
-                  if (el) el.scrollIntoView({ block: 'nearest' });
+                  if (el) {
+                    const headerOffset = 38; // 避开顶部可能存在的吸顶栏
+                    const elRect = el.getBoundingClientRect();
+                    const containerRect = container.getBoundingClientRect();
+
+                    if (elRect.top < containerRect.top + headerOffset) {
+                      container.scrollTop -= (containerRect.top + headerOffset - elRect.top);
+                    } else if (elRect.bottom > containerRect.bottom) {
+                      container.scrollTop += (elRect.bottom - containerRect.bottom);
+                    }
+                  }
                 }, 0);
               }
             }}
@@ -439,8 +572,16 @@ export const SearchModal: React.FC<SearchModalProps> = ({
 
         <div className="flex-1 flex overflow-hidden">
           {/* 左侧列表 */}
-          <div className={`${showPreview ? 'w-[60%] border-r' : 'w-full'} flex flex-col border-black/5 overflow-hidden transition-all duration-300`}>
-            <div className="flex-1 overflow-y-auto">
+          <div className={`${showPreview ? 'w-[60%] border-r' : 'w-full'} flex flex-col border-black/5 overflow-hidden transition-all duration-300 relative`}>
+            {/* 顶层无缝吸顶条（横跨整个宽度，覆盖滚动条最上方，彻底消除右侧缺口和大阴影） */}
+            {stuckGroup && (
+              <div className="absolute top-0 left-0 right-0 z-20 bg-white/95 backdrop-blur-md px-4 py-2 text-[11px] font-semibold text-gray-500 uppercase tracking-wider border-b border-black/[0.05] shadow-[0_1px_2px_rgba(0,0,0,0.03)] pointer-events-none select-none animate-in fade-in duration-100">
+                {stuckGroup === 'repos' && `技能 (${matchedRepos.length})`}
+                {stuckGroup === 'skills' && `子技能 (${matchedSkills.length})`}
+                {stuckGroup === 'prompts' && `提示词 (${matchedPrompts.length})`}
+              </div>
+            )}
+            <div ref={listScrollRef} onScroll={handleListScroll} className="flex-1 overflow-y-auto">
               {!query.trim() ? (
                 <div className="px-6 py-12 text-center text-gray-400 text-sm flex flex-col items-center justify-center h-full">
                   <Command className="w-12 h-12 mb-4 opacity-20" />
@@ -451,22 +592,31 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                   未找到匹配项 "{query}"
                 </div>
               ) : (
-                <div className="p-2 space-y-4">
+                <div className="space-y-3 pb-3">
                   {matchedRepos.length > 0 && (
                     <div id="search-group-repos">
-                      <h3 className="px-3 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 sticky top-0 bg-white z-10 shadow-[0_4px_10px_-10px_rgba(0,0,0,0.1)]">
+                      <h3 ref={reposHeaderRef} className="px-4 py-2 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
                         技能 ({matchedRepos.length})
                       </h3>
-                      <div className="space-y-1">
+                      <div className="p-2 space-y-1">
                         {matchedRepos.map(repo => {
                           const isHovered = hoveredItem?.type === 'repo' && hoveredItem.repo.id === repo.id;
                           return (
                             <button
                               id={`search-item-repo-${repo.id}`}
                               key={`repo-${repo.id}`}
-                              onMouseEnter={() => setHoveredItem({ type: 'repo', repo })}
+                              onMouseEnter={() => {
+                                if (isKeyboardNavRef.current) return;
+                                setHoveredItem({ type: 'repo', repo });
+                              }}
                               onClick={() => handleOpenItem({ type: 'repo', repo })}
-                              className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-md transition-all text-left outline-none border-none ${isHovered ? 'bg-blue-50/60 ring-1 ring-blue-500/50 text-blue-900 shadow-sm' : 'hover:bg-black/5 text-gray-800'}`}
+                              className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-md transition-all text-left outline-none border-none ${
+                                isHovered 
+                                  ? 'bg-blue-50/60 ring-1 ring-blue-500/50 text-blue-900 shadow-sm' 
+                                  : isKeyboardNav 
+                                    ? 'text-gray-800' 
+                                    : 'hover:bg-black/5 text-gray-800'
+                              }`}
                             >
                               <div className="flex items-center space-x-3 truncate">
                                 <div 
@@ -504,19 +654,28 @@ export const SearchModal: React.FC<SearchModalProps> = ({
 
                   {matchedSkills.length > 0 && (
                     <div id="search-group-skills">
-                      <h3 className="px-3 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider sticky top-0 bg-white z-10 shadow-[0_4px_10px_-10px_rgba(0,0,0,0.1)] pt-2 mb-1">
+                      <h3 ref={skillsHeaderRef} className="px-4 py-2 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
                         子技能 ({matchedSkills.length})
                       </h3>
-                      <div className="space-y-1">
+                      <div className="p-2 space-y-1">
                         {matchedSkills.map(({ skill, repo }) => {
                           const isHovered = hoveredItem?.type === 'skill' && hoveredItem.skill.id === skill.id;
                           return (
                             <button
                               id={`search-item-skill-${skill.id}`}
                               key={`skill-${skill.id}`}
-                              onMouseEnter={() => setHoveredItem({ type: 'skill', skill, repo })}
+                              onMouseEnter={() => {
+                                if (isKeyboardNavRef.current) return;
+                                setHoveredItem({ type: 'skill', skill, repo });
+                              }}
                               onClick={() => handleOpenItem({ type: 'skill', skill, repo })}
-                              className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-md transition-all text-left outline-none border-none ${isHovered ? 'bg-blue-50/60 ring-1 ring-blue-500/50 text-blue-900 shadow-sm' : 'hover:bg-black/5 text-gray-800'}`}
+                              className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-md transition-all text-left outline-none border-none ${
+                                isHovered 
+                                  ? 'bg-blue-50/60 ring-1 ring-blue-500/50 text-blue-900 shadow-sm' 
+                                  : isKeyboardNav 
+                                    ? 'text-gray-800' 
+                                    : 'hover:bg-black/5 text-gray-800'
+                              }`}
                             >
                               <div className="flex items-center space-x-3 truncate">
                                 <div 
@@ -550,19 +709,28 @@ export const SearchModal: React.FC<SearchModalProps> = ({
 
                   {matchedPrompts.length > 0 && (
                     <div id="search-group-prompts">
-                      <h3 className="px-3 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider sticky top-0 bg-white z-10 shadow-[0_4px_10px_-10px_rgba(0,0,0,0.1)] pt-2 mb-1">
+                      <h3 ref={promptsHeaderRef} className="px-4 py-2 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
                         提示词 ({matchedPrompts.length})
                       </h3>
-                      <div className="space-y-1">
+                      <div className="p-2 space-y-1">
                         {matchedPrompts.map((prompt) => {
                           const isHovered = hoveredItem?.type === 'prompt' && hoveredItem.prompt.id === prompt.id;
                           return (
                             <button
                               id={`search-item-prompt-${prompt.id}`}
                               key={`prompt-${prompt.id}`}
-                              onMouseEnter={() => setHoveredItem({ type: 'prompt', prompt })}
+                              onMouseEnter={() => {
+                                if (isKeyboardNavRef.current) return;
+                                setHoveredItem({ type: 'prompt', prompt });
+                              }}
                               onClick={() => handleOpenItem({ type: 'prompt', prompt })}
-                              className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-md transition-all text-left outline-none border-none ${isHovered ? 'bg-purple-50/60 ring-1 ring-purple-500/50 text-purple-900 shadow-sm' : 'hover:bg-black/5 text-gray-800'}`}
+                              className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-md transition-all text-left outline-none border-none ${
+                                isHovered 
+                                  ? 'bg-purple-50/60 ring-1 ring-purple-500/50 text-purple-900 shadow-sm' 
+                                  : isKeyboardNav 
+                                    ? 'text-gray-800' 
+                                    : 'hover:bg-black/5 text-gray-800'
+                              }`}
                             >
                               <div className="flex items-center space-x-3 truncate">
                                 <div 

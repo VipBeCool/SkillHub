@@ -19,7 +19,9 @@
   <a href="#screenshots">Screenshots</a> ·
   <a href="#features">Features</a> ·
   <a href="#download">Download</a> ·
-  <a href="#development">Dev</a>
+  <a href="#development">Dev</a> ·
+  <a href="#community">Community</a> ·
+  <a href="#buy-me-a-coffee">Coffee</a>
 </p>
 
 ## The Problem
@@ -161,6 +163,27 @@ The version number lives in three files: `package.json`, `src-tauri/tauri.conf.j
 ```bash
 node scripts/bump-version.mjs 0.2.0
 ```
+
+## Community
+
+Welcome to join our QQ group or follow our WeChat Official Account for the latest updates, discussions, and feedback.
+
+<table>
+  <tr>
+    <th align="center">QQ Group (1049282993)</th>
+    <th align="center">WeChat Official Account</th>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/images/qq-group.png" width="220" alt="QQ Group" /></td>
+    <td align="center"><img src="docs/images/wechat-group.png" width="220" alt="WeChat Official Account" /></td>
+  </tr>
+</table>
+
+## Buy Me a Coffee
+
+If SkillHub saves you time or makes your workflow easier, feel free to [buy me a coffee](./docs/DONATE.md).
+
+Your appreciation and support are the greatest motivation to keep refining and maintaining this project.
 
 ## License
 

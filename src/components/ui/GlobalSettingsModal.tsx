@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { save, open } from "@tauri-apps/plugin-dialog";
 import { X, Save, Upload, ShieldCheck, Database } from "lucide-react";
@@ -16,6 +16,12 @@ export function GlobalSettingsModal({ isOpen, onClose, defaultTab = "agent" }: G
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
 
+  useEffect(() => {
+    if (isOpen) {
+      setActiveTab(defaultTab);
+    }
+  }, [isOpen, defaultTab]);
+
   if (!isOpen) return null;
 
   const handleExport = async () => {
@@ -26,7 +32,7 @@ export function GlobalSettingsModal({ isOpen, onClose, defaultTab = "agent" }: G
         filters: [{ name: "ZIP Archive", extensions: ["zip"] }]
       });
 
-      if (!savePath) return; // User cancelled
+      if (!savePath) return;
 
       setIsExporting(true);
       await invoke("export_database", { targetPath: savePath });
@@ -58,7 +64,6 @@ export function GlobalSettingsModal({ isOpen, onClose, defaultTab = "agent" }: G
       
       showToast("导入成功: 数据恢复成功，即将重新加载应用...", "success");
       
-      // Reload app after 1.5 seconds
       setTimeout(() => {
         window.location.reload();
       }, 1500);
@@ -71,11 +76,14 @@ export function GlobalSettingsModal({ isOpen, onClose, defaultTab = "agent" }: G
     }
   };
 
-  // If the active tab is agent, we could just render the AgentSettingsDialog content 
-  // but AgentSettingsDialog is currently a full modal itself. 
-  // Let's refactor AgentSettingsDialog to optionally be inline, or just build the tabs here.
-  // Actually, since AgentSettingsDialog is already a modal, maybe we wrap it or adapt it.
-  
+  // 侧边栏Tab按钮样式
+  const tabBtnCls = (tab: string) =>
+    `w-full flex items-center px-3 py-2.5 rounded-lg text-[13px] font-medium transition-colors ${
+      activeTab === tab
+        ? "bg-black/5 dark:bg-white/10 text-[var(--foreground)] shadow-sm"
+        : "text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 dark:hover:bg-white/5"
+    }`;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop */}
@@ -96,22 +104,14 @@ export function GlobalSettingsModal({ isOpen, onClose, defaultTab = "agent" }: G
           <div className="flex-1 overflow-y-auto px-3 py-2 space-y-1">
             <button
               onClick={() => setActiveTab("agent")}
-              className={`w-full flex items-center px-3 py-2.5 rounded-lg text-[13px] font-medium transition-colors ${
-                activeTab === "agent" 
-                  ? "bg-black/5 dark:bg-white/10 text-[var(--foreground)] shadow-sm" 
-                  : "text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 dark:hover:bg-white/5"
-              }`}
+              className={tabBtnCls("agent")}
             >
               <ShieldCheck className={`w-4 h-4 mr-3 ${activeTab === "agent" ? "text-[var(--color-primary)]" : "opacity-70"}`} />
               Agent 同步配置
             </button>
             <button
               onClick={() => setActiveTab("backup")}
-              className={`w-full flex items-center px-3 py-2.5 rounded-lg text-[13px] font-medium transition-colors ${
-                activeTab === "backup" 
-                  ? "bg-black/5 dark:bg-white/10 text-[var(--foreground)] shadow-sm" 
-                  : "text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 dark:hover:bg-white/5"
-              }`}
+              className={tabBtnCls("backup")}
             >
               <Database className={`w-4 h-4 mr-3 ${activeTab === "backup" ? "text-[var(--color-primary)]" : "opacity-70"}`} />
               数据与备份

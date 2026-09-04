@@ -4,7 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { HardDrive, Settings, Search, Plus, RefreshCw, ChevronRight, X, LayoutGrid, Sparkles, Globe, FolderX, FolderSearch, Trash2, Info, Folder, FolderPlus, Copy, Link as LinkIcon, Check, Download, FileArchive, MessageSquareText, Store, Puzzle, CheckSquare, Star, Clock, Tag, ExternalLink } from "lucide-react";
+import { HardDrive, Settings, Search, Plus, RefreshCw, ChevronRight, X, LayoutGrid, Sparkles, Globe, FolderX, FolderSearch, Trash2, Info, Folder, FolderPlus, Copy, Link as LinkIcon, Check, Download, FileArchive, MessageSquareText, Store, Puzzle, CheckSquare, Star, Clock, Tag, ExternalLink, Users } from "lucide-react";
 import { open } from '@tauri-apps/plugin-dialog';
 import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import { AddRepositoryDialog } from "./components/library/AddRepositoryDialog";
@@ -22,6 +22,7 @@ import { CategorizedView } from "./components/skill/CategorizedView";
 import { ToastContainer, showToast } from "./components/ui/Toast";
 import { Tooltip } from "./components/ui/Tooltip";
 import { AboutDialog } from "./components/ui/AboutDialog";
+import { CommunityModal } from "./components/ui/CommunityModal";
 import { UpdateNotifier } from "./components/ui/UpdateNotifier";
 import { QuickLookModal } from "./components/ui/QuickLookModal";
 import { InspectorPanel } from "./components/inspector/InspectorPanel";
@@ -94,6 +95,8 @@ function App() {
   const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(true);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isAboutOpen, setIsAboutOpen] = useState(false);
+  const [isCommunityOpen, setIsCommunityOpen] = useState(false);
+  const [communityDefaultTab, setCommunityDefaultTab] = useState<"qq" | "wechat">("qq");
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
   const [quickLookOpen, setQuickLookOpen] = useState(false);
 
@@ -1546,15 +1549,40 @@ function App() {
           </div>
         )}
 
-        <div className="p-3 mt-auto">
-          <button onClick={() => setIsSettingsOpen(true)} className="w-full flex items-center space-x-2 px-2 py-1.5 rounded-md font-medium text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-colors outline-none select-none active:scale-[0.98]">
-            <Settings className="w-4 h-4" />
-            <span>设置</span>
+        <div className="p-2 border-t border-[var(--color-border)]/50 mt-auto flex items-center justify-between gap-1.5">
+          <button
+            onClick={() => {
+              setCommunityDefaultTab("qq");
+              setIsCommunityOpen(true);
+            }}
+            className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-[var(--foreground)] hover:bg-black/5 dark:hover:bg-white/5 transition-colors outline-none select-none active:scale-[0.98] group"
+          >
+            <div className="w-5 h-5 rounded-md bg-blue-500/[0.08] dark:bg-blue-400/[0.14] text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 group-hover:bg-blue-500/[0.14] transition-all">
+              <Users className="w-3.5 h-3.5" strokeWidth={2} />
+            </div>
+            <span className="text-[12.5px] font-medium tracking-tight truncate">加入用户社群</span>
+            <ChevronRight className="w-3.5 h-3.5 text-[var(--foreground)]/40 group-hover:text-[var(--foreground)]/80 group-hover:translate-x-0.5 transition-all shrink-0 -ml-0.5" />
           </button>
-          <button onClick={() => setIsAboutOpen(true)} className="w-full flex items-center space-x-2 px-2 py-1.5 rounded-md font-medium text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-colors outline-none select-none active:scale-[0.98]">
-            <Info className="w-4 h-4" />
-            <span>关于</span>
-          </button>
+          <div className="flex items-center gap-0.5 shrink-0">
+            <Tooltip content="设置">
+              <button
+                onClick={() => setIsSettingsOpen(true)}
+                className="p-1.5 rounded-md text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-colors outline-none select-none active:scale-[0.98]"
+                aria-label="设置"
+              >
+                <Settings className="w-4 h-4" />
+              </button>
+            </Tooltip>
+            <Tooltip content="关于 SkillHub">
+              <button
+                onClick={() => setIsAboutOpen(true)}
+                className="p-1.5 rounded-md text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-colors outline-none select-none active:scale-[0.98]"
+                aria-label="关于"
+              >
+                <Info className="w-4 h-4" />
+              </button>
+            </Tooltip>
+          </div>
         </div>
       </div>
       )}
@@ -2304,6 +2332,17 @@ function App() {
       <AboutDialog
         isOpen={isAboutOpen}
         onClose={() => setIsAboutOpen(false)}
+        onOpenCommunity={(tab) => {
+          setIsAboutOpen(false);
+          setCommunityDefaultTab(tab);
+          setIsCommunityOpen(true);
+        }}
+      />
+
+      <CommunityModal
+        isOpen={isCommunityOpen}
+        onClose={() => setIsCommunityOpen(false)}
+        defaultTab={communityDefaultTab}
       />
 
       {deleteConfirmRepos && (

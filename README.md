@@ -19,7 +19,9 @@
   <a href="#看看长什么样">截图</a> ·
   <a href="#功能">功能</a> ·
   <a href="#下载安装">下载</a> ·
-  <a href="#本地开发">开发</a>
+  <a href="#本地开发">开发</a> ·
+  <a href="#交流群">交流群</a> ·
+  <a href="#请我咖啡">请我咖啡</a>
 </p>
 
 ## 它解决什么问题
@@ -92,39 +94,39 @@ SkillHub 把这些东西收到同一个界面里：导入本地文件夹、克�
 
 ## 功能
 
-| 功能 | 说明 |
-|------|------|
-| 多源挂载 | 同时挂载本地文件夹、GitHub 仓库和线上链接，自动扫描并无感解析各种技能格式 |
-| 分类与展示 | 支持灵活的标签分类，支持自定义技能库 Emoji 图标 |
-| Prompt 管理 | 独立模块，支持分组、标签、使用次数统计、版本历史、Markdown 预览 |
-| 全局搜索 | `Cmd/Ctrl + K`，同时搜技能库和子技能，右侧即时预览 |
-| GitHub 同步 | 一键拉取所有 GitHub 仓库变更，逐个显示同步状态 |
-| 智能引用 | 自动生成包含目录结构和执行指令的引用提示词 |
-| 同步至 Agent | 技能可直接同步到 Antigravity、Codex 等 AI Agent |
-| 批量操作 | 框选多个技能库，批量导出（ZIP/JSON）、更新、删除 |
-| 拖拽导入 | 文件夹拖进窗口直接添加 |
-| 内置翻译 | 英文技能一键翻译为中文（或其他语言） |
-| 应用内更新 | 启动时自动检查新版本，一键安装 |
+| 功能         | 说明                                                                      |
+| ------------ | ------------------------------------------------------------------------- |
+| 多源挂载     | 同时挂载本地文件夹、GitHub 仓库和线上链接，自动扫描并无感解析各种技能格式 |
+| 分类与展示   | 支持灵活的标签分类，支持自定义技能库 Emoji 图标                           |
+| Prompt 管理  | 独立模块，支持分组、标签、使用次数统计、版本历史、Markdown 预览           |
+| 全局搜索     | `Cmd/Ctrl + K`，同时搜技能库和子技能，右侧即时预览                      |
+| GitHub 同步  | 一键拉取所有 GitHub 仓库变更，逐个显示同步状态                            |
+| 智能引用     | 自动生成包含目录结构和执行指令的引用提示词                                |
+| 同步至 Agent | 技能可直接同步到 Antigravity、Codex 等 AI Agent                           |
+| 批量操作     | 框选多个技能库，批量导出（ZIP/JSON）、更新、删除                          |
+| 拖拽导入     | 文件夹拖进窗口直接添加                                                    |
+| 内置翻译     | 英文技能一键翻译为中文（或其他语言）                                      |
+| 应用内更新   | 启动时自动检查新版本，一键安装                                            |
 
 ## 下载安装
 
 前往 [Releases](https://github.com/VipBeCool/SkillHub/releases/latest) 下载：
 
-| 平台 | 安装包 |
-|------|--------|
-| macOS (Intel + Apple Silicon) | `.dmg` |
-| Windows (x64) | `.exe` / `.msi` |
-| Linux (x64) | `.AppImage` / `.deb` |
+| 平台                          | 安装包                   |
+| ----------------------------- | ------------------------ |
+| macOS (Intel + Apple Silicon) | `.dmg`                 |
+| Windows (x64)                 | `.exe` / `.msi`      |
+| Linux (x64)                   | `.AppImage` / `.deb` |
 
 装过的用户会在应用内收到更新提示，不用手动下载。
 
 ## 技术栈
 
-| 层级 | 技术 |
-|------|------|
-| 前端 | React 19, TypeScript, Tailwind CSS v4, Vite |
-| 后端 | Rust, Tauri v2, SQLite (rusqlite) |
-| CI/CD | GitHub Actions + tauri-action |
+| 层级  | 技术                                        |
+| ----- | ------------------------------------------- |
+| 前端  | React 19, TypeScript, Tailwind CSS v4, Vite |
+| 后端  | Rust, Tauri v2, SQLite (rusqlite)           |
+| CI/CD | GitHub Actions + tauri-action               |
 
 用 Tauri 而不是 Electron，安装包小，内存占用低。
 
@@ -161,6 +163,27 @@ npm run skillhub build
 ```bash
 node scripts/bump-version.mjs 0.2.0
 ```
+
+## 交流群
+
+欢迎加入 QQ 交流群或关注官方微信公众号，获取最新动态、使用交流与问题反馈。
+
+<table>
+  <tr>
+    <th align="center">QQ 群（群号：1049282993）</th>
+    <th align="center">微信公众号</th>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/images/qq-group.png" width="220" alt="QQ 群" /></td>
+    <td align="center"><img src="docs/images/wechat-group.png" width="220" alt="微信公众号" /></td>
+  </tr>
+</table>
+
+## 请我咖啡
+
+如果 SkillHub 为你节省了时间、带来了便利，欢迎[请作者喝杯咖啡](./docs/DONATE.md)。
+
+你的认可与支持，是这个开源项目持续迭代与打磨的最大动力。
 
 ## 开源协议
 

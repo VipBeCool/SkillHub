@@ -24,14 +24,20 @@ pub struct AppState {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.show();
-                let _ = window.unminimize();
-                let _ = window.set_focus();
-            }
-        }))
+    let builder = tauri::Builder::default();
+
+    // 仅在正式发布打包版（Release）中启用单实例互斥锁，防止多开导致 SQLite 冲突；
+    // 本地开发调试阶段（Debug / npm run dev）不加锁，方便开发者同时开启本地版与安装版进行对比测试。
+    #[cfg(not(debug_assertions))]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        if let Some(window) = app.get_webview_window("main") {
+            let _ = window.show();
+            let _ = window.unminimize();
+            let _ = window.set_focus();
+        }
+    }));
+
+    builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -147,6 +153,7 @@ pub fn run() {
             commands::save_skill_file,
             commands::save_skill_file_by_path,
             commands::open_local_folder,
+            commands::open_email,
             commands::reveal_in_finder,
             commands::get_open_with_apps,
             commands::open_with_app,

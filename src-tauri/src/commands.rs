@@ -839,6 +839,39 @@ pub fn save_skill_file_by_path(absolute_path: String, content: String) -> Result
 }
 
 #[tauri::command]
+pub fn open_email(to: String, subject: String, body: String) -> Result<(), String> {
+    let encoded_subject = urlencoding::encode(&subject);
+    let encoded_body = urlencoding::encode(&body);
+    let mailto_url = format!("mailto:{}?subject={}&body={}", to, encoded_subject, encoded_body);
+
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(&mailto_url)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("rundll32")
+            .args(&["url.dll,FileProtocolHandler", &mailto_url])
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(&mailto_url)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
 pub fn open_local_folder(path: String) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
@@ -849,10 +882,17 @@ pub fn open_local_folder(path: String) -> Result<(), String> {
     }
     #[cfg(target_os = "windows")]
     {
-        std::process::Command::new("explorer")
-            .arg(&path)
-            .spawn()
-            .map_err(|e| e.to_string())?;
+        if path.starts_with("mailto:") || path.starts_with("http://") || path.starts_with("https://") {
+            std::process::Command::new("rundll32")
+                .args(&["url.dll,FileProtocolHandler", &path])
+                .spawn()
+                .map_err(|e| e.to_string())?;
+        } else {
+            std::process::Command::new("explorer")
+                .arg(&path)
+                .spawn()
+                .map_err(|e| e.to_string())?;
+        }
     }
     #[cfg(target_os = "linux")]
     {
@@ -1613,7 +1653,7 @@ async fn translate_chunk_google(client: &reqwest::Client, chunk: &str, target_la
 
     let res = client
         .post(&url)
-        .timeout(std::time::Duration::from_millis(2500))
+        .timeout(std::time::Duration::from_millis(1500))
         .header("Content-Type", "application/x-www-form-urlencoded")
         .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
         .body(body)
@@ -1720,7 +1760,7 @@ async fn translate_chunk_mymemory(client: &reqwest::Client, chunk: &str, target_
 
     let res = client
         .post(url)
-        .timeout(std::time::Duration::from_secs(6))
+        .timeout(std::time::Duration::from_millis(2500))
         .header("Content-Type", "application/x-www-form-urlencoded")
         .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
         .body(body)
@@ -1739,7 +1779,10 @@ async fn translate_chunk_mymemory(client: &reqwest::Client, chunk: &str, target_
         .map_err(|e| format!("Failed to parse MyMemory JSON: {}", e))?;
 
     if let Some(translated_text) = json["responseData"]["translatedText"].as_str() {
-        if !translated_text.is_empty() && !translated_text.starts_with("MYMEMORY WARNING:") {
+        if !translated_text.is_empty() 
+            && !translated_text.starts_with("MYMEMORY WARNING:") 
+            && !translated_text.contains("QUERY LENGTH LIMIT") 
+        {
             return Ok(unescape_html(translated_text));
         }
     }
@@ -1751,91 +1794,124 @@ async fn translate_chunk_mymemory(client: &reqwest::Client, chunk: &str, target_
 pub async fn translate_text(text: String, target_lang: String) -> Result<String, String> {
     use reqwest::Client;
 
+    // 常规客户端（走系统网络/代理，用于 Google 和 MyMemory）
     let client = Client::builder()
-        .timeout(std::time::Duration::from_secs(8))
+        .timeout(std::time::Duration::from_millis(2500))
         .build()
         .unwrap_or_else(|_| Client::new());
 
-    let max_len = 1000;
-    
-    let mut chunks = Vec::new();
-    let mut current_chunk = String::new();
-    
-    for line in text.lines() {
-        if current_chunk.len() + line.len() + 1 > max_len {
-            if !current_chunk.is_empty() {
-                chunks.push(current_chunk.clone());
-                current_chunk.clear();
-            }
-            if line.len() > max_len {
-                chunks.push(line.to_string());
-                continue;
-            }
-        }
-        if !current_chunk.is_empty() {
-            current_chunk.push('\n');
-        }
-        current_chunk.push_str(line);
+    // 国内直连客户端（核心：强制绕过系统代理 no_proxy，即使 VPN 卡死也能毫秒级秒连腾讯服务器！）
+    let direct_client = Client::builder()
+        .no_proxy()
+        .timeout(std::time::Duration::from_millis(2000))
+        .build()
+        .unwrap_or_else(|_| Client::new());
+
+    // 保护 Markdown 骨架：空行、代码块、分隔符完全不送翻，保持原样；
+    // 标题、列表行、文本行单独成项翻译，绝不跨行合并，彻底杜绝换行符被翻译引擎吞噬粘连的排版塌陷！
+    #[derive(Clone)]
+    enum MarkdownItem {
+        Preserved(String),
+        Translate(String),
     }
-    if !current_chunk.is_empty() {
-        chunks.push(current_chunk);
+
+    let mut items: Vec<MarkdownItem> = Vec::new();
+    let mut in_code_block = false;
+
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("```") {
+            in_code_block = !in_code_block;
+            items.push(MarkdownItem::Preserved(line.to_string()));
+            continue;
+        }
+        if in_code_block || trimmed.is_empty() || trimmed == "---" {
+            items.push(MarkdownItem::Preserved(line.to_string()));
+            continue;
+        }
+
+        // 单行如果长度在 350 字符以内，保持为独立翻译行（绝不和下一行合并，防止吞噬换行）
+        if line.len() <= 350 {
+            items.push(MarkdownItem::Translate(line.to_string()));
+        } else {
+            // 超长单行按句子截断
+            let mut sub_chunk = String::new();
+            for ch in line.chars() {
+                sub_chunk.push(ch);
+                if sub_chunk.len() >= 300 && (ch == '。' || ch == '.' || ch == '；' || ch == ';' || ch == ' ' || ch == '!') {
+                    items.push(MarkdownItem::Translate(sub_chunk.clone()));
+                    sub_chunk.clear();
+                }
+            }
+            if !sub_chunk.is_empty() {
+                items.push(MarkdownItem::Translate(sub_chunk));
+            }
+        }
     }
     
     let now = chrono::Utc::now().timestamp();
     let last_fail = GOOGLE_FAIL_TIMESTAMP.load(Ordering::Relaxed);
-    // 如果在 10 分钟 (600 秒) 内曾判定 Google 不可用，直接开启熔断直连国内源，避免白等 2.5 秒
-    let is_google_cooled_down = (now - last_fail).abs() > 600;
+    // 动态判断 Google 是否允许尝试
+    let mut allow_google = (now - last_fail).abs() > 600;
 
     let mut full_translated_text = String::new();
     
-    for chunk in chunks {
-        let mut translated_chunk = None;
+    for item in items {
+        match item {
+            MarkdownItem::Preserved(s) => {
+                full_translated_text.push_str(&s);
+                full_translated_text.push('\n');
+            }
+            MarkdownItem::Translate(chunk) => {
+                let mut translated_chunk = None;
 
-        // 1. 如果 Google 处于可用状态，优先尝试 Google (2.5 秒极速判定)
-        if is_google_cooled_down {
-            match translate_chunk_google(&client, &chunk, &target_lang).await {
-                Ok(res) => {
-                    GOOGLE_FAIL_TIMESTAMP.store(0, Ordering::Relaxed);
-                    translated_chunk = Some(res);
+                // 1. 如果 Google 处于可用状态，优先尝试 Google (1.5 秒极速判定)
+                if allow_google {
+                    match translate_chunk_google(&client, &chunk, &target_lang).await {
+                        Ok(res) => {
+                            GOOGLE_FAIL_TIMESTAMP.store(0, Ordering::Relaxed);
+                            translated_chunk = Some(res);
+                        }
+                        Err(err) => {
+                            eprintln!("[Translate] Google API unavailable ({}), switching all remaining chunks to domestic direct Tencent...", err);
+                            // 核心关键：当前任务一旦失败，后续所有 chunk 立即 0 毫秒跳过 Google，绝不重复卡顿！
+                            allow_google = false;
+                            GOOGLE_FAIL_TIMESTAMP.store(chrono::Utc::now().timestamp(), Ordering::Relaxed);
+                        }
+                    }
                 }
-                Err(err) => {
-                    eprintln!("[Translate] Google API unavailable ({}), switching to domestic fallback...", err);
-                    GOOGLE_FAIL_TIMESTAMP.store(chrono::Utc::now().timestamp(), Ordering::Relaxed);
+
+                // 2. 如果 Google 失败或处于熔断期，走国内无代理直连主力源 (腾讯交互翻译 Tencent Transmart)
+                if translated_chunk.is_none() {
+                    match translate_chunk_tencent(&direct_client, &chunk, &target_lang).await {
+                        Ok(res) => {
+                            translated_chunk = Some(res);
+                        }
+                        Err(err) => {
+                            eprintln!("[Translate] Direct Tencent failed ({}), trying MyMemory fallback...", err);
+                        }
+                    }
+                }
+
+                // 3. 若腾讯也偶发失败，无缝走第三备选源 (MyMemory Neural)
+                if translated_chunk.is_none() {
+                    match translate_chunk_mymemory(&client, &chunk, &target_lang).await {
+                        Ok(res) => {
+                            translated_chunk = Some(res);
+                        }
+                        Err(err) => {
+                            eprintln!("[Translate] MyMemory provider failed: {}", err);
+                            translated_chunk = Some(chunk.clone());
+                        }
+                    }
+                }
+
+                if let Some(res) = translated_chunk {
+                    full_translated_text.push_str(&res);
+                    full_translated_text.push('\n');
                 }
             }
         }
-
-        // 2. 如果 Google 失败或处于熔断期，优先无缝走国内直连主力源 (腾讯交互翻译 Tencent Transmart)
-        if translated_chunk.is_none() {
-            match translate_chunk_tencent(&client, &chunk, &target_lang).await {
-                Ok(res) => {
-                    translated_chunk = Some(res);
-                }
-                Err(err) => {
-                    eprintln!("[Translate] Tencent provider failed ({}), trying MyMemory fallback...", err);
-                }
-            }
-        }
-
-        // 3. 若腾讯也偶发失败，无缝走第三备选源 (MyMemory Neural)
-        if translated_chunk.is_none() {
-            match translate_chunk_mymemory(&client, &chunk, &target_lang).await {
-                Ok(res) => {
-                    translated_chunk = Some(res);
-                }
-                Err(err) => {
-                    eprintln!("[Translate] MyMemory provider failed: {}", err);
-                    translated_chunk = Some(chunk.clone());
-                }
-            }
-        }
-
-        if let Some(res) = translated_chunk {
-            full_translated_text.push_str(&res);
-            full_translated_text.push('\n');
-        }
-
-        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
     }
 
     let result = full_translated_text.trim_end().to_string();

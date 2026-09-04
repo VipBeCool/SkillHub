@@ -1,0 +1,53 @@
+name: 反馈 / Feedback
+description: 报告问题或提交功能建议
+title: "[反馈] "
+labels: ["feedback"]
+body:
+  - type: dropdown
+    id: type
+    attributes:
+      label: 反馈类型
+      options:
+        - Bug 报告
+        - 功能建议
+        - 使用问题
+        - 其他
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: 描述
+      description: 请详细描述你遇到的问题或希望增加的功能
+      placeholder: 请在此处填写...
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤（Bug 报告填写，其他可留空）
+      placeholder: |
+        1. 打开应用
+        2. 点击 ...
+        3. 出现 ...
+
+  - type: input
+    id: version
+    attributes:
+      label: SkillHub 版本
+      placeholder: 例如 v0.2.0
+    validations:
+      required: false
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: 操作系统
+      options:
+        - macOS
+        - Windows
+        - Linux
+    validations:
+      required: false
