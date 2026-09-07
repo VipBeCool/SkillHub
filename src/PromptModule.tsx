@@ -37,6 +37,20 @@ export function PromptSidebarNav({
   const [deleteGroup, setDeleteGroup] = useState<PromptGroup | null>(null);
 
   const [tagList, setTagList] = useState<{ name: string; count: number }[]>([]);
+  const [localGroups, setLocalGroups] = useState<PromptGroup[]>(groups);
+
+  useEffect(() => {
+    setLocalGroups(groups);
+  }, [groups]);
+
+  const fetchGroups = useCallback(async () => {
+    try {
+      const gs = await invoke<PromptGroup[]>("get_prompt_groups");
+      setLocalGroups(gs);
+    } catch (e) {
+      console.error("加载提示词分组失败", e);
+    }
+  }, []);
 
   const fetchTags = useCallback(async () => {
     try {
@@ -63,13 +77,22 @@ export function PromptSidebarNav({
 
   useEffect(() => {
     fetchTags();
-  }, [fetchTags, filter]);
+    fetchGroups();
+  }, [fetchTags, fetchGroups, filter]);
 
   useEffect(() => {
-    const handler = () => fetchTags();
-    window.addEventListener('skillhub:prompt-tags-changed', handler);
-    return () => window.removeEventListener('skillhub:prompt-tags-changed', handler);
-  }, [fetchTags]);
+    const handleTags = () => fetchTags();
+    const handleGroups = () => {
+      fetchGroups();
+      fetchTags();
+    };
+    window.addEventListener('skillhub:prompt-tags-changed', handleTags);
+    window.addEventListener('skillhub:prompt-groups-changed', handleGroups);
+    return () => {
+      window.removeEventListener('skillhub:prompt-tags-changed', handleTags);
+      window.removeEventListener('skillhub:prompt-groups-changed', handleGroups);
+    };
+  }, [fetchTags, fetchGroups]);
 
   const handleDeleteGroup = async () => {
     if (!deleteGroup) return;
@@ -156,7 +179,7 @@ export function PromptSidebarNav({
           </Tooltip>
         </div>
         <div className="space-y-0.5">
-          {groups.map(group => (
+          {localGroups.map(group => (
             <button
               key={group.id}
               onClick={(e) => onFilterChange(`group:${group.id}` as PromptFilter, e)}
@@ -179,7 +202,7 @@ export function PromptSidebarNav({
               <span className="text-[11px] text-[var(--color-muted)] shrink-0 ml-1">{group.prompt_count}</span>
             </button>
           ))}
-          {groups.length === 0 && (
+          {localGroups.length === 0 && (
             <p className="text-[12px] text-[var(--color-muted)] px-2 py-1.5">暂无分组</p>
           )}
         </div>
@@ -378,6 +401,8 @@ export function PromptModule({ filter, refreshKey, activePromptId, onGroupsChang
         changeNote: "修改分组" 
       });
       showToast("分组已更新");
+      fetchData();
+      window.dispatchEvent(new CustomEvent('skillhub:prompt-groups-changed'));
     } catch (e) {
       showToast("更新分组失败", "error");
       fetchData(); // Revert
@@ -590,10 +615,21 @@ export function PromptModule({ filter, refreshKey, activePromptId, onGroupsChang
   }, [fetchOverviewStats, refreshKey]);
 
   useEffect(() => {
-    const handler = () => fetchOverviewStats();
-    window.addEventListener('skillhub:prompt-tags-changed', handler);
-    return () => window.removeEventListener('skillhub:prompt-tags-changed', handler);
-  }, [fetchOverviewStats]);
+    const handleGroupsChanged = () => {
+      fetchData();
+      fetchOverviewStats();
+    };
+    const handleTagsChanged = () => {
+      fetchData();
+      fetchOverviewStats();
+    };
+    window.addEventListener('skillhub:prompt-groups-changed', handleGroupsChanged);
+    window.addEventListener('skillhub:prompt-tags-changed', handleTagsChanged);
+    return () => {
+      window.removeEventListener('skillhub:prompt-groups-changed', handleGroupsChanged);
+      window.removeEventListener('skillhub:prompt-tags-changed', handleTagsChanged);
+    };
+  }, [fetchData, fetchOverviewStats]);
 
   // 当 filter 切换时清空选中和 inspector
   useEffect(() => {
@@ -811,8 +847,6 @@ export function PromptModule({ filter, refreshKey, activePromptId, onGroupsChang
           {/* 卡片网格 */}
           <div 
             className="flex-1 overflow-y-auto hover-scroll relative z-0 bg-white"
-            onMouseEnter={e => e.currentTarget.style.setProperty('--scroll-thumb-color', 'rgba(0,0,0,0.18)')}
-            onMouseLeave={e => e.currentTarget.style.setProperty('--scroll-thumb-color', 'transparent')}
             onContextMenu={(e) => {
               if (e.target === e.currentTarget) {
                 e.preventDefault();
@@ -962,8 +996,6 @@ export function PromptModule({ filter, refreshKey, activePromptId, onGroupsChang
                 return (
                   <div 
                     className="w-64 border-l border-[var(--color-border)] bg-transparent flex flex-col shrink-0 h-full overflow-hidden inspector-container"
-                    onMouseEnter={e => e.currentTarget.style.setProperty('--scroll-thumb-color', 'rgba(0,0,0,0.18)')}
-                    onMouseLeave={e => e.currentTarget.style.setProperty('--scroll-thumb-color', 'transparent')}
                   >
                     {/* 头部 */}
                     <div 
@@ -1079,8 +1111,6 @@ export function PromptModule({ filter, refreshKey, activePromptId, onGroupsChang
                 return (
                   <div 
                     className="bg-transparent border-l border-[var(--color-border)] flex flex-col shrink-0 h-full overflow-hidden w-64 inspector-container"
-                    onMouseEnter={e => e.currentTarget.style.setProperty('--scroll-thumb-color', 'rgba(0,0,0,0.18)')}
-                    onMouseLeave={e => e.currentTarget.style.setProperty('--scroll-thumb-color', 'transparent')}
                   >
                     <div 
                       className="px-4 h-10 flex items-center justify-between shrink-0"
@@ -1148,8 +1178,6 @@ export function PromptModule({ filter, refreshKey, activePromptId, onGroupsChang
             return (
               <div 
                 className="bg-transparent border-l border-[var(--color-border)] flex flex-col shrink-0 h-full overflow-hidden w-64 inspector-container"
-                onMouseEnter={e => e.currentTarget.style.setProperty('--scroll-thumb-color', 'rgba(0,0,0,0.18)')}
-                onMouseLeave={e => e.currentTarget.style.setProperty('--scroll-thumb-color', 'transparent')}
               >
                 <div 
                   className="px-4 h-10 flex items-center justify-between shrink-0"
@@ -1349,21 +1377,19 @@ export function PromptModule({ filter, refreshKey, activePromptId, onGroupsChang
                   </div>
 
                   <div className="space-y-2 text-[12px]">
-                    {p.group_name && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-[var(--color-muted)]">分组</span>
-                        <select 
-                          value={p.group_id || ""} 
-                          onChange={(e) => handleInspectorUpdateGroup(p, e.target.value || null)}
-                          className="text-[12px] text-[var(--foreground)] font-medium bg-transparent border-none outline-none text-right appearance-none cursor-pointer hover:text-[var(--color-primary)] transition-colors pr-0"
-                        >
-                          <option value="">未分组</option>
-                          {groups.map(g => (
-                            <option key={g.id} value={g.id}>{g.name}</option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
+                    <div className="flex items-center justify-between">
+                      <span className="text-[var(--color-muted)]">分组</span>
+                      <select 
+                        value={p.group_id || ""} 
+                        onChange={(e) => handleInspectorUpdateGroup(p, e.target.value || null)}
+                        className="text-[12px] text-[var(--foreground)] font-medium bg-transparent border-none outline-none text-right appearance-none cursor-pointer hover:text-[var(--color-primary)] transition-colors pr-0"
+                      >
+                        <option value="">未分组</option>
+                        {groups.map(g => (
+                          <option key={g.id} value={g.id}>{g.name}</option>
+                        ))}
+                      </select>
+                    </div>
                     <div className="flex items-center justify-between">
                       <span className="text-[var(--color-muted)]">使用次数</span>
                       <span className="text-[var(--foreground)]">{p.use_count} 次</span>

@@ -52,6 +52,12 @@ export interface GroupedRepo {
   author?: string;
 }
 
+export interface CloningRepo {
+  path: string;
+  name: string;
+  category?: 'collection' | 'single';
+}
+
 // ===== Prompt 管理相关类型 =====
 
 export interface PromptGroup {

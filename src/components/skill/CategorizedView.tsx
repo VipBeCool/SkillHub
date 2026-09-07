@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
-import { GroupedRepo, Skill, SyncRecord, AgentConfig } from '../../types';
+import { GroupedRepo, Skill, SyncRecord, AgentConfig, CloningRepo } from '../../types';
 import { RepoCard } from './RepoCard';
 import { SkillCard } from './SkillCard';
+import { CloningCard } from './CloningCard';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 
 interface CategorizedViewProps {
   repos: GroupedRepo[];
-  cloningRepos: { path: string; name: string }[];
+  cloningRepos: CloningRepo[];
   selectedRepoIds: Set<string>;
   selectedSkillIds: Set<string>;
   onSelectRepo: (repo: GroupedRepo, e: React.MouseEvent) => void;
@@ -79,14 +80,37 @@ export function CategorizedView({
   return (
     <div
       className="flex-1 flex flex-col px-6 pt-0 pb-20 overflow-y-auto hover-scroll"
-      onMouseEnter={e => e.currentTarget.style.setProperty('--scroll-thumb-color', 'rgba(0,0,0,0.18)')}
-      onMouseLeave={e => e.currentTarget.style.setProperty('--scroll-thumb-color', 'transparent')}
     >
+      {/* 正在拉取分组（独立展示，拉取中无需分类，完成后自动归类） */}
+      {cloningRepos.length > 0 && (
+        <div className="mb-5 relative">
+          <div className="flex items-center sticky top-0 bg-white z-10 pt-3 pb-2 -mx-6 px-6">
+            <h2 className="text-[12px] font-medium text-[var(--color-muted)] flex items-center gap-1.5">
+              <span>正在拉取</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+              <span>({cloningRepos.length})</span>
+            </h2>
+          </div>
+          <div className="grid gap-3 content-start" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }}>
+            {cloningRepos.map((repo) => (
+              <CloningCard
+                key={repo.path}
+                name={repo.name}
+                path={repo.path}
+                onCancel={(e) => handleCancelClone(e, repo.path)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* 技能组合包分组 */}
       {collections.length > 0 && (
         <div className="mb-4 relative">
           <div className={`flex items-center sticky top-0 bg-white z-10 pt-3 pb-2 -mx-6 px-6 cursor-pointer select-none group ${collectionsCollapsed ? 'mb-0' : 'mb-4'}`} onClick={toggleCollections}>
-            <h2 className="text-[12px] font-medium text-[var(--color-muted)] group-hover:text-[var(--foreground)] transition-colors">技能组合包 ({collections.length})</h2>
+            <h2 className="text-[12px] font-medium text-[var(--color-muted)] group-hover:text-[var(--foreground)] transition-colors">
+              技能组合包 ({collections.length})
+            </h2>
             {collectionsCollapsed ? (
               <ChevronRight className="w-4 h-4 ml-1 text-[var(--color-muted)] group-hover:text-[var(--foreground)] transition-colors" />
             ) : (
@@ -97,40 +121,22 @@ export function CategorizedView({
           </div>
           
           {!collectionsCollapsed && (
-            <>
-              <div className="grid gap-3 content-start mb-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }}>
-                {cloningRepos.map((repo, idx) => (
-                  <div key={`cloning-${idx}`} className="group bg-[var(--color-muted-bg)]/30 backdrop-blur-md rounded-xl p-4 border border-dashed border-[var(--color-border)] shadow-sm flex flex-col h-24 animate-pulse">
-                    <div className="flex items-center space-x-2">
-                      <div className="w-8 h-8 rounded-lg bg-[var(--color-muted-bg)] flex items-center justify-center shrink-0">
-                        <div className="w-4 h-4 border-2 border-[var(--color-muted)] border-t-transparent rounded-full animate-spin"></div>
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <h3 className="text-[13px] font-semibold text-[var(--foreground)] truncate" title={repo.name}>{repo.name}</h3>
-                        <span className="text-[10px] text-[var(--color-muted)]">正在拉取...</span>
-                      </div>
-                      <button onClick={(e) => handleCancelClone(e, repo.path)} className="p-1 rounded text-[var(--color-muted)] hover:text-red-500 hover:bg-red-50 transition-colors shrink-0">
-                        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                      </button>
-                    </div>
-                  </div>
-                ))}
-                {collections.map((repo) => (
-                  <RepoCard
-                    key={repo.id}
-                    repo={repo}
-                    isSelected={selectedRepoIds.has(repo.id)}
-                    onClick={(e) => onSelectRepo(repo, e)}
-                    onDoubleClick={() => onDoubleClickRepo(repo.id)}
-                    onContextMenu={(e) => onContextMenuRepo(e, repo)}
-                    syncRecords={syncRecords}
-                    agents={agents}
-                    onUpdateRepo={onUpdateRepo}
-                    onDeleteRepo={onDeleteRepo}
-                  />
-                ))}
-              </div>
-            </>
+            <div className="grid gap-3 content-start mb-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }}>
+              {collections.map((repo) => (
+                <RepoCard
+                  key={repo.id}
+                  repo={repo}
+                  isSelected={selectedRepoIds.has(repo.id)}
+                  onClick={(e) => onSelectRepo(repo, e)}
+                  onDoubleClick={() => onDoubleClickRepo(repo.id)}
+                  onContextMenu={(e) => onContextMenuRepo(e, repo)}
+                  syncRecords={syncRecords}
+                  agents={agents}
+                  onUpdateRepo={onUpdateRepo}
+                  onDeleteRepo={onDeleteRepo}
+                />
+              ))}
+            </div>
           )}
         </div>
       )}
@@ -140,7 +146,9 @@ export function CategorizedView({
         <div className="relative">
           <div className={`flex items-center sticky top-0 bg-white z-10 pt-2 pb-2 -mx-6 px-6 ${singlesCollapsed ? 'mb-0' : 'mb-4'}`}>
             <div className="flex items-center cursor-pointer select-none group" onClick={toggleSingles}>
-              <h2 className="text-[12px] font-medium text-[var(--color-muted)] group-hover:text-[var(--foreground)] transition-colors">技能 ({singles.length})</h2>
+              <h2 className="text-[12px] font-medium text-[var(--color-muted)] group-hover:text-[var(--foreground)] transition-colors">
+                技能 ({singles.length})
+              </h2>
               {singlesCollapsed ? (
                 <ChevronRight className="w-4 h-4 ml-1 text-[var(--color-muted)] group-hover:text-[var(--foreground)] transition-colors" />
               ) : (
@@ -169,21 +177,21 @@ export function CategorizedView({
           </div>
           
           {!singlesCollapsed && (
-          <div className="grid gap-3 content-start pb-6" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }}>
-            {singles.map((repo) => (
-              <RepoCard
-                key={repo.id}
-                repo={repo}
-                isSelected={selectedRepoIds.has(repo.id)}
-                onClick={(e) => onSelectRepo(repo, e)}
-                onDoubleClick={() => onDoubleClickRepo(repo.id)}
-                onContextMenu={(e) => onContextMenuRepo(e, repo)}
-                syncRecords={syncRecords}
-                agents={agents}
-                onUpdateRepo={onUpdateRepo}
-                onDeleteRepo={onDeleteRepo}
-              />
-            ))}
+            <div className="grid gap-3 content-start pb-6" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }}>
+              {singles.map((repo) => (
+                <RepoCard
+                  key={repo.id}
+                  repo={repo}
+                  isSelected={selectedRepoIds.has(repo.id)}
+                  onClick={(e) => onSelectRepo(repo, e)}
+                  onDoubleClick={() => onDoubleClickRepo(repo.id)}
+                  onContextMenu={(e) => onContextMenuRepo(e, repo)}
+                  syncRecords={syncRecords}
+                  agents={agents}
+                  onUpdateRepo={onUpdateRepo}
+                  onDeleteRepo={onDeleteRepo}
+                />
+              ))}
             {showSubSkills && collections.flatMap(repo => repo.skills.map(skill => (
               <SkillCard
                 key={skill.id}

@@ -629,7 +629,7 @@ pub fn insert_skill(db: &Connection, skill: &ScannedSkill, source_dir_id: &str, 
 
     db.execute(
         "INSERT INTO skills (id, name, description, local_path, repo_id, source_dir_id, relative_path, source_type, installed_at, updated_at, is_active, category, tags, skill_scope, is_favorite, use_count) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, 0, 0)
-         ON CONFLICT(local_path) DO UPDATE SET name=excluded.name, description=excluded.description, updated_at=excluded.updated_at, source_type=excluded.source_type, category=excluded.category, skill_scope=excluded.skill_scope",
+         ON CONFLICT(local_path) DO UPDATE SET name=excluded.name, description=excluded.description, updated_at=excluded.updated_at, source_type=excluded.source_type, category=excluded.category, skill_scope=excluded.skill_scope, source_dir_id=excluded.source_dir_id",
         params![
             id,
             skill.name,

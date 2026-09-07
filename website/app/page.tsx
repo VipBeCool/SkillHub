@@ -3,66 +3,83 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   Download, Zap, Shield, RefreshCw, Layers, ArrowRight, Monitor, Apple, Terminal,
-  Cpu, FileText, Search, Sparkles, BookOpen, Edit3, FolderDown, CheckCircle2
+  Cpu, FileText, Search, Sparkles, BookOpen, Edit3, FolderDown, CheckCircle2,
+  Eye, Compass, Database, Bot
 } from "lucide-react";
 import { useState, useEffect, useRef, useSyncExternalStore } from "react";
 
 const SHOWCASE_TABS = [
   {
-    id: "skills-list",
-    title: "技能管理",
-    icon: Cpu,
-    tag: "核心功能",
-    desc: "直观的可视化卡片与列表视图，支持多选批量管理、启用/禁用、标签分类与快速过滤。",
-    image: "./screenshots/skills-list.png",
+    id: "tabs-overview",
+    title: "多标签页",
+    icon: Layers,
+    tag: "多任务并行",
+    desc: "像浏览器一样支持顶部多标签页，技能、提示词与多库对照查阅不打架。",
+    image: "./screenshots/tabs-overview.png",
   },
   {
-    id: "skill-detail",
-    title: "技能详情",
-    icon: BookOpen,
-    tag: "完整解析",
-    desc: "清晰展现技能的说明、输入输出结构、版本历史与底层配置，一览无余。",
-    image: "./screenshots/skill-detail.png",
+    id: "quick-look",
+    title: "空格速览",
+    icon: Eye,
+    tag: "按空格即看",
+    desc: "轻按空格键秒开浮层速览 Markdown 内容，看完随手关闭，告别来回进出详情页。",
+    image: "./screenshots/quick-look.png",
+  },
+  {
+    id: "clone-progress",
+    title: "后台拉取",
+    icon: RefreshCw,
+    tag: "静默下载",
+    desc: "导入线上技能库时无需等待卡顿，顶部卡片安静下载，随时可取消并彻底清理本地缓存。",
+    image: "./screenshots/clone-progress.png",
+  },
+  {
+    id: "doc-outline",
+    title: "大纲与翻译",
+    icon: Compass,
+    tag: "长文畅读",
+    desc: "长篇技能自动提取悬浮大纲目录（TOC）方便跳转，遇到外文技能支持一键双语对照翻译。",
+    image: "./screenshots/doc-outline.png",
+  },
+  {
+    id: "sync-agent",
+    title: "Agent 同步",
+    icon: Bot,
+    tag: "即插即用",
+    desc: "一键将技能同步安装到你常用的 AI 工具中，卡片状态一目了然，调用自如。",
+    image: "./screenshots/sync-agent.png",
+  },
+  {
+    id: "prompt-edit",
+    title: "Prompt 编辑",
+    icon: Edit3,
+    tag: "沉浸编写",
+    desc: "Markdown 文本框随文字自适应撑高，输入标签时自动联想已有词库，分组井井有条。",
+    image: "./screenshots/prompt-edit.png",
   },
   {
     id: "smart-prompt",
     title: "智能引用",
     icon: Sparkles,
-    tag: "AI 联动",
-    desc: "支持在编写 Agent 技能时随时智能引用现有的 Prompt 库，模块化组装复杂的 AI 任务。",
+    tag: "规范调用",
+    desc: "自动提取技能目录树与执行规范生成 Cheatsheet 引用词，直接粘贴给 AI 对话框执行。",
     image: "./screenshots/smart-prompt-reference.png",
-  },
-  {
-    id: "prompts-list",
-    title: "提示词库",
-    icon: FileText,
-    tag: "高效复用",
-    desc: "集中存储与分类高频 Prompt 模板，毫秒级复制与调用，彻底告别零散记录。",
-    image: "./screenshots/prompts-list.png",
-  },
-  {
-    id: "prompt-edit",
-    title: "提示词编辑",
-    icon: Edit3,
-    tag: "沉浸创作",
-    desc: "专为提示词工程打造的编辑器，支持动态变量插入、Markdown 语法与实时预览。",
-    image: "./screenshots/prompt-edit.png",
   },
   {
     id: "global-search",
     title: "全局秒搜",
     icon: Search,
-    tag: "快捷调度",
-    desc: "支持全局快捷键唤醒，秒级模糊检索所有技能、提示词与命令，指尖即达。",
+    tag: "Cmd/Ctrl+K",
+    desc: "随时按下快捷键唤起全局搜索，多字段模糊检索所有技能与提示词，即选即览。",
     image: "./screenshots/global-search.png",
   },
   {
-    id: "import-skill",
-    title: "导入与更新",
-    icon: FolderDown,
-    tag: "生态互通",
-    desc: "支持本地文件夹拖拽导入、GitHub 仓库一键挂载与自动版本更新检测。",
-    image: "./screenshots/import-skill.png",
+    id: "backup-restore",
+    title: "备份与恢复",
+    icon: Database,
+    tag: "本地安全",
+    desc: "整库一键打包导出为 ZIP，换电脑轻松迁移，导入前自动静默备份，数据安全无忧。",
+    image: "./screenshots/backup-restore.png",
   },
 ];
 
@@ -104,7 +121,7 @@ function ProductShowcase() {
             <button
               key={tab.id}
               onClick={() => handleTabChange(idx)}
-              className={`relative flex items-center gap-2 px-3.5 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs sm:text-sm font-medium transition-colors duration-200 cursor-pointer ${
+              className={`relative flex items-center gap-2 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs sm:text-sm font-medium transition-colors duration-200 cursor-pointer ${
                 isActive
                   ? "text-gray-900 font-semibold"
                   : "text-gray-500 hover:text-gray-800"
@@ -117,7 +134,7 @@ function ProductShowcase() {
                   transition={{ type: "spring", stiffness: 450, damping: 35 }}
                 />
               )}
-              <Icon className={`w-4 h-4 transition-colors ${isActive ? "text-[#0055FF]" : "text-gray-400"}`} />
+              <Icon className={`w-3.5 h-3.5 sm:w-4 sm:h-4 transition-colors ${isActive ? "text-[#0055FF]" : "text-gray-400"}`} />
               <span>{tab.title}</span>
             </button>
           );
@@ -205,7 +222,7 @@ function GithubIcon(props: React.SVGProps<SVGSVGElement>) {
 
 type OsType = "mac" | "win" | "linux" | "default";
 
-const FALLBACK_VERSION = "0.1.3";
+const FALLBACK_VERSION = "0.2.6";
 
 const OS_INFO: Record<OsType, { name: string; icon: React.ComponentType<{ className?: string }>; getUrl: (v: string) => string }> = {
   mac: {
@@ -255,7 +272,6 @@ export default function Home() {
       .then(res => res.json())
       .then(data => {
         if (data && data.tag_name) {
-          // tag_name 通常是 'v0.1.3'，我们去掉前面的 'v'
           setLatestVersion(data.tag_name.replace(/^v/, ""));
         }
       })
@@ -317,7 +333,7 @@ export default function Home() {
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#FF5500]"></span>
             </span>
-            <span className="text-[#FF5500] font-bold">SkillHub v{latestVersion}</span> is now available
+            <span className="text-[#FF5500] font-bold">SkillHub v{latestVersion}</span> 已正式发布
           </motion.a>
 
           <motion.h1 
@@ -326,8 +342,8 @@ export default function Home() {
             transition={{ duration: 0.6, delay: 0.1 }}
             className="text-4xl sm:text-6xl md:text-7xl font-extrabold tracking-tight mb-5 sm:mb-6 max-w-4xl leading-[1.12]"
           >
-            你的极速跨平台 <br />
-            <span className="text-gradient">AI 技能与 Prompt 管理工具</span>
+            你的跨平台必备 <br />
+            <span className="text-gradient">AI Skills 搜集与管理工具</span>
           </motion.h1>
           
           <motion.p 
@@ -336,7 +352,7 @@ export default function Home() {
             transition={{ duration: 0.6, delay: 0.2 }}
             className="text-base sm:text-xl text-gray-500 mb-8 sm:mb-10 max-w-2xl leading-relaxed"
           >
-            基于 Tauri & Rust 打造的轻量级 AI 桌面工具。多源渠道一键同步，轻松管理所有 Agent 技能与提示词库。
+            不管是用 AI 做 PPT、写文案、分析表格，还是打理专属 Agent 智能体。把散落各处的技能包与高频提示词归纳在一个清爽工作台里，即拿即用，井井有条。
           </motion.p>
           
           <motion.div 
@@ -370,8 +386,12 @@ export default function Home() {
         {/* Features Bento Box */}
         <section className="max-w-7xl mx-auto px-6 py-24">
           <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-5xl font-bold mb-6 tracking-tight text-gray-900">不仅是管理，更是<span className="text-[#0055FF]">效率革命</span></h2>
-            <p className="text-gray-500 text-xl max-w-2xl mx-auto">采用 Tauri 现代架构，我们剔除了所有多余的设计，只为你保留最硬核的性能与最纯粹的体验。</p>
+            <h2 className="text-3xl md:text-5xl font-bold mb-6 tracking-tight text-gray-900">
+              为每一位 AI 使用者，打磨顺手好用的收纳工具
+            </h2>
+            <p className="text-gray-500 text-xl max-w-2xl mx-auto">
+              告别在各处聊天记录、备忘录和书签里四处翻找的繁琐，让手头的 AI 工具真正好用起来。
+            </p>
           </div>
 
           <div className="grid md:grid-cols-3 gap-6">
@@ -379,32 +399,40 @@ export default function Home() {
               <div className="w-14 h-14 rounded-2xl bg-[#00E5FF]/10 text-[#00E5FF] flex items-center justify-center mb-6 border border-[#00E5FF]/20">
                 <Zap className="w-7 h-7" />
               </div>
-              <h3 className="text-2xl font-bold mb-4 text-gray-900">极速轻量，毫秒级启动</h3>
-              <p className="text-gray-600 text-lg leading-relaxed max-w-xl">彻底告别臃肿的 Electron 框架。SkillHub 基于 Tauri & Rust 重构底层，内存占用极低（仅需不到 50MB），无论是在老旧设备还是最新 Mac 上，都能实现瞬间冷启动，永远不拖慢你的系统。</p>
+              <h3 className="text-2xl font-bold mb-4 text-gray-900">轻巧流畅，秒开即用</h3>
+              <p className="text-gray-600 text-lg leading-relaxed max-w-xl">
+                安装包仅十几兆，日常运行几乎不占电脑内存。在后台安静常驻，随用随开，完全不拖慢电脑速度。
+              </p>
             </div>
             
             <div className="glass p-10 rounded-3xl hover:shadow-xl transition-all duration-300 border border-gray-200/60 bg-white/60">
               <div className="w-14 h-14 rounded-2xl bg-[#0055FF]/10 text-[#0055FF] flex items-center justify-center mb-6 border border-[#0055FF]/20">
                 <Shield className="w-7 h-7" />
               </div>
-              <h3 className="text-2xl font-bold mb-4 text-gray-900">本地优先，绝对安全</h3>
-              <p className="text-gray-600 text-lg leading-relaxed">所有的配置、Prompt 与核心技能数据均使用 SQLite 加密存储在你的本地硬盘中。0 云端上传，保障你的商业机密与隐私。</p>
+              <h3 className="text-2xl font-bold mb-4 text-gray-900">纯本地存储，隐私踏实放心</h3>
+              <p className="text-gray-600 text-lg leading-relaxed">
+                所有业务提示词、私有技能包与使用记录全保存在你自己的电脑上。无需注册账号，不上传云端，商业资料与个人隐私万无一失。
+              </p>
             </div>
 
             <div className="glass p-10 rounded-3xl hover:shadow-xl transition-all duration-300 border border-gray-200/60 bg-white/60">
               <div className="w-14 h-14 rounded-2xl bg-indigo-500/10 text-indigo-500 flex items-center justify-center mb-6 border border-indigo-500/20">
                 <RefreshCw className="w-7 h-7" />
               </div>
-              <h3 className="text-2xl font-bold mb-4 text-gray-900">多端同步，一键更新</h3>
-              <p className="text-gray-600 text-lg leading-relaxed">支持同时挂载多个本地文件夹与远程 GitHub 仓库，一键检测更新，统一管理所有 AI 技能包，永不掉队。</p>
+              <h3 className="text-2xl font-bold mb-4 text-gray-900">全源收纳，一键同步更新</h3>
+              <p className="text-gray-600 text-lg leading-relaxed">
+                不管是本地保存的文件夹、网上分享的开源技能库，还是常用的收藏链接，都能统一收录。上游作者有更新时一键同步，省去反复重新下载的麻烦。
+              </p>
             </div>
 
             <div className="md:col-span-2 glass p-10 rounded-3xl hover:shadow-xl transition-all duration-300 border border-gray-200/60 bg-white/60">
               <div className="w-14 h-14 rounded-2xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center mb-6 border border-emerald-500/20">
                 <Layers className="w-7 h-7" />
               </div>
-              <h3 className="text-2xl font-bold mb-4 text-gray-900">可视化沉浸式管理</h3>
-              <p className="text-gray-600 text-lg leading-relaxed max-w-xl">提供可视化的技能浏览、标签分类、全局快捷搜索以及批量导出功能。不仅是一个存放代码的工具，更是你专属的 AI 技能军火库。</p>
+              <h3 className="text-2xl font-bold mb-4 text-gray-900">像整理文件一样自然直观</h3>
+              <p className="text-gray-600 text-lg leading-relaxed max-w-xl">
+                浏览器式多标签页切换、macOS 空格键快速预览、长文档目录大纲跳转、还能像桌面文件一样鼠标框选批量操作。零使用门槛，上手即熟练。
+              </p>
             </div>
           </div>
         </section>
@@ -416,10 +444,10 @@ export default function Home() {
             <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[600px] bg-gradient-to-b from-[#0055FF]/15 via-[#00E5FF]/5 to-transparent blur-3xl pointer-events-none -z-10 rounded-full" />
             
             <h2 className="text-3xl md:text-5xl font-bold mb-6 text-gray-900 tracking-tight relative z-10">
-              准备好提升<span className="text-[#0055FF]">效率</span>了吗？
+              即刻下载，整理你的 <span className="text-[#0055FF]">AI 技能库</span>
             </h2>
             <p className="text-gray-500 text-lg md:text-xl mb-14 max-w-2xl mx-auto relative z-10">
-              SkillHub 完全开源免费，提供全平台原生安装包。<br className="hidden md:block"/>选择你的操作系统立即开始体验。
+              SkillHub 完全开源免费，提供全平台原生安装包。<br className="hidden md:block"/>选择你的操作系统立即开始使用。
             </p>
             
             <div className="grid md:grid-cols-3 gap-6 relative z-10 max-w-5xl mx-auto">
@@ -428,21 +456,21 @@ export default function Home() {
                   <Apple className="w-8 h-8 text-gray-700 group-hover:text-[#0055FF] transition-colors" />
                 </div>
                 <span className="text-gray-900 font-bold text-lg mb-1 group-hover:text-[#0055FF] transition-colors">macOS</span>
-                <span className="text-gray-500 text-sm">Universal (Intel & Apple Silicon)</span>
+                <span className="text-gray-500 text-sm">通用二进制 (Intel & Apple Silicon)</span>
               </a>
               <a href={OS_INFO.win.getUrl(latestVersion)} className="group flex flex-col items-center p-8 rounded-3xl bg-white/80 hover:bg-white border border-gray-200/80 hover:border-[#0055FF]/30 hover:shadow-2xl hover:shadow-[#0055FF]/10 transition-all duration-300 transform hover:-translate-y-1">
                 <div className="w-16 h-16 rounded-2xl bg-gray-50 group-hover:bg-[#0055FF]/5 flex items-center justify-center mb-5 transition-colors border border-gray-100 group-hover:border-[#0055FF]/10">
                   <Monitor className="w-8 h-8 text-gray-700 group-hover:text-[#0055FF] transition-colors" />
                 </div>
                 <span className="text-gray-900 font-bold text-lg mb-1 group-hover:text-[#0055FF] transition-colors">Windows</span>
-                <span className="text-gray-500 text-sm">Windows 10 / 11 (x64)</span>
+                <span className="text-gray-500 text-sm">Windows 10 / 11 (64 位)</span>
               </a>
               <a href={OS_INFO.linux.getUrl(latestVersion)} className="group flex flex-col items-center p-8 rounded-3xl bg-white/80 hover:bg-white border border-gray-200/80 hover:border-[#0055FF]/30 hover:shadow-2xl hover:shadow-[#0055FF]/10 transition-all duration-300 transform hover:-translate-y-1">
                 <div className="w-16 h-16 rounded-2xl bg-gray-50 group-hover:bg-[#0055FF]/5 flex items-center justify-center mb-5 transition-colors border border-gray-100 group-hover:border-[#0055FF]/10">
                   <Terminal className="w-8 h-8 text-gray-700 group-hover:text-[#0055FF] transition-colors" />
                 </div>
                 <span className="text-gray-900 font-bold text-lg mb-1 group-hover:text-[#0055FF] transition-colors">Linux</span>
-                <span className="text-gray-500 text-sm">AppImage / DEB / RPM</span>
+                <span className="text-gray-500 text-sm">AppImage / DEB</span>
               </a>
             </div>
           </div>
@@ -457,7 +485,7 @@ export default function Home() {
             <span className="font-semibold text-gray-700">SkillHub</span>
           </div>
           <p className="text-gray-400 text-sm">
-            © {new Date().getFullYear()} VipBeCool. Open Source under GPL-3.0 License.
+            © {new Date().getFullYear()} VipBeCool. 基于 GPL-3.0 协议开源.
           </p>
           <div className="flex gap-4">
             <a href="https://github.com/VipBeCool/SkillHub" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-gray-600 transition-colors">

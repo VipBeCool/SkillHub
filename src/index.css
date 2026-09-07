@@ -145,7 +145,23 @@ body > div[style*="overflow: hidden"][style*="position: fixed"] {
   z-index: 10000 !important;
 }
 
-/* Global Scrollbar */
+/* ==========================================================================
+   全局统一滚动条规范：支持鼠标悬停/滚动时智能显现，移出自动隐藏
+   ========================================================================== */
+
+:root {
+  --scrollbar-thumb-base: rgba(0, 0, 0, 0.22);
+  --scrollbar-thumb-hover: rgba(0, 0, 0, 0.45);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --scrollbar-thumb-base: rgba(255, 255, 255, 0.28);
+    --scrollbar-thumb-hover: rgba(255, 255, 255, 0.55);
+  }
+}
+
+/* 全局滚动条基础轨道 */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -156,63 +172,42 @@ body > div[style*="overflow: hidden"][style*="position: fixed"] {
   background-color: transparent;
 }
 
-::-webkit-scrollbar-thumb {
-  background-color: rgba(0, 0, 0, 0.1);
-  border-radius: 10px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(0, 0, 0, 0.25);
-}
-
-.custom-scrollbar::-webkit-scrollbar {
-  width: 4px;
-}
-
 /* 
- * 悬停才显示滚动条滑块（左边栏、右边栏检查器、卡片网格等）
- * 核心机制：通过 CSS 变量 --scroll-thumb-color 驱动
- * 默认完全透明，鼠标移入容器时由 JS 设置颜色并强制 WebKit 重绘，移出立即清空为 transparent
+ * 默认滑块样式：由 CSS 变量 --scroll-thumb-color 驱动
+ * 在用户滚动页面或鼠标移入容器时由智能控制器激活，移出/静止时自动隐藏为透明
  */
+::-webkit-scrollbar-thumb {
+  background-color: var(--scroll-thumb-color, transparent);
+  border-radius: 9999px;
+  transition: background-color 0.2s ease;
+}
+
+/* 鼠标直接在滑块上时加深显示，提升拖拽手感 */
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--scrollbar-thumb-hover) !important;
+}
+
+/* 专有细滚动条类兼容与细微宽度控制 */
+.custom-scrollbar::-webkit-scrollbar,
+.hover-scrollbar::-webkit-scrollbar,
 .hover-scroll::-webkit-scrollbar,
 .sidebar-scroll-area::-webkit-scrollbar,
-.inspector-scroll-area::-webkit-scrollbar,
-.hover-scrollbar::-webkit-scrollbar {
+.inspector-scroll-area::-webkit-scrollbar {
   width: 5px;
   height: 5px;
 }
 
-.hover-scroll::-webkit-scrollbar-track,
-.sidebar-scroll-area::-webkit-scrollbar-track,
-.inspector-scroll-area::-webkit-scrollbar-track,
-.hover-scrollbar::-webkit-scrollbar-track {
-  background-color: transparent;
-}
-
+.custom-scrollbar::-webkit-scrollbar-thumb,
+.hover-scrollbar::-webkit-scrollbar-thumb,
 .hover-scroll::-webkit-scrollbar-thumb,
 .sidebar-scroll-area::-webkit-scrollbar-thumb,
-.inspector-scroll-area::-webkit-scrollbar-thumb,
-.hover-scrollbar::-webkit-scrollbar-thumb {
-  background-color: var(--scroll-thumb-color, transparent) !important;
-  border-radius: 10px;
+.inspector-scroll-area::-webkit-scrollbar-thumb {
+  background-color: var(--scroll-thumb-color, transparent);
+  border-radius: 9999px;
+  transition: background-color 0.2s ease;
 }
 
-/* 鼠标悬停在滑块本身时颜色加深 */
-.hover-scroll::-webkit-scrollbar-thumb:hover,
-.sidebar-scroll-area::-webkit-scrollbar-thumb:hover,
-.inspector-scroll-area::-webkit-scrollbar-thumb:hover,
-.hover-scrollbar::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(0, 0, 0, 0.35) !important;
-}
-
-/* 纯 CSS 兜底：当鼠标直接 hover 在滚动区域自身时也显现 */
-.sidebar-scroll-area:hover::-webkit-scrollbar-thumb,
-.inspector-scroll-area:hover::-webkit-scrollbar-thumb,
-.hover-scrollbar:hover::-webkit-scrollbar-thumb {
-  background-color: var(--scroll-thumb-color, rgba(0, 0, 0, 0.18)) !important;
-}
-
-/* 隐藏滚动条工具类 */
+/* 强制隐藏滚动条工具类 */
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }

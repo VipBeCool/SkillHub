@@ -24,6 +24,11 @@ interface QuickLookModalProps {
   onNavigate?: (direction: 'up' | 'down') => void;
 }
 
+function cleanMarkdownContent(rawText?: string): string {
+  if (!rawText) return '';
+  return rawText.replace(/^\s*---\r?\n[\s\S]*?\r?\n---\r?\n?/, '');
+}
+
 export function QuickLookModal({
   isOpen,
   onClose,
@@ -191,7 +196,11 @@ export function QuickLookModal({
         </div>
 
         {/* Content Area */}
-        <div className="flex-1 overflow-y-auto custom-scrollbar p-6 bg-white dark:bg-transparent relative">
+        <div 
+          className="flex-1 overflow-y-auto hover-scrollbar p-6 bg-white dark:bg-transparent relative"
+          onMouseEnter={e => e.currentTarget.style.setProperty('--scroll-thumb-color', 'var(--scrollbar-thumb-base)')}
+          onMouseLeave={e => e.currentTarget.style.setProperty('--scroll-thumb-color', 'transparent')}
+        >
           {loading ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center text-[var(--color-muted)]">
               <Loader2 className="w-6 h-6 animate-spin mb-3 text-[var(--color-primary)]" />
@@ -211,7 +220,7 @@ export function QuickLookModal({
             ) : skillFiles.length > 0 ? (
               <article className="prose prose-sm dark:prose-invert max-w-none prose-headings:font-semibold prose-a:text-[var(--color-primary)]">
                 <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
-                  {skillFiles[activeFileIndex]?.content || ''}
+                  {cleanMarkdownContent(skillFiles[activeFileIndex]?.content)}
                 </ReactMarkdown>
               </article>
             ) : (
@@ -253,7 +262,7 @@ export function QuickLookModal({
           ) : previewType === 'prompt' && prompt ? (
             <article className="prose prose-sm dark:prose-invert max-w-none prose-headings:font-semibold prose-a:text-[var(--color-primary)]">
               <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
-                {prompt.content || '*空内容*'}
+                {cleanMarkdownContent(prompt.content) || '*空内容*'}
               </ReactMarkdown>
             </article>
           ) : null}

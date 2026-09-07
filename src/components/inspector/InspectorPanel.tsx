@@ -364,8 +364,6 @@ export function InspectorPanel({
     return (
       <div 
         className="w-64 border-l border-[var(--color-border)] bg-transparent flex flex-col shrink-0 h-full overflow-hidden inspector-container"
-        onMouseEnter={e => e.currentTarget.style.setProperty('--scroll-thumb-color', 'rgba(0,0,0,0.18)')}
-        onMouseLeave={e => e.currentTarget.style.setProperty('--scroll-thumb-color', 'transparent')}
       >
         {/* 头部 */}
         <div 
@@ -568,8 +566,6 @@ export function InspectorPanel({
     return (
       <div 
         className="w-64 border-l border-[var(--color-border)] bg-transparent flex flex-col shrink-0 h-full overflow-hidden inspector-container"
-        onMouseEnter={e => e.currentTarget.style.setProperty('--scroll-thumb-color', 'rgba(0,0,0,0.18)')}
-        onMouseLeave={e => e.currentTarget.style.setProperty('--scroll-thumb-color', 'transparent')}
       >
         {/* 头部 */}
         <div 
@@ -875,8 +871,6 @@ export function InspectorPanel({
     return (
       <div 
         className="w-64 border-l border-[var(--color-border)] bg-transparent flex flex-col shrink-0 h-full overflow-hidden inspector-container"
-        onMouseEnter={e => e.currentTarget.style.setProperty('--scroll-thumb-color', 'rgba(0,0,0,0.18)')}
-        onMouseLeave={e => e.currentTarget.style.setProperty('--scroll-thumb-color', 'transparent')}
       >
         <div 
           data-tauri-drag-region
@@ -906,8 +900,6 @@ export function InspectorPanel({
     return (
       <div 
         className="w-64 border-l border-[var(--color-border)] bg-transparent flex flex-col shrink-0 h-full overflow-hidden inspector-container"
-        onMouseEnter={e => e.currentTarget.style.setProperty('--scroll-thumb-color', 'rgba(0,0,0,0.18)')}
-        onMouseLeave={e => e.currentTarget.style.setProperty('--scroll-thumb-color', 'transparent')}
       >
         {/* 头部 */}
         <div 

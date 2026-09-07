@@ -5,7 +5,8 @@
 <div align="center">
   <img src="src-tauri/icons/icon.png" width="128" height="128" alt="SkillHub Logo" />
   <h1>SkillHub</h1>
-  <p>Manage all your AI skills and prompts in one place</p>
+  <p><strong>Your Essential Cross-Platform AI Skills Collector & Manager</strong></p>
+  <p>A plug-and-play desktop hub to organize, sync, and dispatch AI skills and prompts</p>
   <p>
     <img src="https://img.shields.io/github/v/release/VipBeCool/SkillHub?style=flat-square" alt="release" />
     <img src="https://img.shields.io/github/license/VipBeCool/SkillHub?style=flat-square" alt="license" />
@@ -15,158 +16,202 @@
 </div>
 
 <p align="center">
-  <a href="#the-problem">Why</a> ·
+  <a href="#the-problem">Why SkillHub</a> ·
   <a href="#screenshots">Screenshots</a> ·
   <a href="#features">Features</a> ·
   <a href="#download">Download</a> ·
-  <a href="#development">Dev</a> ·
+  <a href="#development">Development</a> ·
   <a href="#community">Community</a> ·
-  <a href="#buy-me-a-coffee">Coffee</a>
+  <a href="#buy-me-a-coffee">Buy Me a Coffee</a>
 </p>
 
 ## The Problem
 
-If you use AI coding tools like Claude Code, Cursor, or Codex, you've probably accumulated a pile of skill files (Skills, Rules) and prompt templates — some in local folders, some in GitHub repos, some bookmarked from the web. Finding a skill you used last week means digging through multiple places. And when a GitHub skill repo gets updated, you don't know unless you check manually.
+Whether you use AI for generating presentations, copywriting, spreadsheet analysis, or working with tools like Claude, ChatGPT, Cursor, and Antigravity, you inevitably accumulate high-value skill packages (Skills), specialized instructions, and prompt templates. Over time, friction builds up:
 
-SkillHub is a desktop app that brings all of these into one interface. Import local folders, clone GitHub repos, bookmark online links — then search, browse, and manage them together. When a skill repo gets updated, sync it with one click instead of running `git pull` by hand. Prompt templates get their own module with grouping, tags, and version history.
+- **Scattered storage**: Some live in local scratch folders, some in GitHub repositories, and others are lost in notes or browser bookmarks.
+- **Manual updates**: When an open-source skill or template updates, you rarely notice, and re-downloading to overwrite files is cumbersome.
+- **Cluttered reading**: Long skill guidelines often span dozens of sections without convenient outline jumping, often with language barriers.
+- **Tedious reuse**: To make AI strictly follow complex rules, you repeatedly copy, paste, and structure prompt contexts by hand.
+
+**SkillHub solves this by acting as a versatile dock for your AI skills**: bring all your scattered skills and prompts into one clean, native desktop app. Import local folders, clone public repos, or bookmark online links. Search in milliseconds, preview docs with the spacebar, sync updates with one click, and mount skills directly into your favorite AI tools.
+
+---
 
 ## Screenshots
 
-> Screenshots are from macOS. Windows and Linux look largely the same.
+> Screenshots are captured on macOS. Windows and Linux versions share the exact same functionality and layout.
 
-### Skill Library
+### 1. Multi-Tab Workspace & Skill Overview
 
-Mount multiple sources (local folders, GitHub repos, online links). Right-click to open in Finder, sync to an AI Agent, export, or update.
+A browser-like tab bar allows you to keep "All Skills", "Prompts", and specific skill documents open at the same time. The app automatically distinguishes between standalone skills and multi-skill collections, supporting both categorized and flat grid views.
 
-<img src="docs/screenshots/技能管理.png" width="800" alt="Skill library management" />
+<img src="docs/screenshots/多选项卡首页.png" width="800" alt="Multi-tab workspace and skill library overview" />
 
-### Skill Detail
+### 2. Spacebar Quick Look
 
-View skill content, file count, line count, and token count. Built-in translation lets you read English skills in Chinese (or other languages).
+No need to open and close detail pages just to check what a skill does. Simply select any card and press the **Spacebar** to pop up a lightweight Markdown preview. Press Spacebar again or Esc to dismiss it instantly.
 
-<img src="docs/screenshots/技能详情.png" width="800" alt="Skill detail view" />
+<img src="docs/screenshots/空格预览页.png" width="800" alt="Spacebar Quick Look modal" />
 
-### Global Search
+### 3. Non-Blocking Background Clone
 
-`Cmd/Ctrl + K` opens search across all repos and skills. The right panel shows a live preview of the selected result.
+When cloning a GitHub repository, the dialog closes immediately without freezing the UI. A clean progress card stays pinned at the top of your list while the download runs in the background. If you change your mind, hit `✕` anytime to cancel and cleanly wipe out downloaded files.
 
-<img src="docs/screenshots/全局搜索.png" width="800" alt="Global search" />
+<img src="docs/screenshots/正在拉取.png" width="800" alt="Non-blocking background clone and progress display" />
 
-### Prompt Management
+### 4. Outline Navigation (TOC) & Translation
 
-A separate module for prompt templates — with grouping, tags, usage count tracking, and multi-language support.
-
-<img src="docs/screenshots/提示词管理.png" width="800" alt="Prompt management" />
-
-### Smart Reference Prompt
-
-Select a skill and SkillHub generates a reference prompt containing the directory structure, execution instructions, and repo context. Copy it into your AI conversation and the agent will follow that skill.
-
-<img src="docs/screenshots/智能引用提示词.png" width="800" alt="Smart reference prompt" />
-
-### Import & Sync
-
-Three ways to add skills: import a local folder, clone from GitHub, or bookmark an online link. You can also drag folders directly into the window. Once imported, the tool automatically parses various types of skill formats in the background, so you don't have to worry about the file structure. GitHub repos support batch sync.
+For lengthy, guideline-heavy skills spanning dozens of sections, a floating table-of-contents (TOC) on the right lets you jump directly to any heading. When reading English skills, toggle the translation button for instant bilingual side-by-side reading.
 
 <table>
   <tr>
-    <td><img src="docs/screenshots/导入技能.png" alt="Import options" /></td>
-    <td><img src="docs/screenshots/更新技能.png" alt="Sync progress" /></td>
+    <td width="50%"><img src="docs/screenshots/技能详情导航.png" alt="Document outline navigation" /></td>
+    <td width="50%"><img src="docs/screenshots/翻译.png" alt="Bilingual translation switcher" /></td>
   </tr>
 </table>
 
-### Batch Operations & Drag-and-Drop
+### 5. One-Click Sync to AI Agents
 
-Select multiple skill repos for batch export, update, or delete. Drag folders into the window to add them.
+Skills are meant to be executed, not just read. From the right-click menu or sidebar, you can mount and sync any skill directly to your local AI Agent directories (such as Antigravity or Codex). Installed skills show an agent badge right on their card.
+
+<img src="docs/screenshots/安装技能到Agent.png" width="800" alt="One-click sync skill to AI Agent" />
+
+### 6. Dedicated Prompt Management & Editing
+
+Organize high-frequency prompt templates with custom groups, tags, and usage frequency counters. The Markdown editor dynamically adjusts its height as you type, and the tag input offers real-time autocomplete from your existing tags.
 
 <table>
   <tr>
-    <td><img src="docs/screenshots/多选操作.png" alt="Batch operations" /></td>
-    <td><img src="docs/screenshots/拖动导入.png" alt="Drag-and-drop import" /></td>
+    <td width="50%"><img src="docs/screenshots/提示词管理.png" alt="Prompt grouping and tags" /></td>
+    <td width="50%"><img src="docs/screenshots/提示词编辑.png" alt="Immersive prompt editor" /></td>
   </tr>
 </table>
 
-### Classification & Details
+### 7. Smart Reference Prompt Generator
 
-Enjoy a flexible tag classification system and use custom Emoji icons to differentiate your skill libraries, making organization and retrieval effortless.
+Select any skill, and SkillHub automatically drafts a comprehensive reference prompt containing its directory structure, execution constraints, and repository context. Copy and paste it directly into your AI chat to ensure your agent follows the exact instructions.
 
-<img src="docs/screenshots/技能分类管理.png" width="800" alt="Skill classification management" />
+<img src="docs/screenshots/智能引用提示词.png" width="800" alt="Smart reference prompt generator" />
+
+### 8. Global Instant Search
+
+Hit `Cmd/Ctrl + K` from anywhere to summon the spotlight-style search modal. Search across libraries, sub-skills, and prompt templates with sub-millisecond fuzzy matching and an immediate live preview panel.
+
+<img src="docs/screenshots/全局搜索.png" width="800" alt="Global instant search" />
+
+### 9. Flexible Imports & Batch Sync
+
+Import local folders, clone public GitHub repositories, or bookmark online links. You can also drag and drop folders straight into the app window. Check and sync all your GitHub skill repos in one batch.
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/导入技能.png" alt="Multi-source import options" /></td>
+    <td width="50%"><img src="docs/screenshots/拖动导入.png" alt="Drag-and-drop folder import" /></td>
+  </tr>
+</table>
+
+### 10. Multi-Select Batch Actions & Classification
+
+Drag to box-select multiple cards just like in a desktop file manager. Batch export (ZIP/JSON), update, or delete selected repos. Customize Emoji icons and category tags for each library to keep things tidy.
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/多选操作.png" alt="Multi-select batch operations" /></td>
+    <td width="50%"><img src="docs/screenshots/技能分类管理.png" alt="Category management and Emoji icons" /></td>
+  </tr>
+</table>
+
+### 11. Full Data Backup & One-Click Restore
+
+All data is stored locally in an embedded SQLite database. In settings, export all your skill indices, prompts, and preferences as a single ZIP archive. When switching machines, restore everything in one click — with an automatic safety backup created beforehand.
+
+<img src="docs/screenshots/数据备份导入导出.png" width="800" alt="Full data backup and restore" />
+
+---
 
 ## Features
 
-| Feature | Description |
-|---------|-------------|
-| Multi-source management | Mount local folders, GitHub repos, and online links side by side. Sub-skills are automatically scanned and various skill formats are seamlessly parsed. |
-| Classification & Display | Supports flexible tag classifications and custom Emoji icons for skill libraries. |
-| Prompt management | Separate module with grouping, tags, usage stats, version history, and Markdown preview. |
-| Global search | `Cmd/Ctrl + K` to search repos and skills at once, with a live preview panel. |
-| GitHub sync | One-click pull for all GitHub repos, with per-repo status display. |
-| Smart reference | Auto-generates a reference prompt with directory structure and execution instructions. |
-| Sync to Agent | Push skills directly to Antigravity, Codex, or other AI Agents. |
-| Batch operations | Select multiple repos to batch export (ZIP/JSON), update, or delete. |
-| Drag-and-drop import | Drop folders into the window to add them. |
-| Built-in translation | Translate skills between languages with one click. |
-| In-app updates | Checks for new versions on startup. One-click install. |
+| Category | Feature | Description |
+| :--- | :--- | :--- |
+| **Multi-Source** | Local / GitHub / Online | Mount local directories, Git repos, and online links side by side; auto-scans sub-skills. |
+| **Workspace** | Multi-Tab Bar | Tabbed browsing allows keeping multiple skill libraries and docs open without getting lost. |
+| **Quick Peek** | Spacebar Quick Look | Press Spacebar on any skill card to preview its Markdown document without entering detail view. |
+| **Background Tasks** | Non-blocking Git Clone | Clones run asynchronously with top-pinned progress cards, cancelable with clean physical cleanup. |
+| **Reading** | Outline Navigation (TOC) | Auto-extracts headings into a floating navigation bar for effortless section jumping. |
+| **Translation** | Instant Bilingual Translation | One-click translate foreign skill docs into Chinese or other languages with original comparison. |
+| **Agent Integration** | Sync to AI Agents | Distribute and install skills into Antigravity, Codex, and other AI tool directories. |
+| **Prompt Tools** | Smart Reference Prompt | Generates a structured cheatsheet prompt with tree structure and rules to guide AI agents. |
+| **Prompt Management** | Groups & Tag Autocomplete | Independent prompt module with group sorting, tag recommendations, and auto-growing editor. |
+| **Search** | `Cmd/Ctrl + K` Global Search | Spotlight-style instant fuzzy search across libraries and skills with live split-view preview. |
+| **Batch Actions** | Box Select & Drag Import | Box-select multiple cards to batch export, sync, or delete; drag folders directly into the window. |
+| **Safety & Privacy** | Local-First & Full Backup | Zero cloud upload; export and restore your entire database as a ZIP archive with pre-import safeguards. |
+| **Maintenance** | Batch GitHub Update | One-click check and pull updates for all mounted GitHub repositories. |
+
+---
 
 ## Download
 
-Go to [Releases](https://github.com/VipBeCool/SkillHub/releases/latest) to grab the installer for your platform:
+Visit the [Releases page](https://github.com/VipBeCool/SkillHub/releases/latest) to download the latest installer for your system:
 
-| Platform | Installer |
-|----------|-----------|
-| macOS (Intel + Apple Silicon) | `.dmg` |
-| Windows (x64) | `.exe` / `.msi` |
-| Linux (x64) | `.AppImage` / `.deb` |
+| Platform | Format |
+| :--- | :--- |
+| **macOS** (Intel & Apple Silicon) | `.dmg` (Universal Binary) |
+| **Windows** (64-bit) | `.exe` Setup / `.msi` |
+| **Linux** (64-bit) | `.AppImage` / `.deb` |
 
-If you already have it installed, you'll get an update prompt inside the app.
+> Once installed, SkillHub automatically checks for new updates upon launch and offers one-click upgrades.
+
+---
 
 ## Tech Stack
 
 | Layer | Technology |
-|-------|------------|
-| Frontend | React 19, TypeScript, Tailwind CSS v4, Vite |
-| Backend | Rust, Tauri v2, SQLite (rusqlite) |
-| CI/CD | GitHub Actions + tauri-action |
+| :--- | :--- |
+| **UI Framework** | React 19, TypeScript, Tailwind CSS v4, Vite |
+| **Desktop Core** | Rust, Tauri v2, SQLite (rusqlite) |
+| **Build & Release** | GitHub Actions + tauri-action |
 
-Built with Tauri instead of Electron — smaller bundle, lower memory usage.
+Powered by Tauri rather than Electron, SkillHub produces a tiny binary (~15MB) with minimal RAM usage (<50MB) and near-instant cold boot.
+
+---
 
 ## Development
 
-### Requirements
+### Prerequisites
 
-- [Node.js](https://nodejs.org/) v18+
+- [Node.js](https://nodejs.org/) v18 or later
 - [Rust](https://www.rust-lang.org/tools/install) stable
-- macOS: Xcode Command Line Tools
-- Windows: Visual Studio C++ Build Tools
+- macOS requires Xcode Command Line Tools (`xcode-select --install`)
+- Windows requires Visual Studio C++ Build Tools
 
-### Run
+### Running Locally
 
 ```bash
+# 1. Clone repository
 git clone https://github.com/VipBeCool/SkillHub.git
 cd SkillHub
+
+# 2. Install dependencies
 npm install
+
+# 3. Start development server
 npm run skillhub dev
 ```
 
-### Build
+### Building Release Packages
 
 ```bash
 npm run skillhub build
 ```
 
-Output goes to `src-tauri/target/release/bundle/`.
+The output installers will be placed in `src-tauri/target/release/bundle/`.
 
-### Version Management
-
-The version number lives in three files: `package.json`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.toml`. Update all at once with:
-
-```bash
-node scripts/bump-version.mjs 0.2.0
-```
+---
 
 ## Community
 
-Welcome to join our QQ group or follow our WeChat Official Account for the latest updates, discussions, and feedback.
+Feel free to join our QQ group or follow our WeChat Official Account for updates, discussions, and troubleshooting:
 
 <table>
   <tr>
@@ -179,16 +224,18 @@ Welcome to join our QQ group or follow our WeChat Official Account for the lates
   </tr>
 </table>
 
+---
+
 ## Buy Me a Coffee
 
-If SkillHub saves you time or makes your workflow easier, feel free to [buy me a coffee](./docs/DONATE.md).
-
-Your appreciation and support are the greatest motivation to keep refining and maintaining this project.
-
-## License
-
-[GPL-3.0](./LICENSE). Free to use and modify, but derivative projects must also be open-source. Contact the author for commercial closed-source licensing.
+If SkillHub makes managing AI skills and prompt templates easier for you, feel free to [buy me a coffee](./docs/DONATE.md). Your encouragement helps sustain continuous updates and polishing.
 
 ---
 
-Made by [VipBeCool](https://github.com/VipBeCool)
+## License
+
+This project is open-source under the [GPL-3.0 License](./LICENSE). You are free to use, inspect, and modify the code, provided derivative works remain open-source under the same terms. For commercial closed-source licensing, please reach out to the author.
+
+---
+
+Made with passion by [VipBeCool](https://github.com/VipBeCool)

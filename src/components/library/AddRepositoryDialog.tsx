@@ -16,6 +16,7 @@ interface AddRepositoryDialogProps {
   defaultTargetDir?: string | null;
   defaultSourceDirId?: string;
   defaultWorkspaceLabel?: string | null;
+  existingRepoNames?: string[];
 }
 
 
@@ -44,6 +45,7 @@ export function AddRepositoryDialog({
   defaultTargetDir,
   defaultSourceDirId,
   defaultWorkspaceLabel,
+  existingRepoNames,
 }: AddRepositoryDialogProps) {
   const [step, setStep] = useState<"select" | "form">("select");
   const [tab, setTab] = useState<"local" | "github" | "online">("local");
@@ -62,6 +64,22 @@ export function AddRepositoryDialog({
   const [onlineUrl, setOnlineUrl] = useState("");
   const [onlineName, setOnlineName] = useState("");
   const [urlAutoNamed, setUrlAutoNamed] = useState(false); // 是否由 URL 自动填充了名称
+
+  // 重复检测
+  const localDirName = localPath ? localPath.split(/[/\\]/).filter(Boolean).pop() || "" : "";
+  const isLocalDuplicate = Boolean(
+    tab === "local" &&
+    (strategy === "copy" || strategy === "move") &&
+    localDirName &&
+    existingRepoNames?.some(n => n.toLowerCase() === localDirName.toLowerCase())
+  );
+
+  const githubRepoName = githubUrl ? githubUrl.split("/").filter(Boolean).pop()?.replace(/\.git$/i, "") || "" : "";
+  const isGithubDuplicate = Boolean(
+    tab === "github" &&
+    githubRepoName &&
+    existingRepoNames?.some(n => n.toLowerCase() === githubRepoName.toLowerCase())
+  );
 
   useEffect(() => {
     if (isOpen) {
@@ -150,25 +168,31 @@ export function AddRepositoryDialog({
         // GitHub 克隆
         const repoName = githubUrl.split('/').filter(Boolean).pop()?.replace('.git', '') || 'repo';
         const finalTargetDir = `${githubTargetDir}/${repoName}`.replace(/\\/g, '/').replace(/\/{2,}/g, '/');
-        
+        const targetSourceDirId = defaultSourceDirId || "";
+        const cloneUrl = githubUrl;
+
+        // 1. 触发主界面卡片 loading 状态
         onCloningStart?.(finalTargetDir, repoName);
-        
+        showToast(`已开始在后台拉取「${repoName}」...`);
+
+        // 2. 立即关闭弹窗并重置状态，不阻塞用户操作
+        onClose();
+        setGithubUrl("");
+        setLoading(false);
+        setTimeout(() => setStep("select"), 300);
+
+        // 3. 后台异步执行克隆任务
         invoke("import_github_skills_to_workspace", {
-          url: githubUrl,
+          url: cloneUrl,
           targetDir: finalTargetDir,
-          sourceDirId: defaultSourceDirId || "",
+          sourceDirId: targetSourceDirId,
         }).then(() => {
           onCloningSuccess?.(finalTargetDir);
           showToast(`已成功克隆技能库: ${repoName}`, 'success');
           onSuccess();
-          onClose();
-          setGithubUrl("");
-          setTimeout(() => setStep("select"), 300);
-          setLoading(false);
         }).catch(err => {
           onCloningError?.(finalTargetDir, err);
-          showToast(`${err}`, 'error');
-          setLoading(false);
+          showToast(`克隆「${repoName}」失败: ${err}`, 'error');
         });
         
         return;
@@ -183,9 +207,9 @@ export function AddRepositoryDialog({
 
   const submitDisabled =
     loading ||
-    (tab === "local" && !localPath) ||
+    (tab === "local" && (!localPath || isLocalDuplicate)) ||
     (tab === "local" && (strategy === "copy" || strategy === "move") && !localTargetDir) ||
-    (tab === "github" && (!githubUrl || !githubTargetDir)) ||
+    (tab === "github" && (!githubUrl || !githubTargetDir || isGithubDuplicate)) ||
     (tab === "online" && !onlineUrl);
 
   const titleMap = {
@@ -302,6 +326,12 @@ export function AddRepositoryDialog({
                         浏览
                       </button>
                     </div>
+                    {isLocalDuplicate && (
+                      <div className="flex items-center space-x-2 p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-[12px] animate-in fade-in duration-200">
+                        <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                        <span>当前技能库中已存在同名技能组合包「{localDirName}」，已阻止重复导入</span>
+                      </div>
+                    )}
                   </div>
 
                   <div className="space-y-2">
@@ -385,6 +415,7 @@ export function AddRepositoryDialog({
                       className="input-field w-full"
                     />
                   </div>
+
                   {githubUrl && githubTargetDir && (
                     <div className="mt-1 p-2.5 bg-blue-50/80 rounded-lg border border-blue-100 flex items-start space-x-2.5 animate-in fade-in zoom-in-95 duration-200">
                       <svg className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -398,6 +429,12 @@ export function AddRepositoryDialog({
                           </p>
                         </Tooltip>
                       </div>
+                    </div>
+                  )}
+                  {isGithubDuplicate && (
+                    <div className="mt-2 flex items-center space-x-2 p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-[12px] animate-in fade-in duration-200">
+                      <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                      <span>当前技能库已存在同名技能/仓库「{githubRepoName}」，请勿重复克隆</span>
                     </div>
                   )}
                 </>

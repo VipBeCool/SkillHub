@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Loader2, Edit2, Save, X, FileText, Folder, Copy, Languages, Star, ChevronDown } from "lucide-react";
 import { Tooltip } from '../ui/Tooltip';
@@ -170,6 +170,15 @@ export function PromptDetailPage({ promptId, isEditingInit = false, onSaveSucces
     return () => window.removeEventListener('skillhub:prompt-tags-changed', handler);
   }, [fetchAllTags]);
 
+  // 监听全库分组变动
+  useEffect(() => {
+    const handler = () => {
+      invoke<PromptGroup[]>("get_prompt_groups").then(setGroups).catch(console.error);
+    };
+    window.addEventListener('skillhub:prompt-groups-changed', handler);
+    return () => window.removeEventListener('skillhub:prompt-groups-changed', handler);
+  }, []);
+
   // 点击外部关闭下拉菜单与标签推荐
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -187,25 +196,26 @@ export function PromptDetailPage({ promptId, isEditingInit = false, onSaveSucces
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [showGroupDropdown, showTagSuggestions]);
 
-  // 动态自适应 textarea 高度（随内容输入自动撑开，确保全部内容完整展示，绝不截断）
-  useEffect(() => {
-    if (isEditing && textareaRef.current) {
-      const el = textareaRef.current;
-      const adjustHeight = () => {
-        if (!el) return;
-        el.style.height = "0px";
-        const targetH = Math.max(el.scrollHeight, 450);
-        el.style.height = `${targetH}px`;
-      };
-      adjustHeight();
-      const rafId = requestAnimationFrame(adjustHeight);
-      const timer = setTimeout(adjustHeight, 80);
+  // 动态自适应 textarea 高度（随内容输入自动撑开，确保全部内容完整展示，外层自然滚动）
+  const adjustTextareaHeight = useCallback(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    const targetH = Math.max(el.scrollHeight, 450);
+    el.style.height = `${targetH}px`;
+  }, []);
+
+  useLayoutEffect(() => {
+    if (isEditing) {
+      adjustTextareaHeight();
+      const rafId = requestAnimationFrame(adjustTextareaHeight);
+      const timer = setTimeout(adjustTextareaHeight, 60);
       return () => {
         cancelAnimationFrame(rafId);
         clearTimeout(timer);
       };
     }
-  }, [content, isEditing]);
+  }, [content, isEditing, adjustTextareaHeight]);
 
   // 加载 Prompt
   useEffect(() => {
@@ -334,6 +344,34 @@ export function PromptDetailPage({ promptId, isEditingInit = false, onSaveSucces
     }
   };
 
+  const handleSelectGroup = async (newGroupId: string) => {
+    setGroupId(newGroupId);
+    setShowGroupDropdown(false);
+
+    // 如果是已有提示词，直接同步更新数据库，并立即派发全局事件更新左侧统计
+    if (prompt?.id) {
+      try {
+        await invoke("update_prompt", {
+          id: prompt.id,
+          title: (title || prompt.title).trim(),
+          content: (content || prompt.content).trim(),
+          description: description.trim() || null,
+          groupId: newGroupId || null,
+          tags: tags.trim() || null,
+          variables: prompt.variables || null,
+          changeNote: "修改分组",
+        });
+        const groupName = groups.find(g => g.id === newGroupId)?.name;
+        showToast(newGroupId ? `已移至分组「${groupName}」` : "已设为未分组", "success");
+        setPrompt(prev => prev ? { ...prev, group_id: newGroupId || undefined, group_name: groupName } : null);
+        window.dispatchEvent(new CustomEvent('skillhub:prompt-groups-changed'));
+        if (onSaveSuccess) onSaveSuccess();
+      } catch (e) {
+        showToast(`更新分组失败: ${e}`, "error");
+      }
+    }
+  };
+
   const handleSave = async () => {
     if (!title.trim()) { showToast("请填写标题", "error"); return; }
     if (!content.trim()) { showToast("请填写内容", "error"); return; }
@@ -360,6 +398,8 @@ export function PromptDetailPage({ promptId, isEditingInit = false, onSaveSucces
           tags: tags.trim() || undefined,
         });
         window.dispatchEvent(new CustomEvent('skillhub:prompt-tags-changed'));
+        window.dispatchEvent(new CustomEvent('skillhub:prompt-groups-changed'));
+        if (onSaveSuccess) onSaveSuccess();
       } else {
         // 新建
         await invoke("create_prompt", {
@@ -369,6 +409,7 @@ export function PromptDetailPage({ promptId, isEditingInit = false, onSaveSucces
         });
         showToast("已创建", "success");
         window.dispatchEvent(new CustomEvent('skillhub:prompt-tags-changed'));
+        window.dispatchEvent(new CustomEvent('skillhub:prompt-groups-changed'));
         if (onSaveSuccess) onSaveSuccess();
       }
     } catch (e) {
@@ -385,6 +426,42 @@ export function PromptDetailPage({ promptId, isEditingInit = false, onSaveSucces
       </div>
     );
   }
+
+  const renderGroupDropdown = () => (
+    <div className="relative shrink-0 pt-1" ref={dropdownRef}>
+      <button
+        type="button"
+        onClick={() => setShowGroupDropdown(!showGroupDropdown)}
+        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-black/[0.04] dark:bg-white/[0.06] text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/[0.08] dark:hover:bg-white/[0.1] transition-all cursor-pointer border border-black/5 dark:border-white/5"
+      >
+        <Folder className="w-3.5 h-3.5 opacity-70" style={{ color: groups.find(g => g.id === groupId)?.color }} />
+        <span className="max-w-[120px] truncate">{groupId ? groups.find(g => g.id === groupId)?.name || "未分组" : "选择分组"}</span>
+        <ChevronDown className="w-3 h-3 opacity-60 ml-0.5" />
+      </button>
+      {showGroupDropdown && (
+        <div className="absolute top-full right-0 mt-1.5 w-44 bg-white dark:bg-[#1E1E1E] border border-black/10 dark:border-white/10 rounded-xl shadow-xl z-50 py-1 overflow-hidden animate-in fade-in-50 zoom-in-95 duration-150">
+          <button
+            type="button"
+            onClick={() => handleSelectGroup("")}
+            className={`w-full text-left px-3 py-1.5 text-[12px] hover:bg-black/5 dark:hover:bg-white/5 transition-colors cursor-pointer ${!groupId ? "text-[var(--color-primary)] font-medium bg-[var(--color-primary)]/5" : "text-[var(--foreground)]"}`}
+          >
+            未分组
+          </button>
+          {groups.map(group => (
+            <button
+              key={group.id}
+              type="button"
+              onClick={() => handleSelectGroup(group.id)}
+              className={`w-full flex items-center gap-1.5 text-left px-3 py-1.5 text-[12px] hover:bg-black/5 dark:hover:bg-white/5 transition-colors truncate cursor-pointer ${groupId === group.id ? "text-[var(--color-primary)] font-medium bg-[var(--color-primary)]/5" : "text-[var(--foreground)]"}`}
+            >
+              <Folder className="w-3.5 h-3.5 shrink-0" style={{ color: group.color || "var(--color-muted)" }} />
+              <span className="truncate">{group.name}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <div className="flex-1 flex flex-col h-full min-w-0 bg-white relative">
@@ -594,9 +671,15 @@ export function PromptDetailPage({ promptId, isEditingInit = false, onSaveSucces
         )}
 
         {/* 滚动的正文区域 */}
-        <div className="flex-1 overflow-y-auto pt-4 pb-48 relative flex flex-col px-6 sm:px-8 xl:px-[100px]" ref={contentScrollRef} onScroll={handleScroll}>
+        <div 
+          className="flex-1 overflow-y-auto pt-4 pb-48 relative flex flex-col px-6 sm:px-8 xl:px-[100px] hover-scrollbar" 
+          ref={contentScrollRef} 
+          onScroll={handleScroll}
+          onMouseEnter={e => e.currentTarget.style.setProperty('--scroll-thumb-color', 'var(--scrollbar-thumb-base)')}
+          onMouseLeave={e => e.currentTarget.style.setProperty('--scroll-thumb-color', 'transparent')}
+        >
           {isEditing ? (
-            <div className="w-full min-h-full flex flex-col animate-in fade-in duration-200 pb-16">
+            <div className="w-full flex-1 flex flex-col animate-in fade-in duration-200 pb-16">
               {/* 大标题与分组胶囊 */}
               <div className="flex items-start justify-between gap-4 mb-3 shrink-0">
                 <input
@@ -608,39 +691,7 @@ export function PromptDetailPage({ promptId, isEditingInit = false, onSaveSucces
                 />
 
                 {/* 分组胶囊选择器 */}
-                <div className="relative shrink-0 pt-1" ref={dropdownRef}>
-                  <button
-                    type="button"
-                    onClick={() => setShowGroupDropdown(!showGroupDropdown)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-black/[0.04] dark:bg-white/[0.06] text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/[0.08] dark:hover:bg-white/[0.1] transition-all cursor-pointer border border-black/5 dark:border-white/5"
-                  >
-                    <Folder className="w-3.5 h-3.5 opacity-70" style={{ color: groups.find(g => g.id === groupId)?.color }} />
-                    <span className="max-w-[120px] truncate">{groupId ? groups.find(g => g.id === groupId)?.name || "未分组" : "选择分组"}</span>
-                    <ChevronDown className="w-3 h-3 opacity-60 ml-0.5" />
-                  </button>
-                  {showGroupDropdown && (
-                    <div className="absolute top-full right-0 mt-1.5 w-44 bg-white dark:bg-[#1E1E1E] border border-black/10 dark:border-white/10 rounded-xl shadow-xl z-50 py-1 overflow-hidden animate-in fade-in-50 zoom-in-95 duration-150">
-                      <button
-                        type="button"
-                        onClick={() => { setGroupId(""); setShowGroupDropdown(false); }}
-                        className={`w-full text-left px-3 py-1.5 text-[12px] hover:bg-black/5 dark:hover:bg-white/5 transition-colors cursor-pointer ${!groupId ? "text-[var(--color-primary)] font-medium bg-[var(--color-primary)]/5" : "text-[var(--foreground)]"}`}
-                      >
-                        未分组
-                      </button>
-                      {groups.map(group => (
-                        <button
-                          key={group.id}
-                          type="button"
-                          onClick={() => { setGroupId(group.id); setShowGroupDropdown(false); }}
-                          className={`w-full flex items-center gap-1.5 text-left px-3 py-1.5 text-[12px] hover:bg-black/5 dark:hover:bg-white/5 transition-colors truncate cursor-pointer ${groupId === group.id ? "text-[var(--color-primary)] font-medium bg-[var(--color-primary)]/5" : "text-[var(--foreground)]"}`}
-                        >
-                          <Folder className="w-3 h-3 shrink-0" style={{ color: group.color || "var(--color-muted)" }} />
-                          <span className="truncate">{group.name}</span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                {renderGroupDropdown()}
               </div>
 
               {/* 描述引言 */}
@@ -739,30 +790,54 @@ export function PromptDetailPage({ promptId, isEditingInit = false, onSaveSucces
               {/* 分割线 */}
               <div className="w-full h-px bg-black/[0.06] dark:bg-white/[0.06] mb-5 shrink-0" />
 
-              {/* 沉浸式正文输入（随内容自适应撑开高度，无框中框） */}
+              {/* 沉浸式正文输入（随内容自适应撑开高度，外层顺畅滚动） */}
               <textarea 
                 ref={textareaRef}
                 value={content}
-                onChange={(e) => setContent(e.target.value)}
-                className="w-full bg-transparent border-0 outline-none p-0 resize-none font-mono text-[14px] text-[var(--foreground)] leading-relaxed placeholder:text-[var(--color-muted)]/40 overflow-y-auto [field-sizing:content]"
+                onChange={(e) => {
+                  setContent(e.target.value);
+                  adjustTextareaHeight();
+                }}
+                onInput={adjustTextareaHeight}
+                className="w-full bg-transparent border-0 outline-none p-0 resize-none font-mono text-[14px] text-[var(--foreground)] leading-relaxed placeholder:text-[var(--color-muted)]/40 overflow-y-auto hover-scrollbar"
                 placeholder="在此编写提示词 Markdown 内容..."
-                style={{ minHeight: "450px" }}
+                style={{ minHeight: "500px" }}
               />
             </div>
           ) : (
             <div className="w-full">
-              {/* 大标题：像技能详情页一样展示标题（若正文开头未自带 # 标题） */}
-              {(prompt?.title || title) && !displayedContent.trim().startsWith('# ') && (
-                <h1 className="text-3xl font-bold tracking-tight text-[var(--foreground)] mb-6">
-                  {prompt?.title || title}
-                </h1>
-              )}
+              {/* 大标题与分组胶囊 */}
+              <div className="flex items-start justify-between gap-4 mb-4">
+                {(prompt?.title || title) && !displayedContent.trim().startsWith('# ') ? (
+                  <h1 className="text-3xl font-bold tracking-tight text-[var(--foreground)]">
+                    {prompt?.title || title}
+                  </h1>
+                ) : (
+                  <div />
+                )}
+                {renderGroupDropdown()}
+              </div>
 
               {/* 描述 */}
               {(prompt?.description || description) && (
-                <p className="text-[15px] text-[var(--color-muted)] leading-relaxed mb-6">
+                <p className="text-[15px] text-[var(--color-muted)] leading-relaxed mb-4">
                   {prompt?.description || description}
                 </p>
+              )}
+
+              {/* 标签展示 */}
+              {tagList.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 items-center mb-6">
+                  {tagList.map(t => (
+                    <span 
+                      key={t} 
+                      className="inline-flex items-center text-[11.5px] px-2.5 py-0.5 rounded-full bg-[var(--color-primary)]/10 text-[var(--color-primary)] font-medium"
+                    >
+                      <span className="opacity-60 mr-0.5 select-none">#</span>
+                      <span>{t}</span>
+                    </span>
+                  ))}
+                </div>
               )}
 
               {/* 正文 Markdown 渲染 */}

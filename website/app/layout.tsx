@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "SkillHub - 极速本地 AI 技能引擎",
-  description: "基于 Tauri & Rust 打造的跨平台 AI Agent 技能与 Prompt 管理工作站。零配置，纯本地，毫秒级响应，重新定义你的 AI 工作流。",
+  title: "SkillHub - 你的跨平台必备 AI Skills 搜集与管理工具",
+  description: "基于 Tauri & Rust 打造的轻量桌面工具。即插即用，纯本地存储，随时整理、管理与调用各类 AI 技能包与提示词库。",
 };
 
 export default function RootLayout({

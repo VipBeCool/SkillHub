@@ -246,10 +246,7 @@ pub fn add_source_directory(state: State<'_, AppState>, path: String, dir_type: 
     let result = crate::db::insert_source_directory(&db, &path, &dir_type);
     
     if result.is_ok() {
-        #[cfg(target_os = "macos")]
-        {
-            set_folder_icon(&path);
-        }
+        set_folder_icon(&path);
     }
     
     result
@@ -281,23 +278,6 @@ fn copy_dir_all(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> io::Result<()> 
     Ok(())
 }
 
-#[cfg(target_os = "macos")]
-fn remove_macos_folder_icon(folder_path: &str) {
-    let script = format!(r#"
-use framework "AppKit"
-use scripting additions
-on run
-    set folderPath to "{folder}"
-    set workspace to current application's NSWorkspace's sharedWorkspace()
-    workspace's setIcon:(missing value) forFile:folderPath options:0
-end run
-"#, folder = folder_path);
-
-    let _ = std::process::Command::new("osascript")
-        .arg("-e")
-        .arg(&script)
-        .output();
-}
 
 #[tauri::command]
 pub async fn import_skills_to_directory(
@@ -443,10 +423,7 @@ pub async fn scan_and_add_source_directory(
     // 1. Insert directory using the final_path
     let dir_id = crate::db::insert_source_directory(&db, &final_path, &dir_type)?;
     
-    #[cfg(target_os = "macos")]
-    {
-        set_folder_icon(&final_path);
-    }
+    set_folder_icon(&final_path);
     
     // 2. Begin transaction and insert skills
     let tx = db.transaction().map_err(|e| e.to_string())?;
@@ -459,39 +436,21 @@ pub async fn scan_and_add_source_directory(
     Ok(dir_id)
 }
 
-#[cfg(target_os = "macos")]
-fn set_macos_folder_icon(folder_path: &str) {
-    let icon_data = include_bytes!("../../src/assets/folder_icon.png");
-    let temp_icon_path = std::env::temp_dir().join("skillhub_folder_icon.png");
-    if std::fs::write(&temp_icon_path, icon_data).is_ok() {
-        let script = format!(r#"
-use framework "AppKit"
-use scripting additions
-on run
-    set iconPath to "{icon}"
-    set folderPath to "{folder}"
-    set workspace to current application's NSWorkspace's sharedWorkspace()
-    set img to current application's NSImage's alloc()'s initWithContentsOfFile:iconPath
-    workspace's setIcon:img forFile:folderPath options:0
-end run
-"#, icon = temp_icon_path.to_string_lossy(), folder = folder_path);
-
-        let _ = std::process::Command::new("osascript")
-            .arg("-e")
-            .arg(&script)
-            .output();
-    }
-}
 
 #[tauri::command]
 pub async fn add_github_repository(app: tauri::AppHandle, state: State<'_, AppState>, url: String, target_dir: String, parent_dir: String) -> Result<(), String> {
+    let target_path = std::path::PathBuf::from(&target_dir);
+    if target_path.exists() {
+        let repo_name = target_path.file_name().unwrap_or_default().to_string_lossy();
+        return Err(format!("目标目录「{}」已存在，请选择其他路径或先重命名已有的文件夹", repo_name));
+    }
+
     let (tx, rx) = tokio::sync::oneshot::channel();
     {
         let mut tokens = state.clone_cancel_tokens.lock().unwrap();
         tokens.insert(target_dir.clone(), tx);
     }
     
-    let target_path = std::path::PathBuf::from(&target_dir);
     let url_clone = url.clone();
     
     let clone_future = crate::git_engine::clone_repository(&url_clone, &target_path);
@@ -518,10 +477,38 @@ pub async fn add_github_repository(app: tauri::AppHandle, state: State<'_, AppSt
 
 #[tauri::command]
 pub async fn cancel_github_clone(state: State<'_, AppState>, target_dir: String) -> Result<(), String> {
-    let mut tokens = state.clone_cancel_tokens.lock().unwrap();
-    if let Some(tx) = tokens.remove(&target_dir) {
-        let _ = tx.send(());
+    // 1. 发送取消信号，终止正在运行的 git clone 子进程
+    {
+        let mut tokens = state.clone_cancel_tokens.lock().unwrap();
+        if let Some(tx) = tokens.remove(&target_dir) {
+            let _ = tx.send(());
+        }
     }
+
+    // 2. 稍等子进程退出释放句柄，然后强力删除本地已拉取的文件夹
+    tokio::time::sleep(tokio::time::Duration::from_millis(150)).await;
+    let target_path = std::path::PathBuf::from(&target_dir);
+    if target_path.exists() {
+        for _ in 0..5 {
+            if std::fs::remove_dir_all(&target_path).is_ok() {
+                break;
+            }
+            tokio::time::sleep(tokio::time::Duration::from_millis(150)).await;
+        }
+    }
+
+    // 3. 清理可能已写入数据库的记录
+    let db = state.db.lock().unwrap();
+    let target_str = target_dir.replace('\\', "/");
+    let _ = db.execute(
+        "DELETE FROM skills WHERE local_path = ?1 OR local_path LIKE ?2",
+        rusqlite::params![target_str, format!("{}/%", target_str)],
+    );
+    let _ = db.execute(
+        "DELETE FROM source_directories WHERE path = ?1",
+        rusqlite::params![target_str],
+    );
+
     Ok(())
 }
 
@@ -544,13 +531,11 @@ pub async fn import_local_skills_to_workspace(
             
             let src_path = PathBuf::from(&path);
             let dir_name = src_path.file_name().ok_or("Invalid directory name")?.to_owned();
-            let mut final_target_dir = base_target_dir.join(&dir_name);
+            let final_target_dir = base_target_dir.join(&dir_name);
             
-            let mut counter = 1;
-            while final_target_dir.exists() {
-                let new_name = format!("{}_{}", dir_name.to_string_lossy(), counter);
-                final_target_dir = base_target_dir.join(new_name);
-                counter += 1;
+            // 如果已存在同名目录，直接拦截报错，不加 _1
+            if final_target_dir.exists() {
+                return Err(format!("当前技能库中已存在同名技能/组合包「{}」，无需重复导入", dir_name.to_string_lossy()));
             }
 
             let src_clone = src_path.clone();
@@ -574,6 +559,20 @@ pub async fn import_local_skills_to_workspace(
             .map_err(|e| format!("Task panicked: {}", e))??;
             
             final_path = final_target_dir.to_string_lossy().to_string();
+        }
+    }
+
+    {
+        let db = state.db.lock().unwrap();
+        let existing: bool = db.query_row(
+            "SELECT 1 FROM repositories WHERE source_dir_id = ?1 AND local_path = ?2
+             UNION
+             SELECT 1 FROM skills WHERE source_dir_id = ?1 AND local_path = ?2",
+            rusqlite::params![source_dir_id, final_path],
+            |_| Ok(true)
+        ).unwrap_or(false);
+        if existing {
+            return Err("该技能/组合包已在当前技能库中，无需重复导入".to_string());
         }
     }
 
@@ -611,13 +610,35 @@ pub async fn import_github_skills_to_workspace(
     target_dir: String,
     source_dir_id: String
 ) -> Result<(), String> {
+    let target_path = std::path::PathBuf::from(&target_dir);
+    if target_path.exists() {
+        let repo_name = target_path.file_name().unwrap_or_default().to_string_lossy();
+        return Err(format!("当前技能库中已存在同名目录「{}」，请勿重复克隆", repo_name));
+    }
+
+    {
+        let db = state.db.lock().unwrap();
+        let norm_url = url.trim().trim_end_matches('/').trim_end_matches(".git");
+        let existing_name: Option<String> = db.query_row(
+            "SELECT name FROM repositories WHERE source_dir_id = ?1 AND (
+                TRIM(RTRIM(RTRIM(github_url, '/'), '.git')) = ?2
+                OR local_path = ?3
+            )",
+            rusqlite::params![source_dir_id, norm_url, target_dir],
+            |row| row.get(0)
+        ).ok();
+
+        if let Some(name) = existing_name {
+            return Err(format!("当前技能库已导入过该 GitHub 仓库「{}」，无需重复克隆", name));
+        }
+    }
+
     let (tx, rx) = tokio::sync::oneshot::channel();
     {
         let mut tokens = state.clone_cancel_tokens.lock().unwrap();
         tokens.insert(target_dir.clone(), tx);
     }
     
-    let target_path = std::path::PathBuf::from(&target_dir);
     let url_clone = url.clone();
     
     let clone_future = crate::git_engine::clone_repository(&url_clone, &target_path);
@@ -737,12 +758,21 @@ pub async fn rescan_directory(state: State<'_, AppState>, path: String) -> Resul
 
 #[tauri::command]
 pub async fn update_source_directory_path(state: State<'_, AppState>, id: String, new_path: String) -> Result<(), String> {
-    {
+    let old_path = {
         let db = state.db.lock().unwrap();
+        let old = crate::db::get_source_directory_by_id(&db, &id).ok().flatten().map(|d| d.path);
         db.execute(
             "UPDATE source_directories SET path = ?1 WHERE id = ?2",
             rusqlite::params![new_path, id],
         ).map_err(|e| format!("Failed to update path: {}", e))?;
+        old
+    };
+    
+    if let Some(old) = old_path {
+        if old != new_path {
+            remove_folder_icon(&old);
+            set_folder_icon(&new_path);
+        }
     }
     
     rescan_directory(state, new_path).await?;
@@ -1181,6 +1211,8 @@ pub fn remove_source_directory(state: State<'_, AppState>, id: String, delete_lo
         crate::db::remove_source_directory(&db, &id)?;
         if delete_local && !dir.is_protected {
             let _ = std::fs::remove_dir_all(&dir.path);
+        } else {
+            remove_folder_icon(&dir.path);
         }
         Ok(())
     } else {
@@ -1212,10 +1244,7 @@ pub fn create_local_skill_library(state: State<'_, AppState>, name: String, path
         rusqlite::params![id, path, name, "local", false, Option::<String>::None, 0, false, added_at],
     ).map_err(|e| e.to_string())?;
 
-    #[cfg(target_os = "macos")]
-    {
-        set_folder_icon(&path);
-    }
+    set_folder_icon(&path);
     
     Ok(id)
 }
@@ -2093,6 +2122,18 @@ pub async fn validate_and_copy_dropped_folders(
             continue;
         }
 
+        // 防止无限套娃：禁止将技能库自身或其父目录拖入自身
+        if src_path == base_target_dir.as_path() || base_target_dir.starts_with(src_path) {
+            failed_paths.push(format!("不能将技能库自身拖入: {}", src_path.display()));
+            continue;
+        }
+
+        // 禁止将当前技能库内部已有的子文件夹再次拖入自身
+        if src_path.starts_with(&base_target_dir) {
+            failed_paths.push(format!("文件夹已在当前技能库中，无需重复导入: {}", src_path.display()));
+            continue;
+        }
+
         // Validate if it contains any skills
         let skills = scanner::scan_directory(src_path).unwrap_or_default();
         if skills.is_empty() {
@@ -2108,13 +2149,12 @@ pub async fn validate_and_copy_dropped_folders(
             }
         };
 
-        let mut final_target_dir = base_target_dir.join(dir_name);
+        let final_target_dir = base_target_dir.join(dir_name);
         
-        let mut counter = 1;
-        while final_target_dir.exists() {
-            let new_name = format!("{}_{}", dir_name.to_string_lossy(), counter);
-            final_target_dir = base_target_dir.join(new_name);
-            counter += 1;
+        // 如果目标技能库中已经存在同名文件夹，直接拦截提示已存在，不自动加 _1
+        if final_target_dir.exists() {
+            failed_paths.push(format!("技能组合包/技能「{}」已存在于当前技能库中，无需重复导入", dir_name.to_string_lossy()));
+            continue;
         }
         
         let src_clone = src_path.to_path_buf();
@@ -2139,13 +2179,24 @@ pub async fn validate_and_copy_dropped_folders(
     }
 
     if !failed_paths.is_empty() {
-        Ok(format!("成功导入 {} 个文件夹，但部分导入失败:\n{}", copied_count, failed_paths.join("\n")))
+        Ok(format!("成功导入 {} 个文件夹，另有已存在的项被跳过:\n{}", copied_count, failed_paths.join("\n")))
     } else {
         Ok(format!("成功导入 {} 个文件夹", copied_count))
     }
 }
 
+fn normalize_folder_path(folder_path: &str) -> String {
+    if folder_path.starts_with("~/") {
+        if let Some(home) = dirs::home_dir() {
+            return home.join(&folder_path[2..]).to_string_lossy().to_string();
+        }
+    }
+    folder_path.to_string()
+}
+
 pub fn set_folder_icon(folder_path: &str) {
+    let normalized = normalize_folder_path(folder_path);
+    let folder_path = &normalized;
     #[cfg(target_os = "macos")]
     {
         set_macos_folder_icon(folder_path);
@@ -2161,6 +2212,8 @@ pub fn set_folder_icon(folder_path: &str) {
 }
 
 pub fn remove_folder_icon(folder_path: &str) {
+    let normalized = normalize_folder_path(folder_path);
+    let folder_path = &normalized;
     #[cfg(target_os = "macos")]
     {
         remove_macos_folder_icon(folder_path);
@@ -2172,6 +2225,124 @@ pub fn remove_folder_icon(folder_path: &str) {
     #[cfg(target_os = "linux")]
     {
         remove_linux_folder_icon(folder_path);
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn set_macos_folder_icon(folder_path: &str) {
+    let icon_data = include_bytes!("../../src/assets/folder_icon.png");
+    let temp_icon_path = std::env::temp_dir().join("skillhub_folder_icon.png");
+    if std::fs::write(&temp_icon_path, icon_data).is_ok() {
+        let escaped_folder = folder_path.replace('\\', "\\\\").replace('"', "\\\"");
+        let escaped_icon = temp_icon_path.to_string_lossy().replace('\\', "\\\\").replace('"', "\\\"");
+        let script = format!(r#"
+use framework "AppKit"
+use scripting additions
+on run
+    set iconPath to "{icon}"
+    set folderPath to "{folder}"
+    set workspace to current application's NSWorkspace's sharedWorkspace()
+    set img to current application's NSImage's alloc()'s initWithContentsOfFile:iconPath
+    workspace's setIcon:img forFile:folderPath options:0
+    try
+        set theItem to (POSIX file folderPath) as alias
+        tell application "Finder"
+            update theItem
+            try
+                update (container of theItem)
+            end try
+        end tell
+    end try
+end run
+"#, icon = escaped_icon, folder = escaped_folder);
+
+        let _ = std::process::Command::new("osascript")
+            .arg("-e")
+            .arg(&script)
+            .output();
+
+        let _ = std::process::Command::new("touch")
+            .args(&["-c", folder_path])
+            .output();
+        if let Some(parent) = std::path::Path::new(folder_path).parent() {
+            if let Some(parent_str) = parent.to_str() {
+                let _ = std::process::Command::new("touch")
+                    .args(&["-c", parent_str])
+                    .output();
+            }
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn remove_macos_folder_icon(folder_path: &str) {
+    let escaped_folder = folder_path.replace('\\', "\\\\").replace('"', "\\\"");
+    let script = format!(r#"
+use framework "AppKit"
+use scripting additions
+on run
+    set folderPath to "{folder}"
+    set workspace to current application's NSWorkspace's sharedWorkspace()
+    workspace's setIcon:(missing value) forFile:folderPath options:0
+    try
+        set theItem to (POSIX file folderPath) as alias
+        tell application "Finder"
+            update theItem
+            try
+                update (container of theItem)
+            end try
+        end tell
+    end try
+end run
+"#, folder = escaped_folder);
+
+    let _ = std::process::Command::new("osascript")
+        .arg("-e")
+        .arg(&script)
+        .output();
+
+    // 物理兜底清理：若文件夹下残存 Icon\r 隐藏文件，物理删除
+    let p = std::path::Path::new(folder_path);
+    let icon_file = p.join("Icon\r");
+    if icon_file.exists() {
+        let _ = std::fs::remove_file(&icon_file);
+    }
+    let _ = std::process::Command::new("xattr")
+        .args(&["-d", "com.apple.FinderInfo", folder_path])
+        .output();
+    let _ = std::process::Command::new("touch")
+        .args(&["-c", folder_path])
+        .output();
+    if let Some(parent) = p.parent() {
+        if let Some(parent_str) = parent.to_str() {
+            let _ = std::process::Command::new("touch")
+                .args(&["-c", parent_str])
+                .output();
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn notify_windows_shell(folder_path: &std::path::Path) {
+    use std::os::windows::ffi::OsStrExt;
+    let mut wide: Vec<u16> = folder_path.as_os_str().encode_wide().collect();
+    wide.push(0);
+
+    unsafe {
+        #[link(name = "shell32")]
+        extern "system" {
+            fn SHChangeNotify(wEventId: i32, uFlags: u32, dwItem1: *const u16, dwItem2: *const u16);
+        }
+        // SHCNE_UPDATEITEM (0x00002000)
+        // SHCNE_ATTRIBUTES (0x00000800)
+        // SHCNF_PATHW (0x0005)
+        SHChangeNotify(0x0000_2000, 0x0005, wide.as_ptr(), std::ptr::null());
+        SHChangeNotify(0x0000_0800, 0x0005, wide.as_ptr(), std::ptr::null());
+        if let Some(parent) = folder_path.parent() {
+            let mut parent_wide: Vec<u16> = parent.as_os_str().encode_wide().collect();
+            parent_wide.push(0);
+            SHChangeNotify(0x0000_1000, 0x0005, parent_wide.as_ptr(), std::ptr::null()); // SHCNE_UPDATEDIR
+        }
     }
 }
 
@@ -2190,14 +2361,21 @@ fn set_windows_folder_icon(folder_path: &str) {
     let icon_path = folder_path.join(".skillhub_icon.ico");
     let ini_path = folder_path.join("desktop.ini");
 
+    // 若此前已有只读/隐藏/系统属性，先临时移除以便写操作
+    let _ = Command::new("attrib").args(&["-r", "-h", "-s", ini_path.to_str().unwrap_or("")]).output();
+    let _ = Command::new("attrib").args(&["-r", "-h", "-s", icon_path.to_str().unwrap_or("")]).output();
+
     if fs::write(&icon_path, icon_data).is_ok() {
-        let ini_content = "[.ShellClassInfo]\r\nIconResource=.skillhub_icon.ico,0\r\n";
+        let ini_content = "[.ShellClassInfo]\r\nIconResource=.skillhub_icon.ico,0\r\n[ViewState]\r\nMode=\r\nVid=\r\nFolderType=Generic\r\n";
         let _ = fs::write(&ini_path, ini_content);
 
         // Hide files and set folder as read-only
         let _ = Command::new("attrib").args(&["+h", "+s", icon_path.to_str().unwrap_or("")]).output();
         let _ = Command::new("attrib").args(&["+h", "+s", ini_path.to_str().unwrap_or("")]).output();
         let _ = Command::new("attrib").args(&["+r", folder_path.to_str().unwrap_or("")]).output();
+
+        // 即时通知 Windows Explorer 刷新图标
+        notify_windows_shell(folder_path);
     }
 }
 
@@ -2218,6 +2396,9 @@ fn remove_windows_folder_icon(folder_path: &str) {
     
     let _ = fs::remove_file(icon_path);
     let _ = fs::remove_file(ini_path);
+
+    // 即时通知 Windows Explorer 刷新恢复默认图标
+    notify_windows_shell(folder_path);
 }
 
 #[cfg(target_os = "linux")]
@@ -2244,6 +2425,11 @@ fn set_linux_folder_icon(folder_path: &str) {
         let _ = Command::new("gio")
             .args(&["set", "-t", "string", folder_path.to_str().unwrap_or(""), "metadata::custom-icon", &format!("file://{}", icon_path.to_string_lossy())])
             .output();
+
+        let _ = Command::new("touch").args(&["-c", folder_path.to_str().unwrap_or("")]).output();
+        if let Some(parent) = folder_path.parent() {
+            let _ = Command::new("touch").args(&["-c", parent.to_str().unwrap_or("")]).output();
+        }
     }
 }
 
@@ -2261,6 +2447,11 @@ fn remove_linux_folder_icon(folder_path: &str) {
     let _ = Command::new("gio")
         .args(&["set", "-t", "unset", folder_path.to_str().unwrap_or(""), "metadata::custom-icon"])
         .output();
+
+    let _ = Command::new("touch").args(&["-c", folder_path.to_str().unwrap_or("")]).output();
+    if let Some(parent) = folder_path.parent() {
+        let _ = Command::new("touch").args(&["-c", parent.to_str().unwrap_or("")]).output();
+    }
 }
 
 #[tauri::command]

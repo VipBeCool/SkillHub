@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { FolderGit2, HardDrive, Edit2, Save, Loader2, Sparkles, Languages, Star } from "lucide-react";
 import { Tooltip } from '../ui/Tooltip';
@@ -25,7 +25,7 @@ export function SkillDetailPage({ skillId, onGeneratePrompt }: SkillDetailPagePr
   const [loading, setLoading] = useState(false);
 
   const [isEditing, setIsEditing] = useState(false);
-  const [editContent, setEditContent] = useState("");
+  const [editContent, setEditContent] = useState<string>("");
   const [saving, setSaving] = useState(false);
 
   const [files, setFiles] = useState<SkillFile[]>([]);
@@ -33,26 +33,26 @@ export function SkillDetailPage({ skillId, onGeneratePrompt }: SkillDetailPagePr
   const contentScrollRef = useRef<HTMLDivElement>(null);
   const editTextareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // 动态自适应 textarea 高度（随内容输入自动撑开，确保全部内容完整展示，绝不截断）
-  useEffect(() => {
-    if (isEditing && editTextareaRef.current) {
-      const el = editTextareaRef.current;
-      const adjustHeight = () => {
-        if (!el) return;
-        // 关键核心：临时将 height 置 0，强制浏览器摆脱原有 height 和 minHeight 约束，精准测量真实 scrollHeight
-        el.style.height = "0px";
-        const targetH = Math.max(el.scrollHeight, 600);
-        el.style.height = `${targetH}px`;
-      };
-      adjustHeight();
-      const rafId = requestAnimationFrame(adjustHeight);
-      const timer = setTimeout(adjustHeight, 80);
+  // 动态自适应 textarea 高度（随内容输入自动撑开，确保全部内容完整展示，外层顺畅滚动）
+  const adjustTextareaHeight = useCallback(() => {
+    const el = editTextareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    const targetH = Math.max(el.scrollHeight, 500);
+    el.style.height = `${targetH}px`;
+  }, []);
+
+  useLayoutEffect(() => {
+    if (isEditing) {
+      adjustTextareaHeight();
+      const rafId = requestAnimationFrame(adjustTextareaHeight);
+      const timer = setTimeout(adjustTextareaHeight, 60);
       return () => {
         cancelAnimationFrame(rafId);
         clearTimeout(timer);
       };
     }
-  }, [editContent, isEditing]);
+  }, [editContent, isEditing, adjustTextareaHeight]);
 
   // 翻译状态
   const [translations, setTranslations] = useState<Record<string, string>>({});
@@ -494,7 +494,13 @@ export function SkillDetailPage({ skillId, onGeneratePrompt }: SkillDetailPagePr
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto pt-4 pb-48 relative flex flex-col px-6 sm:px-8 xl:px-[100px]" ref={contentScrollRef} onScroll={handleScroll}>
+      <div 
+        className="flex-1 overflow-y-auto pt-4 pb-48 relative flex flex-col px-6 sm:px-8 xl:px-[100px] hover-scrollbar" 
+        ref={contentScrollRef} 
+        onScroll={handleScroll}
+        onMouseEnter={e => e.currentTarget.style.setProperty('--scroll-thumb-color', 'var(--scrollbar-thumb-base)')}
+        onMouseLeave={e => e.currentTarget.style.setProperty('--scroll-thumb-color', 'transparent')}
+      >
         {(!loading && !isEditing && files.length > 1) && (
           <div className="mb-8 shrink-0 w-full overflow-hidden">
             <div className="flex space-x-1.5 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] w-full p-1 bg-black/5 rounded-lg border border-black/5">
@@ -524,10 +530,14 @@ export function SkillDetailPage({ skillId, onGeneratePrompt }: SkillDetailPagePr
             <textarea 
               ref={editTextareaRef}
               value={editContent}
-              onChange={(e) => setEditContent(e.target.value)}
-              className="w-full bg-transparent border-0 outline-none p-0 resize-none font-mono text-[14px] text-[var(--foreground)] leading-relaxed placeholder:text-[var(--color-muted)]/40 overflow-y-auto [field-sizing:content]"
+              onChange={(e) => {
+                setEditContent(e.target.value);
+                adjustTextareaHeight();
+              }}
+              onInput={adjustTextareaHeight}
+              className="w-full bg-transparent border-0 outline-none p-0 resize-none font-mono text-[14px] text-[var(--foreground)] leading-relaxed placeholder:text-[var(--color-muted)]/40 overflow-y-auto hover-scrollbar"
               placeholder="在此编写您的 Markdown 文档..."
-              style={{ minHeight: "600px" }}
+              style={{ minHeight: "500px" }}
             />
           </div>
         ) : (

@@ -19,6 +19,7 @@ import { SearchModal } from "./components/search/SearchModal";
 import { RepoCard } from "./components/skill/RepoCard";
 import { SkillCard } from "./components/skill/SkillCard";
 import { CategorizedView } from "./components/skill/CategorizedView";
+import { CloningCard } from "./components/skill/CloningCard";
 import { ToastContainer, showToast } from "./components/ui/Toast";
 import { Tooltip } from "./components/ui/Tooltip";
 import { AboutDialog } from "./components/ui/AboutDialog";
@@ -29,7 +30,7 @@ import { InspectorPanel } from "./components/inspector/InspectorPanel";
 import { ContextMenu, useContextMenu } from "./components/ui/ContextMenu";
 import type { ContextMenuItem } from "./components/ui/ContextMenu";
 import { getNextElement } from "./utils/navigation";
-import { Skill, SourceDirectory, AgentConfig, SyncRecord, GroupedRepo, PromptGroup, Prompt } from "./types";
+import { Skill, SourceDirectory, AgentConfig, SyncRecord, GroupedRepo, PromptGroup, Prompt, CloningRepo } from "./types";
 import { PromptModule, PromptSidebarNav, PromptFilter } from "./PromptModule";
 import { PromptDetailPage } from "./components/prompt/PromptDetailPage";
 import { useTabs } from "./hooks/useTabs";
@@ -48,7 +49,23 @@ function App() {
     return localStorage.getItem("skillhub_selected_workspace");
   });
   
+  const selectedWorkspaceIdRef = useRef<string | null>(selectedWorkspaceId);
+  useEffect(() => {
+    selectedWorkspaceIdRef.current = selectedWorkspaceId;
+    if (selectedWorkspaceId) {
+      localStorage.setItem("skillhub_selected_workspace", selectedWorkspaceId);
+    } else {
+      localStorage.removeItem("skillhub_selected_workspace");
+    }
+  }, [selectedWorkspaceId]);
+
   const { tabs, activeTabId, activeTab: currentTab, openTab, closeTab, switchTab, navigateTo, goBack: tabGoBack, goForward: tabGoForward, canGoBack, canGoForward, updateActiveTab } = useTabs(selectedWorkspaceId || undefined);
+  
+  const currentTabRef = useRef<typeof currentTab>(currentTab);
+  useEffect(() => {
+    currentTabRef.current = currentTab;
+  }, [currentTab]);
+
   const [activeModule, setActiveModuleState] = useState<AppModule>('skills');
   const currentTabModule = (currentTab?.type?.startsWith('prompt') ? 'prompts' : (currentTab?.type?.startsWith('resource') ? 'resources' : 'skills')) as AppModule;
   
@@ -128,6 +145,14 @@ function App() {
   const [allPrompts, setAllPrompts] = useState<Prompt[]>([]);
 
   useEffect(() => {
+    const handleGroupsChanged = () => {
+      invoke<PromptGroup[]>("get_prompt_groups").then(setPromptGroups).catch(console.error);
+    };
+    window.addEventListener('skillhub:prompt-groups-changed', handleGroupsChanged);
+    return () => window.removeEventListener('skillhub:prompt-groups-changed', handleGroupsChanged);
+  }, []);
+
+  useEffect(() => {
     if (isSearchModalOpen) {
       invoke<Prompt[]>("get_prompts", { groupId: null, search: null })
         .then(setAllPrompts)
@@ -147,7 +172,7 @@ function App() {
   const [isRetryingMissing, setIsRetryingMissing] = useState(false);
   const [syncLogs, setSyncLogs] = useState<{ id: string, label: string, status: 'pending' | 'success' | 'error' | 'skipped', message?: string }[]>([]);
   const [isSyncPopupMinimized, setIsSyncPopupMinimized] = useState(false);
-  const [cloningRepos, setCloningRepos] = useState<{ path: string, name: string }[]>([]);
+  const [cloningRepos, setCloningRepos] = useState<CloningRepo[]>([]);
   const [deleteConfirmRepos, setDeleteConfirmRepos] = useState<GroupedRepo[] | null>(null);
   const [isAppStarting, setIsAppStarting] = useState(true);
   const [isFileDraggingOver, setIsFileDraggingOver] = useState(false);
@@ -302,32 +327,41 @@ function App() {
     }).then(un => unlisten = un);
 
     
+    const isPointInMainDropZone = (pos: { x: number; y: number }) => {
+      if (!mainContentRef.current) return false;
+      // 在 macOS Cocoa (WKWebView) 下，Tauri/wry 返回的 draggingLocation 已经是 points (CSS 逻辑像素)，绝对不应除以 devicePixelRatio
+      // 只有在 Windows (WebView2) 且高 DPI 缩放下，系统返回物理像素才需要除以 devicePixelRatio
+      const isMac = /macintosh|mac os x/i.test(navigator.userAgent);
+      const dpr = (!isMac && window.devicePixelRatio) ? window.devicePixelRatio : 1;
+      const logicalX = pos.x / dpr;
+      const logicalY = pos.y / dpr;
+
+      const rect = mainContentRef.current.getBoundingClientRect();
+      // 顶部留出 45px 容差覆盖到操作栏区域，左右精确限定在主内容区（避开侧边栏与检查器）
+      const topBoundary = Math.max(0, rect.top - 45);
+      return (
+        logicalX >= rect.left &&
+        logicalX <= rect.right &&
+        logicalY >= topBoundary &&
+        logicalY <= rect.bottom
+      );
+    };
+
     let isDragDropMounted = true;
     getCurrentWebviewWindow().onDragDropEvent((event) => {
       if (!isDragDropMounted) return;
       if (event.payload.type === 'over' || event.payload.type === 'enter') {
-        const { x, y } = event.payload.position;
-        if (mainContentRef.current) {
-          const rect = mainContentRef.current.getBoundingClientRect();
-          const logicalX = x / window.devicePixelRatio;
-          const logicalY = y / window.devicePixelRatio;
-          if (logicalX >= rect.left && logicalX <= rect.right && logicalY >= rect.top && logicalY <= rect.bottom) {
-            setIsFileDraggingOver(true);
-          } else {
-            setIsFileDraggingOver(false);
-          }
+        if (isPointInMainDropZone(event.payload.position)) {
+          setIsFileDraggingOver(true);
+        } else {
+          setIsFileDraggingOver(false);
         }
       } else if (event.payload.type === 'drop') {
         setIsFileDraggingOver(false);
-        const { x, y } = event.payload.position;
-        if (mainContentRef.current) {
-          const rect = mainContentRef.current.getBoundingClientRect();
-          const logicalX = x / window.devicePixelRatio;
-          const logicalY = y / window.devicePixelRatio;
-          if (logicalX >= rect.left && logicalX <= rect.right && logicalY >= rect.top && logicalY <= rect.bottom) {
-            const paths = event.payload.paths;
-            const targetWorkspaceId = localStorage.getItem("skillhub_selected_workspace");
-            // Validate and copy
+        if (isPointInMainDropZone(event.payload.position)) {
+          const paths = event.payload.paths;
+          const targetWorkspaceId = selectedWorkspaceIdRef.current || localStorage.getItem("skillhub_selected_workspace");
+          // Validate and copy
             setLoadingText("正在导入...");
             setIsAppStarting(true);
             invoke("get_source_directories").then((dirs: any) => {
@@ -336,12 +370,16 @@ function App() {
                 setIsAppStarting(false);
                 return;
               }
-              if (!targetWorkspaceId || targetWorkspaceId === "all") {
+              const effectiveWorkspaceId = (!targetWorkspaceId || targetWorkspaceId === "all") && dirs.length === 1
+                ? dirs[0].id
+                : targetWorkspaceId;
+
+              if (!effectiveWorkspaceId || effectiveWorkspaceId === "all") {
                 showToast("请先在左侧选择一个具体的目标资源库再进行拖入", "error");
                 setIsAppStarting(false);
                 return;
               }
-              const targetWorkspaceDir = dirs.find((d: any) => d.id === targetWorkspaceId)?.path;
+              const targetWorkspaceDir = dirs.find((d: any) => d.id === effectiveWorkspaceId)?.path;
               if (targetWorkspaceDir) {
                  invoke("validate_and_copy_dropped_folders", {
                    paths,
@@ -349,6 +387,12 @@ function App() {
                  }).then((msg) => {
                    return invoke("rescan_directory", { path: targetWorkspaceDir }).then(() => {
                      return fetchData().then(() => {
+                       // 自动确保切到当前目标技能库，并重置筛选为全部，确保新技能立刻展现在屏幕正中
+                       if (selectedWorkspaceIdRef.current !== effectiveWorkspaceId) {
+                         handleWorkspaceSelect(effectiveWorkspaceId);
+                       } else {
+                         navigateTo('skill-home', '技能库', { ...currentTabRef.current?.context, filter: 'all', selectedTag: 'all', activeView: 'all', repoId: undefined });
+                       }
                        showToast(msg as string, "success");
                      });
                    });
@@ -363,7 +407,6 @@ function App() {
               }
             });
           }
-        }
       } else {
         setIsFileDraggingOver(false);
       }
@@ -469,11 +512,13 @@ function App() {
     openAddDialog();
   };
 
-  const handleCancelClone = async (e: React.MouseEvent, targetPath: string) => {
+  const handleCancelClone = async (e: React.MouseEvent, targetPath?: string) => {
     e.stopPropagation();
+    if (!targetPath) return;
     try {
       await invoke("cancel_github_clone", { targetDir: targetPath });
       setCloningRepos(prev => prev.filter(r => r.path !== targetPath));
+      showToast("已删除并清理本地已拉取文件", "info");
     } catch (err) {
       showToast(String(err), 'error');
     }
@@ -1355,8 +1400,6 @@ function App() {
       {isLeftSidebarOpen && (
       <div 
         className="w-64 bg-transparent flex flex-col h-full shrink-0 relative z-20 text-[13px] border-r border-[var(--color-border)] sidebar-container"
-        onMouseEnter={e => e.currentTarget.style.setProperty('--scroll-thumb-color', 'rgba(0,0,0,0.18)')}
-        onMouseLeave={e => e.currentTarget.style.setProperty('--scroll-thumb-color', 'transparent')}
       >
         <div 
           data-tauri-drag-region 
@@ -1659,8 +1702,6 @@ function App() {
             ref={mainContentRef}
             className="flex-1 overflow-y-auto hover-scroll relative z-0 bg-white flex flex-col"
             onClick={() => { if (!isDraggingRef.current) handleDeselectAll(); }}
-            onMouseEnter={e => e.currentTarget.style.setProperty('--scroll-thumb-color', 'rgba(0,0,0,0.18)')}
-            onMouseLeave={e => e.currentTarget.style.setProperty('--scroll-thumb-color', 'transparent')}
             onContextMenu={(e) => {
               // Because cards call stopPropagation(), this only fires for blank space
               showContextMenu(e, { type: 'empty', data: null });
@@ -1842,7 +1883,7 @@ function App() {
                             targetDir: null,
                           });
                           await fetchData();
-                          setSelectedWorkspaceId(dirId);
+                          handleWorkspaceSelect(dirId);
                           showToast('技能库关联成功', 'success');
                           setIsLinking(false);
                         }
@@ -1946,24 +1987,15 @@ function App() {
               ) : (
                 <>
                   <div className="flex-1 grid gap-3 content-start px-6 pt-3 pb-20" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }}>
-                    {cloningRepos.map((repo, idx) => (
-                    <div key={`cloning-${idx}`} className="group bg-[var(--color-muted-bg)]/30 backdrop-blur-md rounded-xl p-4 border border-dashed border-[var(--color-border)] shadow-sm flex flex-col h-24 animate-pulse">
-                      <div className="flex items-center space-x-2">
-                        <div className="w-8 h-8 rounded-lg bg-[var(--color-muted-bg)] flex items-center justify-center shrink-0">
-                          <div className="w-4 h-4 border-2 border-[var(--color-muted)] border-t-transparent rounded-full animate-spin"></div>
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <h3 className="text-[13px] font-semibold text-[var(--foreground)] truncate" title={repo.name}>{repo.name}</h3>
-                          <span className="text-[10px] text-[var(--color-muted)]">正在拉取...</span>
-                        </div>
-                        <Tooltip content="取消拉取">
-                          <button onClick={(e) => handleCancelClone(e, repo.path)} className="p-1 rounded text-[var(--color-muted)] hover:text-red-500 hover:bg-red-50 transition-colors shrink-0">
-                            <X className="w-3.5 h-3.5" />
-                          </button>
-                        </Tooltip>
-                      </div>
-                    </div>
-                  ))}
+                    {cloningRepos.map((repo) => (
+                      <CloningCard
+                        key={repo.path}
+                        name={repo.name}
+                        path={repo.path}
+                        repo={repo}
+                        onCancel={handleCancelClone}
+                      />
+                    ))}
                   {filteredGroupedRepos.map((repo) => (
                     <RepoCard
                       key={repo.id}
@@ -2227,6 +2259,10 @@ function App() {
         defaultTargetDir={selectedWorkspaceId !== "all" ? directories.find(d => d.id === selectedWorkspaceId)?.path || undefined : undefined}
         defaultWorkspaceLabel={selectedWorkspaceId !== "all" ? directories.find(d => d.id === selectedWorkspaceId)?.label : undefined}
         defaultSourceDirId={selectedWorkspaceId !== "all" ? (selectedWorkspaceId || undefined) : undefined}
+        existingRepoNames={[
+          ...groupedRepos.filter(r => selectedWorkspaceId === "all" || r.source_dir_id === selectedWorkspaceId).map(r => r.name),
+          ...skills.filter(s => selectedWorkspaceId === "all" || s.source_dir_id === selectedWorkspaceId).map(s => s.name)
+        ]}
       />
 
 
@@ -2286,13 +2322,13 @@ function App() {
       <CreateSkillLibraryModal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
-        onSuccess={async (id) => { await fetchData(); if (id) setSelectedWorkspaceId(id); }}
+        onSuccess={async (id) => { await fetchData(); if (id) handleWorkspaceSelect(id); }}
       />
 
       <OpenSkillLibraryModal
         isOpen={isOpenModalOpen}
         onClose={() => setIsOpenModalOpen(false)}
-        onSuccess={async (id) => { await fetchData(); if (id) setSelectedWorkspaceId(id); }}
+        onSuccess={async (id) => { await fetchData(); if (id) handleWorkspaceSelect(id); }}
       />
 
       <MergeSkillLibraryModal

@@ -223,7 +223,7 @@ export function AboutDialog({ isOpen, onClose, onOpenCommunity }: AboutDialogPro
           
           <h2 className="text-[24px] font-bold mb-1 tracking-tight">SkillHub</h2>
           <p className="text-[13px] text-[var(--color-muted)] mb-2.5 font-normal">
-            个人 Prompt 与技能管理工具
+            AI Skills 搜集与管理必备工具
           </p>
 
           <div className="flex items-center gap-2 mb-6">
