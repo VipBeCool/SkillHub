@@ -28,9 +28,11 @@ export const CloningCard: React.FC<CloningCardProps> = ({
           <Loader2 className="w-4 h-4 animate-spin text-gray-400 dark:text-gray-500" />
         </div>
         <div className="min-w-0 flex-1">
-          <h3 className="font-semibold text-[13px] text-[var(--foreground)] truncate leading-tight" title={name}>
-            {name}
-          </h3>
+          <Tooltip content={name}>
+            <h3 className="font-semibold text-[13px] text-[var(--foreground)] mask-fade-x leading-tight cursor-default">
+              {name}
+            </h3>
+          </Tooltip>
           <div className="flex items-center space-x-1.5 mt-1">
             <span className="text-[11px] text-[var(--color-muted)] font-normal">正在拉取...</span>
           </div>
@@ -41,7 +43,6 @@ export const CloningCard: React.FC<CloningCardProps> = ({
           type="button"
           onClick={(e) => onCancel(e, path)}
           className="p-1 -mr-1 -mt-0.5 rounded-lg text-[var(--color-muted)] hover:text-red-500 hover:bg-black/5 dark:hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
-          title="删除并清理本地已拉取文件"
         >
           <X className="w-4 h-4" />
         </button>

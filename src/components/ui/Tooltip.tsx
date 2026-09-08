@@ -10,9 +10,11 @@ interface TooltipProps {
   content: React.ReactNode;
   side?: 'top' | 'right' | 'bottom' | 'left';
   align?: 'start' | 'center' | 'end';
+  multiline?: boolean;
+  className?: string;
 }
 
-export function Tooltip({ children, content, side = 'top', align = 'center' }: TooltipProps) {
+export function Tooltip({ children, content, side = 'top', align = 'center', multiline = false, className = '' }: TooltipProps) {
   return (
     <TooltipPrimitive.Root>
       <TooltipPrimitive.Trigger asChild>
@@ -25,7 +27,11 @@ export function Tooltip({ children, content, side = 'top', align = 'center' }: T
           sideOffset={5}
           collisionPadding={8}
           style={{ zIndex: 100000 }}
-          className="overflow-y-auto rounded-[4px] bg-black/90 backdrop-blur-md px-2 py-1 text-[12px] font-medium text-white border border-black/5 shadow-sm animate-in fade-in-0 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 max-w-[300px] max-h-[250px] break-words w-max custom-scrollbar"
+          className={`rounded-[4px] bg-black/90 backdrop-blur-md px-2 py-1 text-[12px] font-medium text-white border border-black/5 shadow-sm animate-in fade-in-0 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 select-none w-max ${
+            multiline 
+              ? 'max-w-[320px] max-h-[250px] break-words whitespace-normal overflow-y-auto custom-scrollbar' 
+              : 'whitespace-nowrap'
+          } ${className}`}
         >
           {content}
           <TooltipPrimitive.Arrow className="fill-black/90 drop-shadow-sm" width={11} height={5} />

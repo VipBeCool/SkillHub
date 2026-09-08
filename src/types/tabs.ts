@@ -18,6 +18,8 @@ export interface TabContext {
   promptOpened?: boolean; // 提示词是否已打开过编辑弹窗
   isEditing?: boolean;    // 打开时是否进入编辑模式
   resourceId?: string;    // 社区资源 ID
+  resourceCategory?: string; // 社区资源分类/频道筛选
+  categoryName?: string;  // 社区资源父级菜单/分类名称（用于面包屑展示）
   filter?: string;        // 筛选条件
   // 用于 prompt-home 展示
   promptFilter?: string;

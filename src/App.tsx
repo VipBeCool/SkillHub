@@ -4,7 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { HardDrive, Settings, Search, Plus, RefreshCw, ChevronRight, X, LayoutGrid, Sparkles, Globe, FolderX, FolderSearch, Trash2, Info, Folder, FolderPlus, Copy, Link as LinkIcon, Check, Download, FileArchive, MessageSquareText, Store, Puzzle, CheckSquare, Star, Clock, Tag, ExternalLink, Users } from "lucide-react";
+import { HardDrive, Settings, Search, Plus, RefreshCw, ChevronRight, X, LayoutGrid, Sparkles, Globe, FolderX, FolderSearch, Trash2, Info, Folder, FolderPlus, Copy, Link as LinkIcon, Check, Download, FileArchive, MessageSquareText, Store, Puzzle, CheckSquare, Star, Clock, Tag, ExternalLink, Users, Lightbulb, Code, PenTool, Palette, Briefcase, MessageSquare, Zap, Layers, FileEdit, BarChart3 } from "lucide-react";
 import { open } from '@tauri-apps/plugin-dialog';
 import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import { AddRepositoryDialog } from "./components/library/AddRepositoryDialog";
@@ -36,6 +36,18 @@ import { PromptDetailPage } from "./components/prompt/PromptDetailPage";
 import { useTabs } from "./hooks/useTabs";
 import { TabType } from "./types/tabs";
 import { TabBar } from "./components/ui/TabBar";
+import { ResourceHome } from "./components/resource/ResourceHome";
+import { ResourceDetail } from "./components/resource/ResourceDetail";
+import { InstallTargetModal } from "./components/resource/InstallTargetModal";
+import type { ResourceItem } from "./types/resource";
+import registryData from "./data/resource-registry.json";
+import {
+  findStoreResourceForRepo,
+  findStoreResourceForSkill,
+  findLocalRepoOrSkillForResource,
+  findLocalPromptForResource,
+} from "./utils/resourceMatch";
+import { getDefaultInstallDirId, setDefaultInstallDirId } from "./utils/storeSettings";
 
 const isMac = navigator.userAgent.toLowerCase().includes('mac');
 const fileManagerName = isMac ? '访达' : '文件管理器';
@@ -116,6 +128,7 @@ function App() {
   const [communityDefaultTab, setCommunityDefaultTab] = useState<"qq" | "wechat">("qq");
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
   const [quickLookOpen, setQuickLookOpen] = useState(false);
+  const [installTargetResource, setInstallTargetResource] = useState<ResourceItem | null>(null);
 
   const selectedRepoId = currentTab?.context?.repoId || null;
   const setSelectedRepoId = (id: string | null) => {
@@ -159,6 +172,58 @@ function App() {
         .catch(console.error);
     }
   }, [isSearchModalOpen]);
+
+  useEffect(() => {
+    invoke<Prompt[]>("get_prompts", { groupId: null, search: null })
+      .then(setAllPrompts)
+      .catch(console.error);
+  }, [promptRefreshKey]);
+
+  // 社区资源已安装状态匹配集合（综合本地技能、仓库以及提示词）
+  const installedResourceNames = useMemo(() => {
+    const names = new Set<string>();
+    skills.forEach(s => {
+      if (s.name) {
+        names.add(s.name.toLowerCase());
+        names.add(s.name);
+      }
+      if (s.id) {
+        names.add(s.id.toLowerCase());
+        names.add(s.id);
+      }
+      if (s.online_url) {
+        const norm = s.online_url.trim().toLowerCase().replace(/\/$/, '').replace(/\.git$/, '');
+        names.add(norm);
+      }
+    });
+    groupedRepos.forEach(repo => {
+      if (repo.name) {
+        names.add(repo.name.toLowerCase());
+        names.add(repo.name);
+      }
+      repo.skills?.forEach(s => {
+        if (s.name) {
+          names.add(s.name.toLowerCase());
+          names.add(s.name);
+        }
+        if (s.id) {
+          names.add(s.id.toLowerCase());
+          names.add(s.id);
+        }
+        if (s.online_url) {
+          const norm = s.online_url.trim().toLowerCase().replace(/\/$/, '').replace(/\.git$/, '');
+          names.add(norm);
+        }
+      });
+    });
+    allPrompts.forEach(p => {
+      if (p.title) {
+        names.add(p.title.toLowerCase());
+        names.add(p.title);
+      }
+    });
+    return names;
+  }, [skills, groupedRepos, allPrompts]);
 
   // 右键菜单
   const { menuPosition, menuTarget, showContextMenu, hideContextMenu } = useContextMenu();
@@ -495,6 +560,135 @@ function App() {
     setDeleteConfirmRepos(null);
   };
 
+  // 执行将技能安装到特定仓库目录
+  const executeInstallSkill = async (resource: ResourceItem, targetDir: SourceDirectory) => {
+    const repoName = resource.name;
+    const targetPath = `${targetDir.path}/${repoName}`.replace(/\\/g, '/').replace(/\/{2,}/g, '/');
+    setCloningRepos(prev => [...prev, { path: targetPath, name: repoName }]);
+    showToast(`已开始安装「${resource.displayName}」...`);
+    try {
+      await invoke('import_github_skills_to_workspace', {
+        url: resource.repoUrl,
+        targetDir: targetPath,
+        sourceDirId: targetDir.id,
+      });
+      setCloningRepos(prev => prev.filter(r => r.path !== targetPath));
+      showToast(`「${resource.displayName}」安装成功`, 'success');
+      await fetchData();
+    } catch (err) {
+      setCloningRepos(prev => prev.filter(r => r.path !== targetPath));
+      showToast(`安装失败: ${err}`, 'error');
+      throw err;
+    }
+  };
+
+  // 请求安装技能：若已配置默认技能库则直接安装，否则弹出选择弹窗
+  const requestInstallSkill = async (resource: ResourceItem) => {
+    if (directories.length === 0) {
+      showToast('请先在侧边栏或设置中添加技能仓库目录', 'error');
+      return;
+    }
+
+    const defaultDirId = getDefaultInstallDirId();
+    const defaultDir = defaultDirId ? directories.find(d => d.id === defaultDirId) : null;
+
+    if (defaultDir) {
+      await executeInstallSkill(resource, defaultDir);
+    } else {
+      setInstallTargetResource(resource);
+    }
+  };
+
+  // 确认从弹窗选择目标技能库
+  const handleConfirmInstallTarget = async (targetDir: SourceDirectory, rememberDefault: boolean) => {
+    if (rememberDefault) {
+      setDefaultInstallDirId(targetDir.id);
+    }
+    if (installTargetResource) {
+      const res = installTargetResource;
+      setInstallTargetResource(null);
+      await executeInstallSkill(res, targetDir);
+    }
+  };
+
+  // 安装提示词
+  const handleInstallPrompt = async (resource: ResourceItem) => {
+    const content = resource.promptContent || '';
+    if (!content) {
+      showToast('暂无提示词内容', 'error');
+      return;
+    }
+    await invoke('create_prompt', {
+      title: resource.displayName,
+      content,
+      description: resource.description,
+      groupId: null,
+      tags: resource.tags.join(','),
+      variables: resource.promptVariables || null,
+    });
+    showToast(`「${resource.displayName}」已添加到提示词库`, 'success');
+    setPromptRefreshKey(k => k + 1);
+  };
+
+  // 卸载技能：物理删除本地技能/仓库目录，解绑 Agent 软链接
+  const handleUninstallSkill = async (resource: ResourceItem) => {
+    try {
+      const match = findLocalRepoOrSkillForResource(resource, groupedRepos, skills);
+      let targetPath = match?.path;
+
+      if (!targetPath) {
+        for (const dir of directories) {
+          const guessPath = `${dir.path}/${resource.name}`.replace(/\\/g, '/').replace(/\/{2,}/g, '/');
+          const repoExists = groupedRepos.some(r => r.path === guessPath);
+          if (repoExists) {
+            targetPath = guessPath;
+            break;
+          }
+        }
+      }
+
+      if (!targetPath) {
+        const matchedSkill = skills.find(s => s.name.toLowerCase() === resource.name.toLowerCase());
+        if (matchedSkill && matchedSkill.local_path) {
+          targetPath = matchedSkill.local_path;
+        }
+      }
+
+      if (!targetPath) {
+        showToast(`未在本地技能库中找到「${resource.displayName}」的安装路径`, 'error');
+        return;
+      }
+
+      showToast(`正在卸载「${resource.displayName}」...`);
+      await invoke('delete_skill_by_path', { path: targetPath });
+      showToast(`「${resource.displayName}」已成功卸载`, 'success');
+      await fetchData();
+    } catch (err) {
+      console.error('Uninstall skill failed:', err);
+      showToast(`卸载失败: ${err}`, 'error');
+      throw err;
+    }
+  };
+
+  // 卸载提示词：从提示词库中删除
+  const handleUninstallPrompt = async (resource: ResourceItem) => {
+    try {
+      const matchedPrompt = findLocalPromptForResource(resource, allPrompts);
+      if (!matchedPrompt) {
+        showToast(`未在本地提示词库中找到「${resource.displayName}」`, 'error');
+        return;
+      }
+
+      await invoke('hard_delete_prompts', { ids: [matchedPrompt.id] });
+      showToast(`「${resource.displayName}」已从提示词库中移除`, 'success');
+      setPromptRefreshKey(k => k + 1);
+    } catch (err) {
+      console.error('Uninstall prompt failed:', err);
+      showToast(`移除提示词失败: ${err}`, 'error');
+      throw err;
+    }
+  };
+
   const openAddDialog = (tab: "local" | "github" | "online" | null = null) => {
     if (!selectedWorkspaceId || selectedWorkspaceId === "all") {
       if (directories.length === 0) {
@@ -787,10 +981,42 @@ function App() {
     }
   }, [selectedRepoId]);
 
+  // 跳转到社区资源详情页
+  const handleViewInStore = useCallback((resource: ResourceItem) => {
+    const title = resource.displayName || '资源详情';
+    const targetCat = resource.category || 'all';
+    const catDef = registryData.categories.find(c => c.id === targetCat);
+    const targetCatName = catDef ? catDef.name : '发现';
+
+    // 检查是否已存在该资源的详情页标签
+    const existingTab = tabs.find(
+      t => t.type === 'resource-detail' && t.context?.resourceId === resource.id
+    );
+
+    if (existingTab) {
+      switchTab(existingTab.id);
+    } else {
+      openTab('resource-detail', title, {
+        resourceId: resource.id,
+        resourceCategory: targetCat,
+        categoryName: targetCatName,
+      }, 'Store');
+    }
+    setActiveModule('resources');
+  }, [tabs, openTab, switchTab]);
+
+  const handleViewInStoreById = useCallback((resourceId: string) => {
+    const res = registryData.resources.find(r => r.id === resourceId);
+    if (res) {
+      handleViewInStore(res as ResourceItem);
+    }
+  }, [handleViewInStore]);
+
   // 构建右键菜单项
   const buildRepoContextMenu = useCallback((repo: GroupedRepo): ContextMenuItem[] => {
     const isMulti = selectedRepoIds.has(repo.id) && selectedRepoIds.size > 1;
     const targetRepos = isMulti ? filteredGroupedRepos.filter(r => selectedRepoIds.has(r.id)) : [repo];
+    const storeRes = !isMulti ? findStoreResourceForRepo(repo, registryData.resources as ResourceItem[]) : undefined;
 
     return [
       {
@@ -808,6 +1034,12 @@ function App() {
           targetRepos.forEach(r => openTab('skill-repo', r.name, { repoId: r.id }));
         }
       },
+      ...(storeRes ? [{
+        id: 'view_in_store',
+        label: '在资源社区中查看',
+        icon: <Globe size={14} />,
+        onClick: () => handleViewInStore(storeRes)
+      }] : []),
       {
         id: 'open_folder', label: isMulti ? `在${fileManagerName}中打开` : `在${fileManagerName}中打开`, icon: <Folder size={14} />, onClick: () => {
           targetRepos.forEach(r => invoke('open_local_folder', { path: r.path }).catch(console.error));
@@ -937,7 +1169,7 @@ function App() {
       { id: 'sep4', label: '', separator: true },
       { id: 'delete', label: isMulti ? `批量删除` : '删除', icon: <Trash2 size={14} />, danger: true, onClick: (e?: any) => handleDeleteRepos(e || ({ stopPropagation: () => { } } as any), targetRepos) },
     ];
-  }, [agents, syncRecords, selectedRepoIds, filteredGroupedRepos, waitConfirm]);
+  }, [agents, syncRecords, selectedRepoIds, filteredGroupedRepos, waitConfirm, handleViewInStore]);
 
   // 智能引用提示词：打开预览弹窗并生成内容
   const handleGeneratePrompt = useCallback(async (skill: Skill) => {
@@ -956,10 +1188,17 @@ function App() {
     // 从所有可见的 skill 中筛选出当前选中的 skills
     const visibleSkills = filteredGroupedRepos.find(r => r.id === selectedRepoId)?.skills || [];
     const targetSkills = isMulti ? visibleSkills.filter(s => selectedSkillIds.has(s.id)) : [skill];
+    const storeRes = !isMulti ? findStoreResourceForSkill(skill, registryData.resources as ResourceItem[], filteredGroupedRepos) : undefined;
 
     return [
       { id: 'open_in_current_tab', label: isMulti ? `无法批量打开` : '打开', icon: <ChevronRight size={14} />, onClick: () => { if (!isMulti) { navigateTo('skill-detail', skill.name, { ...currentTab?.context, skillId: skill.id }, 'FileText'); } } },
       { id: 'view_doc_new_tab', label: isMulti ? `无法批量在新标签页打开` : '在新标签页打开', icon: <ExternalLink size={14} />, onClick: () => { if (!isMulti) { openTab('skill-detail', skill.name, { ...currentTab?.context, skillId: skill.id }, 'FileText'); } } },
+      ...(storeRes ? [{
+        id: 'view_in_store',
+        label: '在资源社区中查看',
+        icon: <Globe size={14} />,
+        onClick: () => handleViewInStore(storeRes)
+      }] : []),
       { id: 'view_doc', label: isMulti ? `无法批量查看文档` : '查看文档', icon: <Search size={14} />, onClick: () => { if (!isMulti) { navigateTo('skill-detail', skill.name, { ...currentTab?.context, skillId: skill.id }, 'FileText'); } } },
       {
         id: 'generate_prompt', label: isMulti ? `无法批量生成提示词` : '智能引用提示词', icon: <Sparkles size={14} />, onClick: () => {
@@ -1027,7 +1266,7 @@ function App() {
         }
       ] : []),
     ];
-  }, [agents, selectedSkillIds, filteredGroupedRepos, selectedRepoId, syncRecords]);
+  }, [agents, selectedSkillIds, filteredGroupedRepos, selectedRepoId, syncRecords, handleViewInStore]);
 
   const selectedWorkspaceDir = directories.find(d => d.id === selectedWorkspaceId);
 
@@ -1420,11 +1659,10 @@ function App() {
               <button
                 key={tab.id}
                 onClick={() => {
-                  if (tab.id === 'resources') {
-                    waitConfirm('功能正在建设中，敬请期待～', '提示', false, '知道了');
-                    return;
-                  }
                   setActiveModule(tab.id);
+                  if (tab.id === 'resources') {
+                    navigateTo('resource-home', '发现', {}, 'Store');
+                  }
                 }}
                 className={`flex items-center justify-center transition-colors duration-300 outline-none select-none rounded-md h-[32px] ${
                   activeModule === tab.id
@@ -1576,19 +1814,128 @@ function App() {
               </div>
             </div>
           </>
-        ) : (
+        ) : activeModule === 'prompts' ? (
           <div className="flex-1 overflow-y-auto px-0 sidebar-scroll-area">
-            {activeModule === 'prompts' && (
-              <PromptSidebarNav
-                filter={isSidebarMatch ? promptFilter : null as any}
-                groups={promptGroups}
-                onFilterChange={setPromptFilter}
-                onCreateGroup={() => setIsCreateGroupOpen(true)}
-                isCreateGroupOpen={isCreateGroupOpen}
-                onCreateGroupClose={() => setIsCreateGroupOpen(false)}
-                onGroupSaved={() => setPromptRefreshKey(k => k + 1)}
-              />
-            )}
+            <PromptSidebarNav
+              filter={isSidebarMatch ? promptFilter : null as any}
+              groups={promptGroups}
+              onFilterChange={setPromptFilter}
+              onCreateGroup={() => setIsCreateGroupOpen(true)}
+              isCreateGroupOpen={isCreateGroupOpen}
+              onCreateGroupClose={() => setIsCreateGroupOpen(false)}
+              onGroupSaved={() => setPromptRefreshKey(k => k + 1)}
+            />
+          </div>
+        ) : (
+          /* 资源社区侧边栏 */
+          <div className="flex-1 overflow-y-auto sidebar-scroll-area">
+            {(() => {
+              const activeResCat = currentTab?.context?.resourceCategory || (currentTab?.type === 'resource-home' ? 'all' : undefined);
+              return (
+                <>
+                  <div className="px-3 mt-1 mb-5 space-y-0.5">
+                    <h3 className="text-[11px] font-semibold text-[var(--color-muted)]/60 mb-1 px-2 uppercase tracking-wide">
+                      浏览
+                    </h3>
+                    <button
+                      onClick={() => navigateTo('resource-home', '发现', { resourceCategory: 'all' }, 'Store')}
+                      className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none ${
+                        activeResCat === 'all'
+                          ? 'bg-black/5 text-[var(--foreground)] font-semibold'
+                          : 'text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] font-medium'
+                      }`}
+                    >
+                      <Sparkles className="w-4 h-4" />
+                      <span>发现</span>
+                    </button>
+                    <button
+                      onClick={() => navigateTo('resource-home', '技能', { resourceCategory: 'all-skills' }, 'Store')}
+                      className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none ${
+                        activeResCat === 'all-skills'
+                          ? 'bg-black/5 text-[var(--foreground)] font-semibold'
+                          : 'text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] font-medium'
+                      }`}
+                    >
+                      <Puzzle className="w-4 h-4" />
+                      <span>技能</span>
+                    </button>
+                    <button
+                      onClick={() => navigateTo('resource-home', '提示词', { resourceCategory: 'all-prompts' }, 'Store')}
+                      className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none ${
+                        activeResCat === 'all-prompts'
+                          ? 'bg-black/5 text-[var(--foreground)] font-semibold'
+                          : 'text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] font-medium'
+                      }`}
+                    >
+                      <MessageSquareText className="w-4 h-4" />
+                      <span>提示词</span>
+                    </button>
+                  </div>
+
+                  <div className="px-3 mb-5">
+                    <h3 className="text-[11px] font-semibold text-[var(--color-muted)]/60 mb-1 px-2 uppercase tracking-wide">
+                      分类
+                    </h3>
+                    <div className="space-y-0.5">
+                      {[
+                        { id: 'core-enhancement', name: '核心增强', icon: Lightbulb },
+                        { id: 'tech-development', name: '技术开发', icon: Code },
+                        { id: 'content-creation', name: '内容创作', icon: PenTool },
+                        { id: 'design', name: '设计交互', icon: Palette },
+                        { id: 'office-operations', name: '产品运营', icon: Briefcase },
+                        { id: 'prompt-library', name: '提示词库', icon: MessageSquare },
+                      ].map(cat => {
+                        const IconComponent = cat.icon;
+                        return (
+                          <button
+                            key={cat.id}
+                            onClick={() => navigateTo('resource-home', cat.name, { resourceCategory: cat.id }, 'Store')}
+                            className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none text-[13px] ${
+                              activeResCat === cat.id
+                                ? 'bg-black/5 text-[var(--foreground)] font-semibold'
+                                : 'text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] font-medium'
+                            }`}
+                          >
+                            <IconComponent className="w-4 h-4 shrink-0" />
+                            <span>{cat.name}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="px-3 mb-5">
+                    <h3 className="text-[11px] font-semibold text-[var(--color-muted)]/60 mb-1 px-2 uppercase tracking-wide">
+                      合辑
+                    </h3>
+                    <div className="space-y-0.5">
+                      {[
+                        { id: 'collection-ai-coding-essentials', name: 'AI 编程必备合辑', icon: Zap },
+                        { id: 'collection-fullstack-dev', name: '设计与可视化套件', icon: Layers },
+                        { id: 'collection-content-creator', name: '演示文稿与幻灯片全能包', icon: FileEdit },
+                        { id: 'collection-business-toolkit', name: '产品与多智能体实战', icon: BarChart3 },
+                      ].map(col => {
+                        const IconComponent = col.icon;
+                        return (
+                          <button
+                            key={col.id}
+                            onClick={() => navigateTo('resource-home', col.name, { resourceCategory: `collection:${col.id}` }, 'Store')}
+                            className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none text-[13px] ${
+                              activeResCat === `collection:${col.id}`
+                                ? 'bg-black/5 text-[var(--foreground)] font-semibold'
+                                : 'text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] font-medium'
+                            }`}
+                          >
+                            <IconComponent className="w-4 h-4 shrink-0" />
+                            <span className="truncate">{col.name}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </>
+              );
+            })()}
           </div>
         )}
 
@@ -2035,26 +2382,34 @@ function App() {
               <>
                 <div className="flex-1 grid gap-3 content-start px-6 pt-3 pb-20" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))' }}>
                   {(() => {
+                    const currentRepo = !isFlatView ? filteredGroupedRepos.find(r => r.id === selectedRepoId) : undefined;
                     const skillsToRender = isFlatView 
                       ? filteredGroupedRepos.flatMap(r => r.skills)
-                      : filteredGroupedRepos.find(r => r.id === selectedRepoId)?.skills || [];
+                      : currentRepo?.skills || [];
                     
-                    return skillsToRender.map((skill) => (
-                      <SkillCard
-                        key={skill.id}
-                      skill={skill}
-                      syncRecords={syncRecords}
-                      agents={agents}
-                      isSelected={inspectorSelectedType === 'skill' && selectedSkillIds.has(skill.id)}
-                      onClick={(e) => handleSelectSkill(skill, e)}
-                      onDoubleClick={() => { navigateTo('skill-detail', skill.name, { ...currentTab?.context, skillId: skill.id }, 'FileText'); }}
-                      onContextMenu={(e) => {
-                        if (!selectedSkillIds.has(skill.id)) handleSelectSkill(skill, e);
-                        showContextMenu(e, { type: 'skill', data: skill });
-                      }}
-                      onFavoriteToggle={(_, s) => handleToggleFavorite(s.id)}
-                    />
-                  ));
+                    return skillsToRender.map((skill) => {
+                      const ownerRepo = currentRepo || filteredGroupedRepos.find(r => r.skills.some(s => s.id === skill.id));
+                      const isSub = ownerRepo ? (ownerRepo.repo_type === 'collection' || ownerRepo.skills.length > 1) : false;
+
+                      return (
+                        <SkillCard
+                          key={skill.id}
+                          skill={skill}
+                          isSubSkill={isSub}
+                          parentRepoName={isSub && ownerRepo ? ownerRepo.name : undefined}
+                          syncRecords={syncRecords}
+                          agents={agents}
+                          isSelected={inspectorSelectedType === 'skill' && selectedSkillIds.has(skill.id)}
+                          onClick={(e) => handleSelectSkill(skill, e)}
+                          onDoubleClick={() => { navigateTo('skill-detail', skill.name, { ...currentTab?.context, skillId: skill.id }, 'FileText'); }}
+                          onContextMenu={(e) => {
+                            if (!selectedSkillIds.has(skill.id)) handleSelectSkill(skill, e);
+                            showContextMenu(e, { type: 'skill', data: skill });
+                          }}
+                          onFavoriteToggle={(_, s) => handleToggleFavorite(s.id)}
+                        />
+                      );
+                    });
                   })()}
                 </div>
               </>
@@ -2124,11 +2479,17 @@ function App() {
                   <div className="space-y-2 max-h-[300px] overflow-y-auto pr-5 custom-scrollbar">
                     {syncLogs.map(log => (
                       <div key={log.id} className="flex items-center justify-between text-xs py-0.5 pr-2">
-                        <span className="text-[var(--color-muted)] truncate flex-1 mr-3" title={log.label}>{log.label}</span>
+                        <Tooltip content={log.label}>
+                          <span className="text-[var(--color-muted)] truncate flex-1 mr-3 cursor-default">{log.label}</span>
+                        </Tooltip>
                         {log.status === 'pending' && <span className="text-blue-500 font-medium shrink-0 animate-pulse">正在扫描...</span>}
                         {log.status === 'success' && <span className="text-green-500 font-medium shrink-0 text-right w-16 truncate">{log.message || '更新成功'}</span>}
                         {log.status === 'skipped' && <span className="text-gray-500 font-medium shrink-0 text-right w-16 truncate">{log.message || '已跳过'}</span>}
-                        {log.status === 'error' && <span className="text-red-500 font-medium shrink-0 truncate max-w-[80px] text-right" title={log.message}>更新失败</span>}
+                        {log.status === 'error' && (
+                          <Tooltip content={log.message || '更新失败'}>
+                            <span className="text-red-500 font-medium shrink-0 truncate max-w-[80px] text-right cursor-default">更新失败</span>
+                          </Tooltip>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -2184,28 +2545,71 @@ function App() {
                       navigateTo('prompt-detail', title, { promptId, isEditing }, 'FileText');
                     }
                   }}
+                  onViewInStore={handleViewInStoreById}
                 />
               </div>
             </div>
           ) : (
-          /* 资源社区占位页面 */
-          <div className="flex-1 flex flex-col h-full min-w-0 bg-[var(--color-background)] relative">
-            <div className="h-16 border-b border-[var(--color-border)] bg-white/70 backdrop-blur-xl flex items-center px-6 shrink-0 relative z-0">
-              <h1 className="text-xl font-medium tracking-tight text-[var(--foreground)]">资源社区</h1>
-            </div>
-            <div className="flex-1 flex flex-col items-center justify-center p-6 bg-[var(--color-background)]">
-              <div className="w-24 h-24 mb-6 rounded-3xl bg-white flex items-center justify-center">
-                <Store className="w-10 h-10 text-blue-500" strokeWidth={1.5} />
-              </div>
-              <h2 className="text-xl font-semibold text-[var(--foreground)] mb-2 tracking-tight">资源社区</h2>
-              <p className="text-sm text-[var(--color-muted)] mb-2 text-center max-w-sm leading-relaxed">
-                发现优质 Skill 和 Prompt 资源，一键导入使用，与社区共享你的创作
-              </p>
-              <div className="mt-4 flex items-center gap-2 px-4 py-2 rounded-full bg-[var(--color-primary)]/5 border border-[var(--color-primary)]/10">
-                <div className="w-2 h-2 rounded-full bg-[var(--color-primary)] animate-pulse"></div>
-                <span className="text-[13px] font-medium text-[var(--color-primary)]">功能建设中，敬请期待</span>
-              </div>
-            </div>
+          /* 资源社区页面 */
+          <div className="flex-1 flex flex-col h-full min-w-0 bg-[var(--color-background)] relative overflow-hidden">
+            {currentTab?.type === 'resource-detail' && currentTab.context.resourceId ? (
+              <ResourceDetail
+                resourceId={currentTab.context.resourceId}
+                parentCategoryName={currentTab.context.categoryName}
+                parentCategory={currentTab.context.resourceCategory}
+                installedResourceIds={installedResourceNames}
+                isInstalled={
+                  installedResourceNames.has(currentTab.context.resourceId.toLowerCase()) ||
+                  (currentTab.title ? installedResourceNames.has(currentTab.title.toLowerCase()) : false)
+                }
+                onBack={() => {
+                  if (canGoBack) {
+                    tabGoBack();
+                  } else {
+                    const cat = currentTab.context?.resourceCategory || 'all';
+                    const catDef = registryData.categories.find(c => c.id === cat);
+                    const catTitle = catDef ? catDef.name : (currentTab.context?.categoryName || '发现');
+                    navigateTo('resource-home', catTitle, { resourceCategory: cat }, 'Store');
+                  }
+                }}
+                onSelectSibling={(sibling) => {
+                  navigateTo('resource-detail', sibling.displayName, {
+                    ...currentTab.context,
+                    resourceId: sibling.id,
+                  }, 'Store');
+                }}
+                onInstallSkill={requestInstallSkill}
+                onInstallPrompt={handleInstallPrompt}
+                onUninstallSkill={handleUninstallSkill}
+                onUninstallPrompt={handleUninstallPrompt}
+              />
+            ) : (
+              <ResourceHome
+                sidebarCategory={currentTab?.context?.resourceCategory || 'all'}
+                installedResourceIds={installedResourceNames}
+                onBackToHome={() =>
+                  navigateTo('resource-home', '发现', { resourceCategory: 'all' }, 'Store')
+                }
+                onInstallSkill={requestInstallSkill}
+                onInstallPrompt={handleInstallPrompt}
+                onUninstallSkill={handleUninstallSkill}
+                onUninstallPrompt={handleUninstallPrompt}
+                onNavigateToDetail={(resourceId, category, categoryName) => {
+                  const res = registryData.resources.find(r => r.id === resourceId);
+                  const title = res?.displayName || '资源详情';
+                  const targetCat = category || currentTab?.context?.resourceCategory || res?.category || 'all';
+                  const targetCatName = categoryName || currentTab?.title || '发现';
+                  navigateTo('resource-detail', title, {
+                    resourceId,
+                    resourceCategory: targetCat,
+                    categoryName: targetCatName,
+                  }, 'Store');
+                }}
+                onNavigateToCollection={(collectionId) =>
+                  navigateTo('resource-home', '精选合辑', { resourceCategory: `collection:${collectionId}` }, 'Store')
+                }
+              />
+            )}
           </div>
         )}
         </div>
@@ -2236,6 +2640,7 @@ function App() {
               isOpen={isInspectorOpen}
               onToggle={() => setIsInspectorOpen(!isInspectorOpen)}
               onGeneratePrompt={handleGeneratePrompt}
+              onViewInStore={handleViewInStore}
             />
           );
         })()}
@@ -2278,6 +2683,15 @@ function App() {
         isOpen={isSettingsOpen}
         onClose={() => { setIsSettingsOpen(false); fetchData(); }}
         defaultTab="agent"
+      />
+
+      <InstallTargetModal
+        isOpen={!!installTargetResource}
+        onClose={() => setInstallTargetResource(null)}
+        resource={installTargetResource}
+        directories={directories}
+        defaultSelectedDirId={selectedWorkspaceId !== "all" ? selectedWorkspaceId : null}
+        onConfirm={handleConfirmInstallTarget}
       />
 
       <SearchModal

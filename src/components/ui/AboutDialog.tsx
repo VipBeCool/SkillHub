@@ -5,6 +5,7 @@ import { check, Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { invoke } from "@tauri-apps/api/core";
+import { Tooltip } from "./Tooltip";
 import logo from "../../assets/logo.png";
 
 interface AboutDialogProps {
@@ -245,13 +246,14 @@ export function AboutDialog({ isOpen, onClose, onOpenCommunity }: AboutDialogPro
                   {statusMessage || `下载更新 (v${update.version})`}
                 </button>
                 {showFallbackDownload && (
-                  <button
-                    onClick={() => openUrl("https://github.com/VipBeCool/SkillHub/releases/latest")}
-                    className="text-[11px] text-blue-500 hover:text-blue-600 underline underline-offset-2 transition-all cursor-pointer font-medium"
-                    title="若应用内下载受限，可前往网页手动下载最新安装包"
-                  >
-                    前往网页下载
-                  </button>
+                  <Tooltip content="若应用内下载受限，可前往网页手动下载最新安装包">
+                    <button
+                      onClick={() => openUrl("https://github.com/VipBeCool/SkillHub/releases/latest")}
+                      className="text-[11px] text-blue-500 hover:text-blue-600 underline underline-offset-2 transition-all cursor-pointer font-medium"
+                    >
+                      前往网页下载
+                    </button>
+                  </Tooltip>
                 )}
               </div>
             ) : (
@@ -270,13 +272,14 @@ export function AboutDialog({ isOpen, onClose, onOpenCommunity }: AboutDialogPro
                   {statusMessage || "检查更新"}
                 </button>
                 {showFallbackDownload && (
-                  <button
-                    onClick={() => openUrl("https://github.com/VipBeCool/SkillHub/releases/latest")}
-                    className="text-[11px] text-blue-500 hover:text-blue-600 underline underline-offset-2 transition-all cursor-pointer font-medium"
-                    title="国内直连受限时，可在网页手动下载最新安装包"
-                  >
-                    前往网页下载
-                  </button>
+                  <Tooltip content="国内直连受限时，可在网页手动下载最新安装包">
+                    <button
+                      onClick={() => openUrl("https://github.com/VipBeCool/SkillHub/releases/latest")}
+                      className="text-[11px] text-blue-500 hover:text-blue-600 underline underline-offset-2 transition-all cursor-pointer font-medium"
+                    >
+                      前往网页下载
+                    </button>
+                  </Tooltip>
                 )}
               </div>
             )}

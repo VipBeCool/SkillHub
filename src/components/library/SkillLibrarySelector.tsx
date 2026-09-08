@@ -326,13 +326,14 @@ export const SkillLibrarySelector = forwardRef<SkillLibrarySelectorRef, SkillLib
                 className="w-full bg-transparent border-none rounded-lg pl-8 pr-3 py-1.5 text-[13px] text-[var(--foreground)] outline-none focus:ring-0 transition-all placeholder:text-[var(--color-muted)]"
               />
             </div>
-            <button
-              onClick={() => setIsOpen(false)}
-              className="ml-1 mr-1 w-6 h-6 flex items-center justify-center rounded-md hover:bg-black/5 text-[var(--color-muted)] hover:text-[var(--foreground)] transition-colors shrink-0"
-              title="关闭"
-            >
-              <X className="w-4 h-4" />
-            </button>
+            <Tooltip content="关闭">
+              <button
+                onClick={() => setIsOpen(false)}
+                className="ml-1 mr-1 w-6 h-6 flex items-center justify-center rounded-md hover:bg-black/5 text-[var(--color-muted)] hover:text-[var(--foreground)] transition-colors shrink-0"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </Tooltip>
           </div>
 
           {/* Directory List */}

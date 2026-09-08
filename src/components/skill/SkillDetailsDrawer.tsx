@@ -283,14 +283,15 @@ export function SkillDetailsDrawer({ skill, isOpen, onClose, onGeneratePrompt }:
                     >
                       <span className="opacity-60 mr-0.5 select-none">#</span>
                       <span className="truncate max-w-[120px]">{tag}</span>
-                      <button 
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); removeTag(tag); }}
-                        className="w-0 opacity-0 group-hover/tag:w-3.5 group-hover/tag:opacity-100 group-hover/tag:ml-1 overflow-hidden inline-flex items-center justify-center text-[var(--color-primary)] hover:text-red-500 transition-all duration-150"
-                        title={`删除标签 #${tag}`}
-                      >
-                        <X className="w-3 h-3 shrink-0" />
-                      </button>
+                      <Tooltip content={`删除标签 #${tag}`}>
+                        <button 
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); removeTag(tag); }}
+                          className="w-0 opacity-0 group-hover/tag:w-3.5 group-hover/tag:opacity-100 group-hover/tag:ml-1 overflow-hidden inline-flex items-center justify-center text-[var(--color-primary)] hover:text-red-500 transition-all duration-150"
+                        >
+                          <X className="w-3 h-3 shrink-0" />
+                        </button>
+                      </Tooltip>
                     </span>
                   ))}
                   <input

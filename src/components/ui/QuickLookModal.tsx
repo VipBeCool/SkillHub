@@ -5,6 +5,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
 import { Skill, GroupedRepo, Prompt } from '../../types';
+import { Tooltip } from './Tooltip';
 
 interface SkillFile {
   name: string;
@@ -244,9 +245,11 @@ export function QuickLookModal({
                 <FolderGit2 className="w-8 h-8" />
               </div>
               <h3 className="text-lg font-semibold text-[var(--foreground)] mb-2">{repo.name}</h3>
-              <p className="text-[13px] text-[var(--color-muted)] mb-6 truncate w-full" title={repo.path}>
-                {repo.path}
-              </p>
+              <Tooltip content={repo.path}>
+                <p className="text-[13px] text-[var(--color-muted)] mb-6 truncate w-full cursor-default">
+                  {repo.path}
+                </p>
+              </Tooltip>
               
               <div className="grid grid-cols-2 gap-4 w-full">
                 <div className="bg-black/5 dark:bg-white/5 rounded-xl p-4 flex flex-col items-center">

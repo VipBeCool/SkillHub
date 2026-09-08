@@ -58,20 +58,24 @@ export const RepoCard: React.FC<RepoCardProps> = ({
           )}
         </div>
         <div className="min-w-0 flex-1">
-          <h3 className="font-semibold text-[13px] text-[var(--foreground)] truncate leading-tight">{repo.name}</h3>
-          <div className="flex items-center space-x-1.5 mt-0.5">
-            {repo.source_type === 'online' ? (
-              <span className="text-[10px] text-[var(--color-muted)]">线上技能</span>
-            ) : (
-              <span className="text-[10px] text-[var(--color-muted)]">{repo.skills.length} 个技能</span>
-            )}
-            <span className={`w-1 h-1 rounded-full ${
-              repo.source_type === 'online' ? 'bg-emerald-500' :
-              repo.source_type === 'github' ? 'bg-[#0066FF]' : 'bg-[#86868B]'
-            }`} />
+          <Tooltip content={repo.name}>
+            <h3 className="font-semibold text-[13px] text-[var(--foreground)] mask-fade-x leading-tight cursor-default">{repo.name}</h3>
+          </Tooltip>
+          <div className="flex items-center space-x-1.5 mt-0.5 min-w-0">
+            <span className="text-[10px] text-[var(--color-muted)] shrink-0">
+              {repo.source_type === 'online' ? '线上技能' : `${repo.skills.length} 个技能`}
+            </span>
             {repo.author && (
               <>
-                <span className="text-[10px] text-[var(--color-muted)] max-w-[60px] truncate">@{repo.author}</span>
+                <span className={`w-1 h-1 rounded-full shrink-0 ${
+                  repo.source_type === 'online' ? 'bg-emerald-500' :
+                  repo.source_type === 'github' ? 'bg-[#0066FF]' : 'bg-[#86868B]'
+                }`} />
+                <Tooltip content={`@${repo.author}`}>
+                  <span className="text-[10px] text-[var(--color-muted)] min-w-0 flex-1 mask-fade-x leading-none cursor-default">
+                    @{repo.author}
+                  </span>
+                </Tooltip>
               </>
             )}
           </div>

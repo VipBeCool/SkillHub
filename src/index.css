@@ -216,4 +216,20 @@ body > div[style*="overflow: hidden"][style*="position: fixed"] {
   scrollbar-width: none;
 }
 
+/* 现代平滑文本渐隐截断（替代生硬的省略号 ...） */
+.mask-fade-x {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: clip;
+  mask-image: linear-gradient(to right, #000 0%, #000 calc(100% - 18px), transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, #000 0%, #000 calc(100% - 18px), transparent 100%);
+}
+
+.mask-fade-y {
+  overflow: hidden;
+  mask-image: linear-gradient(to bottom, #000 0%, #000 calc(100% - 24px), transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 calc(100% - 24px), transparent 100%);
+}
+
+
 

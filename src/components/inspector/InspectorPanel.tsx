@@ -6,7 +6,7 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { 
   FolderGit2, HardDrive, Folder, Copy, Link as LinkIcon, Unlink, Globe,
   FileText, ChevronRight, Loader2, PanelRightClose, Plus,
-  Database, RefreshCw, Trash2, Download, FileArchive, Sparkles, X, Search
+  Database, RefreshCw, Trash2, Download, FileArchive, Sparkles, X, Search, ExternalLink
 } from 'lucide-react';
 import { Tooltip } from '../ui/Tooltip';
 import { DynamicIcon } from "../ui/DynamicIcon";
@@ -15,6 +15,9 @@ import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { showToast } from '../ui/Toast';
 import { formatTokens } from "../../utils";
 import { Skill, GroupedRepo, AgentConfig, SyncRecord, SourceDirectory } from '../../types';
+import type { ResourceItem } from '../../types/resource';
+import registryData from '../../data/resource-registry.json';
+import { findStoreResourceForRepo, findStoreResourceForSkill } from '../../utils/resourceMatch';
 
 interface InspectorPanelProps {
   // 选中状态
@@ -33,6 +36,7 @@ interface InspectorPanelProps {
   onUpdateRepos?: (e: React.MouseEvent, repos: GroupedRepo[]) => void;
   onDeleteRepos?: (e: React.MouseEvent, repos: GroupedRepo[]) => void;
   onGeneratePrompt: (skill: Skill) => void;
+  onViewInStore?: (resource: ResourceItem) => void;
   isOpen: boolean;
   onToggle: () => void;
 }
@@ -64,6 +68,7 @@ export function InspectorPanel({
   onUpdateRepos,
   onDeleteRepos,
   onGeneratePrompt,
+  onViewInStore,
   isOpen,
   onToggle,
 }: InspectorPanelProps) {
@@ -674,10 +679,24 @@ export function InspectorPanel({
                         }}
                         className="p-1 rounded hover:bg-black/5 text-[var(--color-muted)] hover:text-[#0066FF] transition-colors shrink-0"
                       >
-                        <Globe size={12} />
+                        <ExternalLink size={12} />
                       </button>
                     </Tooltip>
                   )}
+                  {(() => {
+                    const storeRes = findStoreResourceForRepo(selectedRepo, registryData.resources as ResourceItem[]);
+                    if (!storeRes) return null;
+                    return (
+                      <Tooltip content="在资源社区中查看">
+                        <button
+                          onClick={() => onViewInStore?.(storeRes)}
+                          className="p-1 rounded hover:bg-black/5 text-[var(--color-muted)] hover:text-[#0066FF] transition-colors shrink-0"
+                        >
+                          <Globe size={12} />
+                        </button>
+                      </Tooltip>
+                    );
+                  })()}
                 </div>
               )}
             </div>
@@ -980,6 +999,20 @@ export function InspectorPanel({
                     <Folder size={12} />
                   </button>
                 </Tooltip>
+                {(() => {
+                  const storeRes = findStoreResourceForSkill(selectedSkill, registryData.resources as ResourceItem[], allRepos);
+                  if (!storeRes) return null;
+                  return (
+                    <Tooltip content="在资源社区中查看">
+                      <button
+                        onClick={() => onViewInStore?.(storeRes)}
+                        className="p-1 rounded hover:bg-black/5 text-[var(--color-muted)] hover:text-[#0066FF] transition-colors shrink-0"
+                      >
+                        <Globe size={12} />
+                      </button>
+                    </Tooltip>
+                  );
+                })()}
               </div>
             </div>
             <Tooltip content={selectedSkill.local_path} side="bottom">
@@ -1131,38 +1164,40 @@ export function InspectorPanel({
                     >
                       <span className="opacity-60 mr-0.5 select-none">#</span>
                       <span className="truncate max-w-[120px]">{tag}</span>
-                      <button 
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); removeTag(tag, selectedSkill); }}
-                        className="w-0 opacity-0 group-hover/tag:w-3.5 group-hover/tag:opacity-100 group-hover/tag:ml-1 overflow-hidden inline-flex items-center justify-center text-[var(--color-primary)] hover:text-red-500 transition-all duration-150"
-                        title={`删除标签 #${tag}`}
-                      >
-                        <X className="w-3 h-3 shrink-0" />
-                      </button>
+                      <Tooltip content={`删除标签 #${tag}`}>
+                        <button 
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); removeTag(tag, selectedSkill); }}
+                          className="w-0 opacity-0 group-hover/tag:w-3.5 group-hover/tag:opacity-100 group-hover/tag:ml-1 overflow-hidden inline-flex items-center justify-center text-[var(--color-primary)] hover:text-red-500 transition-all duration-150"
+                        >
+                          <X className="w-3 h-3 shrink-0" />
+                        </button>
+                      </Tooltip>
                     </span>
                   ))}
 
                   {/* 紧随最后一个标签的添加按钮：极简 + 号图标按钮，极致省空间避免换行 */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsTagDropdownOpen(prev => {
-                        const next = !prev;
-                        if (next) {
-                          setTimeout(() => tagInputRef.current?.focus(), 50);
-                        }
-                        return next;
-                      });
-                    }}
-                    className={`h-6 w-6 inline-flex items-center justify-center rounded-md border border-dashed box-border shrink-0 transition-all ${
-                      isTagDropdownOpen 
-                        ? 'border-[var(--color-primary)] text-[var(--color-primary)] bg-[var(--color-primary)]/10 font-medium' 
-                        : 'border-[var(--color-border)] text-[var(--color-muted)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] hover:bg-[var(--color-primary)]/5'
-                    }`}
-                    title="添加标签"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                  </button>
+                  <Tooltip content="添加标签">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsTagDropdownOpen(prev => {
+                          const next = !prev;
+                          if (next) {
+                            setTimeout(() => tagInputRef.current?.focus(), 50);
+                          }
+                          return next;
+                        });
+                      }}
+                      className={`h-6 w-6 inline-flex items-center justify-center rounded-md border border-dashed box-border shrink-0 transition-all ${
+                        isTagDropdownOpen 
+                          ? 'border-[var(--color-primary)] text-[var(--color-primary)] bg-[var(--color-primary)]/10 font-medium' 
+                          : 'border-[var(--color-border)] text-[var(--color-muted)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] hover:bg-[var(--color-primary)]/5'
+                      }`}
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                    </button>
+                  </Tooltip>
                 </div>
               )}
               

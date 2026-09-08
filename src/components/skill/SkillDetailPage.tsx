@@ -473,22 +473,22 @@ export function SkillDetailPage({ skillId, onGeneratePrompt }: SkillDetailPagePr
                     ))}
                  </div>
               ) : (
-                 headings.map(h => (
-                    <div 
-                      key={h.id} 
-                      title={h.text}
-                      className={`h-[2px] rounded-full transition-all duration-200 ${
-                        h.level === 1 
-                          ? (activeId === h.id ? 'w-6' : 'w-5') 
-                          : h.level === 2 
-                          ? (activeId === h.id ? 'w-5' : 'w-4') 
-                          : h.level === 3 
-                          ? (activeId === h.id ? 'w-4' : 'w-3') 
-                          : (activeId === h.id ? 'w-3.5' : 'w-2.5')
-                      } ${activeId === h.id ? 'bg-[var(--color-primary)] shadow-[0_0_4px_rgba(2,74,216,0.35)]' : 'bg-gray-300 hover:bg-gray-400'}`}
-                    />
-                 ))
-              )}
+                  headings.map(h => (
+                    <Tooltip key={h.id} content={h.text} side="left">
+                      <div 
+                        className={`h-[2px] rounded-full transition-all duration-200 cursor-pointer ${
+                          h.level === 1 
+                            ? (activeId === h.id ? 'w-6' : 'w-5') 
+                            : h.level === 2 
+                            ? (activeId === h.id ? 'w-5' : 'w-4') 
+                            : h.level === 3 
+                            ? (activeId === h.id ? 'w-4' : 'w-3') 
+                            : (activeId === h.id ? 'w-3.5' : 'w-2.5')
+                        } ${activeId === h.id ? 'bg-[var(--color-primary)] shadow-[0_0_4px_rgba(2,74,216,0.35)]' : 'bg-gray-300 hover:bg-gray-400'}`}
+                      />
+                    </Tooltip>
+                  ))
+               )}
             </div>
           </div>
         </div>

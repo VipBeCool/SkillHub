@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
-import { Plus, Download, Star, LayoutGrid, Trash2, Trash, FolderPlus, MoreHorizontal, X, Folder, Edit2, FolderX, Tag, PanelRightClose, ChevronRight, Search, Loader2, Copy, RotateCcw, MessageSquareText } from "lucide-react";
+import { Plus, Download, Star, LayoutGrid, Trash2, Trash, FolderPlus, MoreHorizontal, X, Folder, Edit2, FolderX, Tag, PanelRightClose, ChevronRight, Search, Loader2, Copy, RotateCcw, MessageSquareText, Globe } from "lucide-react";
 import { Prompt, PromptGroup, PromptVersion } from "./types";
 import { PromptCard } from "./components/prompt/PromptCard";
 import { SelectionArea, SelectionEvent } from "@viselect/react";
+import { findStoreResourceForPrompt } from "./utils/resourceMatch";
+import registryData from "./data/resource-registry.json";
 
 import { CreateGroupDialog } from "./components/prompt/CreateGroupDialog";
 import { PromptExportDialog } from "./components/prompt/PromptExportDialog";
@@ -271,6 +273,7 @@ interface PromptModuleProps {
   onTitleChange: (title: string, icon: string) => void;
   onToggleInspector?: () => void;
   onOpenPromptDetail?: (title: string, promptId?: string, isEditing?: boolean, newTab?: boolean) => void;
+  onViewInStore?: (resourceId: string) => void;
 }
 
 interface PromptInspectorData {
@@ -278,7 +281,7 @@ interface PromptInspectorData {
   versions: PromptVersion[];
 }
 
-export function PromptModule({ filter, refreshKey, activePromptId, onGroupsChange, onTitleChange, onToggleInspector, onOpenPromptDetail }: PromptModuleProps) {
+export function PromptModule({ filter, refreshKey, activePromptId, onGroupsChange, onTitleChange, onToggleInspector, onOpenPromptDetail, onViewInStore }: PromptModuleProps) {
   const [prompts, setPrompts] = useState<Prompt[]>([]);
   const [groups, setGroups] = useState<PromptGroup[]>([]);
   const [search] = useState("");
@@ -1263,38 +1266,40 @@ export function PromptModule({ filter, refreshKey, activePromptId, onGroupsChang
                             >
                               <span className="opacity-60 mr-0.5 select-none">#</span>
                               <span className="truncate max-w-[120px]">{tag}</span>
-                              <button 
-                                type="button"
-                                onClick={(e) => { e.stopPropagation(); handleInspectorRemoveTag(p, tag); }}
-                                className="w-0 opacity-0 group-hover/tag:w-3.5 group-hover/tag:opacity-100 group-hover/tag:ml-1 overflow-hidden inline-flex items-center justify-center text-[var(--color-primary)] hover:text-red-500 transition-all duration-150"
-                                title={`删除标签 #${tag}`}
-                              >
-                                <X className="w-3 h-3 shrink-0" />
-                              </button>
+                              <Tooltip content={`删除标签 #${tag}`}>
+                                <button 
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); handleInspectorRemoveTag(p, tag); }}
+                                  className="w-0 opacity-0 group-hover/tag:w-3.5 group-hover/tag:opacity-100 group-hover/tag:ml-1 overflow-hidden inline-flex items-center justify-center text-[var(--color-primary)] hover:text-red-500 transition-all duration-150"
+                                >
+                                  <X className="w-3 h-3 shrink-0" />
+                                </button>
+                              </Tooltip>
                             </span>
                           ))}
 
                           {/* 紧随最后一个标签的添加按钮：极简 + 号图标按钮，极致省空间避免换行 */}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setIsInspectorTagDropdownOpen(prev => {
-                                const next = !prev;
-                                if (next) {
-                                  setTimeout(() => inspectorTagInputRef.current?.focus(), 50);
-                                }
-                                return next;
-                              });
-                            }}
-                            className={`h-6 w-6 inline-flex items-center justify-center rounded-md border border-dashed box-border shrink-0 transition-all ${
-                              isInspectorTagDropdownOpen 
-                                ? 'border-[var(--color-primary)] text-[var(--color-primary)] bg-[var(--color-primary)]/10 font-medium' 
-                                : 'border-[var(--color-border)] text-[var(--color-muted)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] hover:bg-[var(--color-primary)]/5'
-                            }`}
-                            title="添加标签"
-                          >
-                            <Plus className="w-3.5 h-3.5" />
-                          </button>
+                          <Tooltip content="添加标签">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setIsInspectorTagDropdownOpen(prev => {
+                                  const next = !prev;
+                                  if (next) {
+                                    setTimeout(() => inspectorTagInputRef.current?.focus(), 50);
+                                  }
+                                  return next;
+                                });
+                              }}
+                              className={`h-6 w-6 inline-flex items-center justify-center rounded-md border border-dashed box-border shrink-0 transition-all ${
+                                isInspectorTagDropdownOpen 
+                                  ? 'border-[var(--color-primary)] text-[var(--color-primary)] bg-[var(--color-primary)]/10 font-medium' 
+                                  : 'border-[var(--color-border)] text-[var(--color-muted)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] hover:bg-[var(--color-primary)]/5'
+                              }`}
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                            </button>
+                          </Tooltip>
                         </div>
                       )}
                       
@@ -1377,6 +1382,24 @@ export function PromptModule({ filter, refreshKey, activePromptId, onGroupsChang
                   </div>
 
                   <div className="space-y-2 text-[12px]">
+                    {(() => {
+                      const storeRes = findStoreResourceForPrompt(p, registryData.resources as any);
+                      if (!storeRes) return null;
+                      return (
+                        <div className="flex items-center justify-between">
+                          <span className="text-[var(--color-muted)]">来源</span>
+                          <button
+                            type="button"
+                            onClick={() => onViewInStore?.(storeRes.id)}
+                            className="inline-flex items-center gap-1 text-[12px] text-[var(--color-primary)] hover:underline font-medium cursor-pointer"
+                            title="在资源社区中查看此提示词"
+                          >
+                            <Globe size={12} />
+                            <span>在资源社区中查看</span>
+                          </button>
+                        </div>
+                      );
+                    })()}
                     <div className="flex items-center justify-between">
                       <span className="text-[var(--color-muted)]">分组</span>
                       <select 
@@ -1508,10 +1531,21 @@ export function PromptModule({ filter, refreshKey, activePromptId, onGroupsChang
                   hideContextMenu();
                 }
               }
-            ] : [
-              { id: 'open', label: '打开', icon: <ChevronRight size={14} />, onClick: () => { onOpenPromptDetail?.(contextPrompt.title || '无标题', contextPrompt.id, false); hideContextMenu(); } },
-              ...(onOpenPromptDetail ? [{ id: 'open_new_tab', label: '在新标签页中打开', icon: <Plus size={14} />, onClick: () => { onOpenPromptDetail(contextPrompt.title || '无标题提示词', contextPrompt.id, false, true); hideContextMenu(); } }] : []),
-              { id: 'edit', label: '编辑', icon: <Edit2 size={14} />, onClick: () => { onOpenPromptDetail?.(contextPrompt.title || '无标题', contextPrompt.id, true); hideContextMenu(); } },
+            ] : (() => {
+              const matchedStoreRes = contextPrompt ? findStoreResourceForPrompt(contextPrompt, registryData.resources as any) : undefined;
+              return [
+                { id: 'open', label: '打开', icon: <ChevronRight size={14} />, onClick: () => { onOpenPromptDetail?.(contextPrompt.title || '无标题', contextPrompt.id, false); hideContextMenu(); } },
+                ...(onOpenPromptDetail ? [{ id: 'open_new_tab', label: '在新标签页中打开', icon: <Plus size={14} />, onClick: () => { onOpenPromptDetail(contextPrompt.title || '无标题提示词', contextPrompt.id, false, true); hideContextMenu(); } }] : []),
+                ...(matchedStoreRes ? [{
+                  id: 'view_in_store',
+                  label: '在资源社区中查看',
+                  icon: <Globe size={14} />,
+                  onClick: () => {
+                    onViewInStore?.(matchedStoreRes.id);
+                    hideContextMenu();
+                  }
+                }] : []),
+                { id: 'edit', label: '编辑', icon: <Edit2 size={14} />, onClick: () => { onOpenPromptDetail?.(contextPrompt.title || '无标题', contextPrompt.id, true); hideContextMenu(); } },
               { id: 'copy', label: '复制内容', icon: <Copy size={14} />, onClick: async () => { 
                   await navigator.clipboard.writeText(contextPrompt.content); 
                   showToast("已复制", "success"); 
@@ -1550,7 +1584,8 @@ export function PromptModule({ filter, refreshKey, activePromptId, onGroupsChang
                   hideContextMenu();
                 }
               }
-            ]
+            ];
+          })()
           ) : (
             filter === "trash" ? [
               { id: 'empty_trash', label: '清空回收站', danger: true, icon: <Trash2 size={14} className="text-red-500" />, onClick: async () => {

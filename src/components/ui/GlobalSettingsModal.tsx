@@ -1,24 +1,32 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { save, open } from "@tauri-apps/plugin-dialog";
-import { X, Save, Upload, ShieldCheck, Database } from "lucide-react";
+import { X, Save, Upload, ShieldCheck, Database, Globe, FolderGit2 } from "lucide-react";
 import { AgentSettingsDialog } from "../agent/AgentSettingsDialog";
 import { showToast } from "./Toast";
+import type { SourceDirectory } from "../../types";
+import { getDefaultInstallDirId, setDefaultInstallDirId } from "../../utils/storeSettings";
 
 interface GlobalSettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  defaultTab?: "agent" | "backup";
+  defaultTab?: "agent" | "backup" | "store";
 }
 
 export function GlobalSettingsModal({ isOpen, onClose, defaultTab = "agent" }: GlobalSettingsModalProps) {
-  const [activeTab, setActiveTab] = useState<"agent" | "backup">(defaultTab);
+  const [activeTab, setActiveTab] = useState<"agent" | "backup" | "store">(defaultTab);
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [directories, setDirectories] = useState<SourceDirectory[]>([]);
+  const [defaultInstallDirId, setLocalDefaultInstallDirId] = useState<string>(() => getDefaultInstallDirId() || "");
 
   useEffect(() => {
     if (isOpen) {
       setActiveTab(defaultTab);
+      invoke<SourceDirectory[]>("get_source_directories").then(dirs => {
+        if (dirs) setDirectories(dirs);
+      }).catch(console.error);
+      setLocalDefaultInstallDirId(getDefaultInstallDirId() || "");
     }
   }, [isOpen, defaultTab]);
 
@@ -72,13 +80,13 @@ export function GlobalSettingsModal({ isOpen, onClose, defaultTab = "agent" }: G
       console.error("Import failed:", e);
       showToast(`导入失败: ${e}`, "error");
     } finally {
-      setIsImporting(false);
+      setIsExporting(false);
     }
   };
 
   // 侧边栏Tab按钮样式
   const tabBtnCls = (tab: string) =>
-    `w-full flex items-center px-3 py-2.5 rounded-lg text-[13px] font-medium transition-colors ${
+    `w-full flex items-center px-3 py-2.5 rounded-lg text-[13px] font-medium transition-colors cursor-pointer ${
       activeTab === tab
         ? "bg-black/5 dark:bg-white/10 text-[var(--foreground)] shadow-sm"
         : "text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 dark:hover:bg-white/5"
@@ -110,6 +118,13 @@ export function GlobalSettingsModal({ isOpen, onClose, defaultTab = "agent" }: G
               Agent 同步配置
             </button>
             <button
+              onClick={() => setActiveTab("store")}
+              className={tabBtnCls("store")}
+            >
+              <Globe className={`w-4 h-4 mr-3 ${activeTab === "store" ? "text-[var(--color-primary)]" : "opacity-70"}`} />
+              资源社区
+            </button>
+            <button
               onClick={() => setActiveTab("backup")}
               className={tabBtnCls("backup")}
             >
@@ -123,13 +138,62 @@ export function GlobalSettingsModal({ isOpen, onClose, defaultTab = "agent" }: G
         <div className="flex-1 flex flex-col relative bg-white dark:bg-[#1A1A1A]">
           <button
             onClick={onClose}
-            className="absolute top-4 right-4 p-2 rounded-lg text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] transition-colors z-10"
+            className="absolute top-4 right-4 p-2 rounded-lg text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] transition-colors z-10 cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
 
         {/* Content Scroll Area */}
         <div className="flex-1 overflow-y-auto">
+          {activeTab === "store" && (
+            <div className="p-8 max-w-3xl mx-auto h-full">
+              <div className="mb-6">
+                <h3 className="text-2xl font-bold text-[var(--foreground)]">资源社区配置</h3>
+                <p className="text-[var(--color-muted)] mt-1 text-sm">
+                  管理资源社区的安装偏好与默认目标技能库。
+                </p>
+              </div>
+
+              <div className="bg-white dark:bg-[#1A1A1A] border border-black/5 dark:border-white/5 rounded-xl overflow-hidden p-5 space-y-4">
+                <div className="flex items-start justify-between gap-6">
+                  <div className="flex-1">
+                    <h4 className="text-[14px] font-semibold text-[var(--foreground)]">默认安装技能库</h4>
+                    <p className="text-[13px] text-[var(--color-muted)] mt-1 leading-relaxed">
+                      从资源社区安装技能时优先存放的目标目录。若设置为「每次安装时询问」，系统将在每次安装技能时弹出选择窗口供您指定。
+                    </p>
+                  </div>
+                  <div className="shrink-0 w-60">
+                    <select
+                      value={defaultInstallDirId}
+                      onChange={(e) => {
+                        const newVal = e.target.value;
+                        setLocalDefaultInstallDirId(newVal);
+                        setDefaultInstallDirId(newVal);
+                        showToast(newVal ? "已更新默认安装技能库" : "已设为每次安装时询问", "success");
+                      }}
+                      className="w-full px-3 py-2 text-[13px] rounded-lg border border-black/10 bg-black/[0.02] text-[var(--foreground)] focus:outline-none focus:border-[var(--color-primary)] cursor-pointer"
+                    >
+                      <option value="">每次安装时询问</option>
+                      {directories.map(d => (
+                        <option key={d.id} value={d.id}>
+                          {d.label} {d.is_default ? '(主库)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {defaultInstallDirId && (
+                  <div className="mt-3 p-3 bg-black/[0.02] rounded-lg border border-black/5 text-[12px] text-[var(--color-muted)] flex items-center gap-2">
+                    <FolderGit2 className="w-4 h-4 shrink-0 text-[var(--color-primary)]" />
+                    <span className="truncate font-mono">
+                      目标路径: {directories.find(d => d.id === defaultInstallDirId)?.path || '未知路径'}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
           {activeTab === "agent" && (
             <div className="p-8 max-w-3xl mx-auto h-full">
               <div className="mb-6">

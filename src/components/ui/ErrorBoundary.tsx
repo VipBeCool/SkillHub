@@ -73,7 +73,6 @@ export class ErrorBoundary extends Component<Props, State> {
               <button
                 onClick={this.handleResetCache}
                 className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg border border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5 text-black/70 dark:text-white/70 font-medium text-[13px] transition-colors cursor-pointer"
-                title="清理本地标签和工作区缓存并重新加载"
               >
                 <Trash2 className="w-4 h-4" />
                 清理缓存并重试

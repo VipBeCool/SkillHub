@@ -807,14 +807,6 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                             {hoveredItem.repo.source_type === 'online' ? '线上技能' :
                              hoveredItem.repo.source_type === 'github' ? 'Github' : '本地'}
                           </span>
-                          <span className="text-[10px] text-gray-500 font-medium px-1.5 py-0.5 bg-gray-100 rounded">
-                            {hoveredItem.repo.skills.length} 技能
-                          </span>
-                          {hoveredItem.repo.category === '正式技能' ? (
-                            <span className="text-[10px] text-green-600 font-medium px-1.5 py-0.5 bg-green-50 rounded">正式技能</span>
-                          ) : (
-                            <span className="text-[10px] text-orange-600 font-medium px-1.5 py-0.5 bg-orange-50 rounded">其他</span>
-                          )}
                         </div>
                       </div>
                     </div>
