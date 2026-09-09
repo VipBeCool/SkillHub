@@ -212,6 +212,18 @@ export function ResourceHome({
     return () => clearInterval(timer);
   }, [featured.length]);
 
+  // 监听重置筛选事件，清空本地搜索词，还原纯净发现首页
+  useEffect(() => {
+    const handleReset = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (!detail || detail.module === 'resources') {
+        setSearchQuery('');
+      }
+    };
+    window.addEventListener('skillhub:reset-filters', handleReset);
+    return () => window.removeEventListener('skillhub:reset-filters', handleReset);
+  }, []);
+
   // 根据侧边栏分类和搜索过滤资源
   const displayResources = (() => {
     if (searchQuery.trim()) return searchResources(searchQuery);

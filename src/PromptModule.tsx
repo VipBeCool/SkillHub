@@ -311,6 +311,19 @@ export function PromptModule({ filter, refreshKey, activePromptId, onGroupsChang
     }
   }, [activePromptId, prompts]);
 
+  // 监听全局重置筛选事件，清空卡片选中状态
+  useEffect(() => {
+    const handleReset = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (!detail || detail.module === 'prompts') {
+        setSelectedIds(new Set());
+        setLastSelectedId(null);
+      }
+    };
+    window.addEventListener('skillhub:reset-filters', handleReset);
+    return () => window.removeEventListener('skillhub:reset-filters', handleReset);
+  }, []);
+
   // 弹窗状态
 
   

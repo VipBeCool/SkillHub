@@ -34,7 +34,7 @@ import { Skill, SourceDirectory, AgentConfig, SyncRecord, GroupedRepo, PromptGro
 import { PromptModule, PromptSidebarNav, PromptFilter } from "./PromptModule";
 import { PromptDetailPage } from "./components/prompt/PromptDetailPage";
 import { useTabs } from "./hooks/useTabs";
-import { TabType } from "./types/tabs";
+import { Tab, TabType, TabContext } from "./types/tabs";
 import { TabBar } from "./components/ui/TabBar";
 import { ResourceHome } from "./components/resource/ResourceHome";
 import { ResourceDetail } from "./components/resource/ResourceDetail";
@@ -78,26 +78,112 @@ function App() {
     currentTabRef.current = currentTab;
   }, [currentTab]);
 
+  // 严格的模块归属判定函数
+  const getTabModule = useCallback((tab: Tab | null | undefined): AppModule => {
+    if (!tab || !tab.type) return 'skills';
+    if (tab.type.startsWith('prompt')) return 'prompts';
+    if (tab.type.startsWith('resource')) return 'resources';
+    return 'skills';
+  }, []);
+
   const [activeModule, setActiveModuleState] = useState<AppModule>('skills');
-  const currentTabModule = (currentTab?.type?.startsWith('prompt') ? 'prompts' : (currentTab?.type?.startsWith('resource') ? 'resources' : 'skills')) as AppModule;
+  const currentTabModule = getTabModule(currentTab);
   
+  // 记录各模块最近一次激活的有效标签页 ID，以便切回时精准恢复上下文
+  const lastActiveTabByModule = useRef<Record<AppModule, string>>({
+    skills: '',
+    prompts: '',
+    resources: '',
+  });
+
   useEffect(() => {
-    if (currentTab?.type?.startsWith('prompt')) {
-      setActiveModuleState('prompts');
-    } else if (currentTab?.type?.startsWith('resource')) {
-      setActiveModuleState('resources');
-    } else if (currentTab?.type) {
-      setActiveModuleState('skills');
+    if (currentTab?.id && currentTab?.type) {
+      const mod = getTabModule(currentTab);
+      lastActiveTabByModule.current[mod] = currentTab.id;
+      setActiveModuleState(mod);
     }
-  }, [currentTab?.id, currentTab?.type]);
+  }, [currentTab?.id, currentTab?.type, getTabModule]);
   
   const isSidebarMatch = activeModule === currentTabModule;
   const activeTab = currentTab?.context?.filter || "all";
 
-
   const setActiveModule = (mod: AppModule) => {
     setActiveModuleState(mod);
   };
+
+  // 统一的模块切换逻辑（方案 1：单 Tab 原地无筛选导航，或 ⌘/中键新开无筛选标签页）
+  const handleSwitchModule = useCallback((mod: AppModule, e?: React.MouseEvent) => {
+    setActiveModuleState(mod);
+
+    // 针对三大模块定义纯净无筛选的初始目标
+    const cleanTargets: Record<AppModule, { type: TabType; title: string; context: TabContext; icon: string }> = {
+      skills: {
+        type: 'skill-home',
+        title: '技能库',
+        context: {
+          workspaceId: selectedWorkspaceId || undefined,
+          repoId: undefined,
+          skillId: undefined,
+          activeView: 'all',
+          selectedTag: 'all',
+          activeSourceTab: 'all',
+          filter: 'all',
+        },
+        icon: 'Puzzle',
+      },
+      prompts: {
+        type: 'prompt-home',
+        title: '提示词',
+        context: {
+          promptFilter: 'all',
+          promptId: undefined,
+          promptOpened: false,
+          isEditing: false,
+          repoId: undefined,
+          skillId: undefined,
+        },
+        icon: 'MessageSquareText',
+      },
+      resources: {
+        type: 'resource-home',
+        title: '发现',
+        context: {
+          resourceCategory: 'all',
+          categoryName: '发现',
+          resourceId: undefined,
+        },
+        icon: 'Store',
+      },
+    };
+
+    const target = cleanTargets[mod];
+
+    // 清理全局卡片多选态与检查器
+    setSelectedRepoIds(new Set());
+    setSelectedSkillIds(new Set());
+    setInspectorSelectedType(null);
+
+    // 广播全局重置事件通知内部可能存在的搜索框或选区清空
+    window.dispatchEvent(new CustomEvent('skillhub:reset-filters', { detail: { module: mod } }));
+
+    // 如果用户使用 ⌘/Ctrl+Click 或中键点击，则新开一个无筛选条件的纯净标签页
+    if (e && (e.button === 1 || e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      e.stopPropagation();
+      const newId = openTab(target.type, target.title, target.context, target.icon);
+      lastActiveTabByModule.current[mod] = newId;
+      return;
+    }
+
+    // 默认行为（方案 1）：在当前活跃标签页原地切换，TabBar 焦点绝对不跳，并彻底清空所有筛选条件
+    if (currentTab) {
+      navigateTo(target.type, target.title, target.context, target.icon);
+      lastActiveTabByModule.current[mod] = currentTab.id;
+    } else {
+      const newId = openTab(target.type, target.title, target.context, target.icon);
+      lastActiveTabByModule.current[mod] = newId;
+    }
+  }, [currentTab, navigateTo, openTab, selectedWorkspaceId]);
   
   const handleSidebarNav = (type: TabType, title: string, updates: Partial<import('./types/tabs').TabContext>, icon?: string, e?: React.MouseEvent) => {
     if (e && (e.button === 1 || e.metaKey || e.ctrlKey)) {
@@ -1658,11 +1744,9 @@ function App() {
             ]).map(tab => (
               <button
                 key={tab.id}
-                onClick={() => {
-                  setActiveModule(tab.id);
-                  if (tab.id === 'resources') {
-                    navigateTo('resource-home', '发现', {}, 'Store');
-                  }
+                onClick={(e) => handleSwitchModule(tab.id, e)}
+                onAuxClick={(e) => {
+                  if (e.button === 1) handleSwitchModule(tab.id, e);
                 }}
                 className={`flex items-center justify-center transition-colors duration-300 outline-none select-none rounded-md h-[32px] ${
                   activeModule === tab.id
@@ -1986,7 +2070,15 @@ function App() {
             canGoForward={canGoForward}
             onSwitchTab={switchTab}
             onCloseTab={closeTab}
-            onNewTab={() => openTab('skill-home', '技能库', { workspaceId: selectedWorkspaceId || undefined }, 'home')}
+            onNewTab={() => {
+              if (currentTabModule === 'prompts') {
+                openTab('prompt-home', '提示词', { promptFilter: 'all' }, 'MessageSquareText');
+              } else if (currentTabModule === 'resources') {
+                openTab('resource-home', '发现', { resourceCategory: 'all', categoryName: '发现' }, 'Store');
+              } else {
+                openTab('skill-home', '技能库', { workspaceId: selectedWorkspaceId || undefined, activeView: 'all', selectedTag: 'all', filter: 'all' }, 'Puzzle');
+              }
+            }}
             onGoBack={tabGoBack}
             onGoForward={tabGoForward}
             isSidebarOpen={isLeftSidebarOpen}
