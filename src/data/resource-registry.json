@@ -1,13 +1,67 @@
 {
-  "version": "1.0.0",
-  "updatedAt": "2026-09-08",
+  "version": "2.1.0",
+  "updatedAt": "2026-09-09T06:15:37.798Z",
   "categories": [
-    { "id": "core-enhancement", "name": "核心增强", "icon": "Lightbulb", "description": "提升 AI Agent 基础能力的核心技能" },
-    { "id": "tech-development", "name": "技术开发", "icon": "Code", "description": "编程、图表、框架等技术领域技能" },
-    { "id": "content-creation", "name": "内容创作", "icon": "PenTool", "description": "文案润色、PPT 制作等内容技能" },
-    { "id": "design", "name": "设计交互", "icon": "Palette", "description": "UI/UX 设计、审美评估、交互样式" },
-    { "id": "office-operations", "name": "产品运营", "icon": "Briefcase", "description": "产品经理、商业分析、运营决策" },
-    { "id": "prompt-library", "name": "提示词库", "icon": "MessageSquare", "description": "通用高质量提示词模板" }
+    {
+      "id": "core-enhancement",
+      "name": "核心增强",
+      "icon": "Lightbulb",
+      "description": "提升 AI Agent 底层认知、TDD与工作流的核心技能"
+    },
+    {
+      "id": "tech-development",
+      "name": "技术开发",
+      "icon": "Code",
+      "description": "编程框架、图表绘制与全栈工程技能"
+    },
+    {
+      "id": "testing-quality",
+      "name": "测试与质量",
+      "icon": "TestTube",
+      "description": "端到端自动化测试、单测规范与代码质量工程"
+    },
+    {
+      "id": "content-creation",
+      "name": "内容创作",
+      "icon": "PenTool",
+      "description": "高水准 PPT 排版、技术方案与文案去 AI 味润色"
+    },
+    {
+      "id": "design",
+      "name": "设计交互",
+      "icon": "Palette",
+      "description": "UI/UX 设计系统、现代动效美学与规范体系"
+    },
+    {
+      "id": "office-operations",
+      "name": "产品运营",
+      "icon": "Briefcase",
+      "description": "CPO 级产品管理实战、需求拆解与专业 Agent 角色"
+    },
+    {
+      "id": "security-devops",
+      "name": "安全与运维",
+      "icon": "Shield",
+      "description": "Trail of Bits 安全审计、Sentry 生产故障定位与排障"
+    },
+    {
+      "id": "data-analysis",
+      "name": "数据分析",
+      "icon": "BarChart",
+      "description": "SQL 深度调优、数据清洗与可视化分析"
+    },
+    {
+      "id": "writing-translation",
+      "name": "写作翻译",
+      "icon": "Languages",
+      "description": "专业级英中技术互译、出海文案与自然语言润色"
+    },
+    {
+      "id": "prompt-library",
+      "name": "提示词库",
+      "icon": "MessageSquare",
+      "description": "即插即用的中文高效系统提示词与开发指令"
+    }
   ],
   "resources": [
     {
@@ -15,238 +69,54 @@
       "name": "superpowers",
       "displayName": "Superpowers 超能力技能包",
       "type": "skill",
-      "description": "Jesse Vincent 开发的 Agent 能力增强套件，包含计划制定、TDD 测试驱动开发、系统化调试与协作工作流",
+      "description": "Jesse Vincent 开发的著名 Agent 能力增强套件，包含计划制定、TDD 测试驱动开发、系统化调试与协作工作流",
       "category": "core-enhancement",
-      "tags": ["Agent增强", "TDD", "调试", "工作流"],
+      "tags": [
+        "Agent增强",
+        "TDD",
+        "调试",
+        "工作流"
+      ],
       "author": "obra",
       "icon": "Zap",
       "difficulty": "intermediate",
-      "compatibleWith": ["gemini", "claude", "cursor"],
+      "compatibleWith": [
+        "gemini",
+        "claude",
+        "cursor"
+      ],
       "repoUrl": "https://github.com/obra/superpowers",
-      "previewContent": "# Superpowers\n\n核心 Agent 技能包，提供严谨的系统化开发思维框架与测试流程。",
-      "stars": 282962,
+      "previewContent": "# Superpowers\n\nSuperpowers is a complete software development methodology for your coding agents, built on top of a set of composable skills and some initial instructions that make sure your agent uses them.\n\n## Table of Contents\n\n- [How it works](#how-it-works)\n- [Commercial Services](#commercial-services)\n- [Getting Started](#installation)\n  - [Claude Code](#claude-code)\n  - [Antigravity](#antigravity)\n  - [Codex App](#codex-app)\n  - [Codex CLI](#codex-cli)\n  - [Cursor](#cursor)\n  - [Devin CLI](#devin-cli)\n  - [Factory Droid](#factory-droid)\n  - [Gemini CLI](#gemini-cli)\n  - [GitHub Copilot CLI](#github-copilot-cli)\n  - [Grok Build CLI](#grok-build-cli)\n  - [Kimi Code](#kimi-code)\n  - [OpenCode](#opencode)\n  - [Pi](#pi)\n  - [Hermes Agent](#hermes-agent)\n- [The Basic Workflow](#the-basic-workflow)\n- [Community](#community)\n- [What's Inside](#whats-inside)\n- [Philosophy](#philosophy)\n- [Contributing](#contributing)\n- [Updating](#updating)\n- [License](#license)\n- [Visual companion telemetry](#visual-companion-telemetry)\n\n## How it works\n\nIt starts from the moment you fire up your coding agent. As soon as it sees that you're building something, it *doesn't* just jump into trying to write code. Instead, it steps back and asks you what you're really trying to do. \n\nOnce it's teased a spec out of the conversation, it shows it to you in chunks short enough to actually read and digest. \n\nAfter you've signed off on the design, your agent puts together an implementation plan that's cl",
+      "stars": 283500,
+      "downloadCount": 89000,
       "updatedAt": "2026-08-20"
     },
     {
-      "id": "skill-guizang-ppt",
-      "name": "guizang-ppt-skill",
-      "displayName": "归藏 PPT 智能排版",
-      "type": "skill",
-      "description": "归藏出品的高品质 AI 演示文稿生成技能，掌握专业幻灯片结构规划、排版规范与视觉层次",
-      "category": "content-creation",
-      "tags": ["PPT", "演示文稿", "设计", "排版"],
-      "author": "op7418",
-      "icon": "FileText",
-      "difficulty": "beginner",
-      "compatibleWith": ["gemini", "claude", "cursor"],
-      "repoUrl": "https://github.com/op7418/guizang-ppt-skill",
-      "previewContent": "# 归藏 PPT Skill\n\n让 AI 生成高水准商业级 PPT 演示文稿的系统性指导原则。",
-      "stars": 25846,
-      "updatedAt": "2026-09-07"
-    },
-    {
-      "id": "skill-ui-ux-pro-max",
-      "name": "ui-ux-pro-max-skill",
-      "displayName": "UI/UX Pro Max 设计包",
-      "type": "skill",
-      "description": "专业的全栈 UI/UX 设计能力增强包，涵盖配色系统、排版层级、组件库构建与交互无障碍设计",
-      "category": "design",
-      "tags": ["UI/UX", "设计系统", "前端", "微交互"],
-      "author": "nextlevelbuilder",
-      "icon": "Palette",
-      "difficulty": "intermediate",
-      "compatibleWith": ["gemini", "claude", "cursor"],
-      "repoUrl": "https://github.com/nextlevelbuilder/ui-ux-pro-max-skill",
-      "previewContent": "# UI/UX Pro Max\n\n端到端现代界面设计指引，产出符合 Apple 等高端水准的视觉与代码。",
-      "stars": 125914,
-      "updatedAt": "2026-09-06"
-    },
-    {
-      "id": "skill-drawio",
-      "name": "drawio-skill",
-      "displayName": "Draw.io 架构流程图",
-      "type": "skill",
-      "description": "指导 AI 生成严谨美观的 Draw.io XML 图表，涵盖系统架构图、业务流程图、UML 图和网络拓扑",
-      "category": "tech-development",
-      "tags": ["Draw.io", "架构图", "流程图", "系统设计"],
-      "author": "Agents365-ai",
-      "icon": "Workflow",
-      "difficulty": "intermediate",
-      "compatibleWith": ["gemini", "claude", "cursor"],
-      "repoUrl": "https://github.com/Agents365-ai/drawio-skill",
-      "previewContent": "# Draw.io Skill\n\n直接生成可被 Draw.io 完美解析和编辑的专业架构拓扑图。",
-      "stars": 9131,
-      "updatedAt": "2026-09-03"
-    },
-    {
-      "id": "skill-echart",
-      "name": "echart-skill",
-      "displayName": "ECharts 数据可视化",
-      "type": "skill",
-      "description": "基于 Apache ECharts 的交互式数据可视化专家，支持折线柱状、饼图、仪表盘、关系图等数十种图表",
-      "category": "tech-development",
-      "tags": ["ECharts", "数据可视化", "图表", "前端"],
-      "author": "lgwanai",
-      "icon": "BarChart3",
-      "difficulty": "intermediate",
-      "compatibleWith": ["gemini", "claude", "cursor"],
-      "repoUrl": "https://github.com/lgwanai/echart-skill",
-      "previewContent": "# ECharts Skill\n\n开箱即用、样式自适应的专业级商业数据报表生成。",
-      "stars": 43,
-      "updatedAt": "2026-08-30"
-    },
-    {
-      "id": "skill-shuorenhua",
-      "name": "shuorenhua",
-      "displayName": "说人话文案润色",
-      "type": "skill",
-      "description": "彻底消除 AI 生成文本中的翻译腔、公文体与空洞套话，转化为接地气、有体温、清晰生动的自然中文",
-      "category": "content-creation",
-      "tags": ["文案", "润色", "去AI味", "自媒体"],
-      "author": "MrGeDiao",
-      "icon": "PenTool",
-      "difficulty": "beginner",
-      "compatibleWith": ["gemini", "claude", "cursor"],
-      "repoUrl": "https://github.com/MrGeDiao/shuorenhua",
-      "previewContent": "# 说人话 Skill\n\n文案去爹味、去AI味、去黑话，用最通俗有力的语言直击人心。",
-      "stars": 1472,
-      "updatedAt": "2026-09-03"
-    },
-    {
-      "id": "skill-ppt-master",
-      "name": "ppt-master",
-      "displayName": "PPT Master 幻灯片大师",
-      "type": "skill",
-      "description": "一站式 PPTX 生成与排版方案，支持基于结构化大纲自动输出可编辑演示文稿，视觉与内容兼备",
-      "category": "content-creation",
-      "tags": ["PPT", "办公", "幻灯片", "自动化"],
-      "author": "hugohe3",
-      "icon": "FileText",
-      "difficulty": "intermediate",
-      "compatibleWith": ["gemini", "claude", "cursor"],
-      "repoUrl": "https://github.com/hugohe3/ppt-master",
-      "previewContent": "# PPT Master\n\n从主题构思、故事大纲到视觉母版的全流程 PPT 生成大师。",
-      "stars": 52919,
-      "updatedAt": "2026-08-24"
-    },
-    {
-      "id": "skill-html-ppt",
-      "name": "html-ppt-skill",
-      "displayName": "HTML 现代网页幻灯片",
-      "type": "skill",
-      "description": "基于现代 HTML5 + CSS3 + Reveal.js 的动态网页幻灯片制作技能，支持平滑转场与自适应缩放",
-      "category": "tech-development",
-      "tags": ["HTML", "PPT", "Reveal.js", "网页展示"],
-      "author": "lewislulu",
-      "icon": "Code",
-      "difficulty": "intermediate",
-      "compatibleWith": ["gemini", "claude", "cursor"],
-      "repoUrl": "https://github.com/lewislulu/html-ppt-skill",
-      "previewContent": "# HTML PPT Skill\n\n以轻量纯 Web 格式直接运行的炫酷交互式幻灯片。",
-      "stars": 8259,
-      "updatedAt": "2026-06-19"
-    },
-    {
-      "id": "skill-frontend-slides",
-      "name": "frontend-slides",
-      "displayName": "前端演讲幻灯片框架",
-      "type": "skill",
-      "description": "专门为前端开发者打造的技术分享幻灯片技能，内置代码高亮、交互 Demo 嵌入与极简科技感主题",
-      "category": "tech-development",
-      "tags": ["前端", "幻灯片", "技术分享", "代码演示"],
-      "author": "zarazhangrui",
-      "icon": "Layers",
-      "difficulty": "intermediate",
-      "compatibleWith": ["gemini", "claude", "cursor"],
-      "repoUrl": "https://github.com/zarazhangrui/frontend-slides",
-      "previewContent": "# Frontend Slides\n\n技术分享者的神级利器，优雅展示代码与架构逻辑。",
-      "stars": 28907,
-      "updatedAt": "2026-09-03"
-    },
-    {
-      "id": "skill-awesome-design-md",
-      "name": "awesome-design-md",
-      "displayName": "Awesome Design MD 规范",
-      "type": "skill",
-      "description": "前沿设计美学与前端规范合集（61 个子规则），包含 Tailwind 最佳实践、暗黑模式、动效与布局指南",
-      "category": "design",
-      "tags": ["设计规范", "Tailwind", "CSS", "UI"],
-      "author": "VoltAgent",
-      "icon": "Palette",
-      "difficulty": "intermediate",
-      "compatibleWith": ["gemini", "claude", "cursor"],
-      "repoUrl": "https://github.com/VoltAgent/awesome-design-md",
-      "previewContent": "# Awesome Design MD\n\n涵盖几十种现代 Web 设计风格与规范的深度知识库。",
-      "stars": 114717,
-      "updatedAt": "2026-07-31"
-    },
-    {
-      "id": "skill-pm-skills",
-      "name": "pm-skills",
-      "displayName": "PM 产品经理方法论",
-      "type": "skill",
-      "description": "产品经理实战方法论技能包（内含 68 个实战技能），覆盖 PRD 编写、竞品拆解、商业模式画布与需求优先级排期",
-      "category": "office-operations",
-      "tags": ["产品经理", "PRD", "需求分析", "商业"],
-      "author": "phuryn",
-      "icon": "Briefcase",
-      "difficulty": "intermediate",
-      "compatibleWith": ["gemini", "claude", "cursor"],
-      "repoUrl": "https://github.com/phuryn/pm-skills",
-      "previewContent": "# PM Skills\n\n产品新人到资深产品专家的系统化思考框架与模板集合。",
-      "stars": 26102,
-      "updatedAt": "2026-08-25"
-    },
-    {
-      "id": "skill-agency-agents-zh",
-      "name": "agency-agents-zh",
-      "displayName": "中文 Agent 专业角色包",
-      "type": "skill",
-      "description": "超大规模中文 AI Agent 角色库（267 个即插即用 AI 专家角色），覆盖架构师、数据分析师、法务顾问、文案专家等深度角色",
-      "category": "core-enhancement",
-      "tags": ["中文Agent", "专业角色", "多智能体", "Prompt"],
-      "author": "jnMetaCode",
-      "icon": "Users",
-      "difficulty": "advanced",
-      "compatibleWith": ["gemini", "claude", "cursor"],
-      "repoUrl": "https://github.com/jnMetaCode/agency-agents-zh",
-      "previewContent": "# Agency Agents ZH\n\n一键将 AI 转化为各个垂类领域的资深行业专家团队。",
-      "stars": 20390,
-      "updatedAt": "2026-09-07"
-    },
-    {
-      "id": "skill-taste-skill",
-      "name": "taste-skill",
-      "displayName": "Taste 设计审美评估",
-      "type": "skill",
-      "description": "教导 AI 具备高水准的设计审美标准，针对排版、留白、层次对比、微圆角及视觉噪音给出建设性改进意见",
-      "category": "design",
-      "tags": ["审美", "设计评估", "UI审查", "留白"],
-      "author": "Leonxlnx",
-      "icon": "Sparkles",
-      "difficulty": "intermediate",
-      "compatibleWith": ["gemini", "claude", "cursor"],
-      "repoUrl": "https://github.com/Leonxlnx/taste-skill",
-      "previewContent": "# Taste Skill\n\n告别平庸呆板界面的秘密武器，让每个组件充满呼吸感与质感。",
-      "stars": 85250,
-      "updatedAt": "2026-09-01"
-    },
-    {
-      "id": "skill-emil-skills",
+      "id": "skill-anthropics-skills",
       "name": "skills",
-      "displayName": "Emil 动画与微交互",
+      "displayName": "Anthropic 官方 Agent 技能库",
       "type": "skill",
-      "description": "著名交互设计师 Emil Kowalski 的核心技能库，指导 AI 编写极具灵动性的 Framer Motion 动效与交互组件",
-      "category": "design",
-      "tags": ["动画", "交互", "Framer Motion", "前端"],
-      "author": "emilkowalski",
-      "icon": "Sparkles",
+      "description": "Anthropic 官方维护的标准 Agent Skills 仓库，为 Claude 等智能体提供权威标准的技能范式与系统能力指令",
+      "category": "core-enhancement",
+      "tags": [
+        "Anthropic",
+        "Claude",
+        "官方技能",
+        "Agent规范"
+      ],
+      "author": "anthropics",
+      "icon": "Zap",
       "difficulty": "intermediate",
-      "compatibleWith": ["gemini", "claude", "cursor"],
-      "repoUrl": "https://github.com/emilkowalski/skills",
-      "previewContent": "# Emil Skills\n\n打造苹果般丝滑微动画与弹簧物理曲线的前端交互利器。",
-      "stars": 36120,
-      "updatedAt": "2026-08-24"
+      "compatibleWith": [
+        "claude",
+        "gemini",
+        "cursor"
+      ],
+      "repoUrl": "https://github.com/anthropics/skills",
+      "previewContent": "> **Note:** This repository contains Anthropic's implementation of skills for Claude. For information about the Agent Skills standard, see [agentskills.io](http://agentskills.io).\n\n[![skills.sh](https://skills.sh/b/anthropics/skills)](https://skills.sh/anthropics/skills)\n\n# Skills\nSkills are folders of instructions, scripts, and resources that Claude loads dynamically to improve performance on specialized tasks. Skills teach Claude how to complete specific tasks in a repeatable way, whether that's creating documents with your company's brand guidelines, analyzing data using your organization's specific workflows, or automating personal tasks.\n\nFor more information, check out:\n- [What are skills?](https://support.claude.com/en/articles/12512176-what-are-skills)\n- [Using skills in Claude](https://support.claude.com/en/articles/12512180-using-skills-in-claude)\n- [How to create custom skills](https://support.claude.com/en/articles/12512198-creating-custom-skills)\n- [Equipping agents for the real world with Agent Skills](https://anthropic.com/engineering/equipping-agents-for-the-real-world-with-agent-skills)\n\n# About This Repository\n\nThis repository contains skills that demonstrate what's possible with Claude's skills system. These skills range from creative applications (art, music, design) to technical tasks (testing web apps, MCP server generation) to enterprise workflows (communications, branding, etc.).\n\nEach skill is self-contained in its own folder with a `SKILL.md` file co",
+      "stars": 175300,
+      "downloadCount": 65000,
+      "updatedAt": "2026-09-08"
     },
     {
       "id": "skill-awesome-cursorrules",
@@ -255,14 +125,24 @@
       "type": "skill",
       "description": "全球最全面的 Cursor Rules 合集（40K+ Stars），包含数百种流行技术栈的 .mdc 规则文件与配置模板",
       "category": "core-enhancement",
-      "tags": ["Cursor", "Rules", "配置规范", "工程化"],
+      "tags": [
+        "Cursor",
+        "Rules",
+        "配置规范",
+        "工程化"
+      ],
       "author": "PatrickJS",
       "icon": "BookMarked",
       "difficulty": "beginner",
-      "compatibleWith": ["cursor", "claude", "gemini"],
+      "compatibleWith": [
+        "cursor",
+        "claude",
+        "gemini"
+      ],
       "repoUrl": "https://github.com/PatrickJS/awesome-cursorrules",
-      "previewContent": "# Awesome CursorRules\n\n覆盖 React、Vue、Python、Go 等主流语言的最佳 Agent 约束模板。",
-      "stars": 40738,
+      "previewContent": "# Awesome Cursor Rules [![Awesome](https://awesome.re/badge-flat.svg)](https://awesome.re)\n\n<p align=\"center\">\n  <a href=\"https://coderabbit.ai/?utm_source=oss&utm_medium=sponsorship&utm_campaign=awesome-cursorrules\" target=\"_blank\">\n    <picture>\n      <source media=\"(prefers-color-scheme: dark)\" srcset=\"./LOCKUP_VERTICAL_25D_DARK.png\">\n      <img alt=\"Awesome Cursor Logo\" src=\"./LOCKUP_VERTICAL_25D_LIGHT.png\" width=\"500\">\n    </picture>\n  </a>\n</p>\n\nCursor Project Rules enhance Cursor AI editor behavior with project-specific guidance and reusable coding standards.\n\n[Cursor AI](https://cursor.sh/) is an AI-powered code editor. Cursor Project Rules are Markdown-based `.mdc` files that live in `.cursor/rules/` and tell Cursor how to behave for specific projects, file types, frameworks, and workflows.\n\n<h2>Sponsorships</h2>\n<p align=\"center\">\n    <h3><a href=\"https://coderabbit.ai/?utm_source=oss&utm_medium=sponsorship&utm_campaign=awesome-cursorrules\">coderabbit.ai - Cut Code Review Time & Bugs in Half. Instantly.</h3>\n\t  <a href=\"https://coderabbit.ai/?utm_source=oss&utm_medium=sponsorship&utm_campaign=awesome-cursorrules\">\n\t\t  <img alt=\"CodeRabbit.ai Sponsorship Logo\" src=\"./cr_logo.png\" width=350>\n\t  </a>\n\t<h3><a href=\"https://getunblocked.com/unblocked-mcp/?utm_source=oss&utm_medium=sponsorship&utm_campaign=awesome-cursorrules\">Unblocked MCP- Supercharge Cursor with your team’s knowledge</h3> \n\t  <a href=\"https://getunblocked.com/unblocked-mcp/?utm_source=oss&utm_medium=sp",
+      "stars": 40750,
+      "downloadCount": 52000,
       "updatedAt": "2026-08-01"
     },
     {
@@ -272,49 +152,728 @@
       "type": "skill",
       "description": "Cursor Agent 可复用技能集合，涵盖自动化 PR 审查、性能分析、前端回归测试等高阶工程流程",
       "category": "core-enhancement",
-      "tags": ["Cursor", "工程工作流", "质量保证"],
+      "tags": [
+        "Cursor",
+        "工程工作流",
+        "质量保证"
+      ],
       "author": "spencerpauly",
       "icon": "Zap",
       "difficulty": "intermediate",
-      "compatibleWith": ["cursor", "claude"],
+      "compatibleWith": [
+        "cursor",
+        "claude"
+      ],
       "repoUrl": "https://github.com/spencerpauly/awesome-cursor-skills",
-      "previewContent": "# Awesome Cursor Skills\n\n将资深工程师的开发习惯封装为可被 Agent 随调随用的技能组件。",
-      "stars": 764,
+      "previewContent": "# Awesome Cursor Skills [![Awesome](https://awesome.re/badge.svg)](https://awesome.re)\n\n> A curated list of awesome [skills](https://docs.cursor.com/agent/skills) for [Cursor](https://cursor.com), the AI code editor.\n\nSkills are reusable `SKILL.md` instruction files that teach the AI agent how to perform specific tasks — from setting up analytics to scaffolding entire projects. In cursor, they live in `.cursor/skills/` (personal) or project directories and are automatically discovered by the agent.\n\n## Contents\n\n- [Skills](#skills)\n- [Plugins](#plugins)\n- [Cursor Resources](#cursor-resources)\n- [Contributing](#contributing)\n\n---\n\n## Skills\n\nReady-to-use `SKILL.md` files you can copy into your `.cursor/skills/` directory. Each one teaches the agent a specific engineering workflow.\n\n### Cursor-Native\n\nSkills that harness Cursor's unique agent capabilities — things only an AI inside Cursor can do.\n\n- [`suggesting-cursor-rules`](resources/suggesting-cursor-rules/SKILL.md) - If you keep correcting the agent on the same convention, it suggests a `.cursor/rules/` file to encode it permanently.\n- [`suggesting-cursor-hooks`](resources/suggesting-cursor-hooks/SKILL.md) - If you keep asking the agent to run the same check (lint, types, tests), it suggests a `.cursor/hooks.json` hook to automate it.\n- [`switching-projects`](resources/switching-projects/SKILL.md) - Switch the active workspace to a different project using the `cursor-app-control` MCP, without opening a new window.\n- [`savi",
+      "stars": 766,
+      "downloadCount": 8900,
       "updatedAt": "2026-07-20"
     },
     {
       "id": "skill-claude-code-toolkit",
       "name": "claude-code-toolkit",
-      "displayName": "Claude Code 完整工具箱",
+      "displayName": "Claude Code 生产力工具箱",
       "type": "skill",
-      "description": "专为 Anthropic Claude Code 打造的生产力工具箱，包含代码审计、重构检查、Git 工作流与安全扫描",
+      "description": "专为 Anthropic Claude Code 打造的开源生产力工具箱，包含代码审计、重构检查、Git 工作流与安全扫描",
       "category": "core-enhancement",
-      "tags": ["Claude", "代码审查", "安全", "工具箱"],
+      "tags": [
+        "Claude",
+        "代码审查",
+        "安全",
+        "工具箱"
+      ],
       "author": "rohitg00",
       "icon": "Wrench",
       "difficulty": "intermediate",
-      "compatibleWith": ["claude"],
+      "compatibleWith": [
+        "claude"
+      ],
       "repoUrl": "https://github.com/rohitg00/awesome-claude-code-toolkit",
-      "previewContent": "# Awesome Claude Code Toolkit\n\n全面释放 Claude 3.7 / 3.5 编码能力的实战套件。",
-      "stars": 2597,
+      "previewContent": "# Claude Code Toolkit\n\n**The most comprehensive toolkit for Claude Code -- 135 agents, 35 curated skills (+400,000 via [SkillKit](https://agenstskills.com)), 42 commands, 176+ plugins, 20 hooks, 15 rules, 7 templates, 15 MCP configs, 26 companion apps, 53 ecosystem entries, and more.**\n\n<p align=\"center\">\n  <a href=\"https://trendshift.io/repositories/21839\" target=\"_blank\"><img src=\"https://trendshift.io/api/badge/repositories/21839\" alt=\"rohitg00%2Fawesome-claude-code-toolkit | Trendshift\" style=\"width: 250px; height: 55px;\" width=\"250\" height=\"55\"/></a>\n</p>\n  \n[![Awesome](https://cdn.rawgit.com/sindresorhus/awesome/d7305f38d29fed78fa85652e3a63e154dd8e8829/media/badge.svg)](https://github.com/sindresorhus/awesome)\n[![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)\n[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)\n[![Last Updated](https://img.shields.io/badge/Last%20Updated-Mar%202026-orange.svg)](#)\n[![Files](https://img.shields.io/badge/Files-850+-blueviolet.svg)](#project-structure)\n\n<a href=\"https://star-history.com/#rohitg00/awesome-claude-code-toolkit&Date\">\n  <picture>\n    <source media=\"(prefers-color-scheme: dark)\" srcset=\"https://api.star-history.com/svg?repos=rohitg00/awesome-claude-code-toolkit&type=Date&theme=dark\" />\n    <source media=\"(prefers-color-scheme: light)\" srcset=\"https://api.star-history.com/svg?repos=rohitg00/awesome-claude-code-toolkit&type=Date\" />\n    <img alt=\"S",
+      "stars": 2600,
+      "downloadCount": 14200,
       "updatedAt": "2026-08-10"
     },
     {
-      "id": "skill-anthropics-skills",
-      "name": "skills",
-      "displayName": "Anthropic 官方 Agent 技能库",
+      "id": "skill-awesome-agent-skills",
+      "name": "awesome-agent-skills",
+      "displayName": "Awesome Agent Skills 权威库",
       "type": "skill",
-      "description": "Anthropic 官方维护的公开 Agent Skills 仓库，为 Claude 等智能体提供权威标准的技能范式与系统指令",
+      "description": "VoltAgent 出品的大型 Agent 技能汇集库，兼容 Claude Code, Cursor, Codex, Gemini CLI 等全系智能体",
       "category": "core-enhancement",
-      "tags": ["Anthropic", "Claude", "官方技能", "Agent规范"],
-      "author": "anthropics",
+      "tags": [
+        "Agent技能",
+        "官方技能",
+        "多端兼容"
+      ],
+      "author": "VoltAgent",
+      "icon": "Library",
+      "difficulty": "beginner",
+      "compatibleWith": [
+        "claude",
+        "cursor",
+        "gemini"
+      ],
+      "repoUrl": "https://github.com/VoltAgent/awesome-agent-skills",
+      "previewContent": "<a href=\"https://github.com/VoltAgent/voltagent\">\n     <img width=\"1500\" alt=\"claude-skills\" src=\"https://github.com/user-attachments/assets/a890e563-e999-4b1f-8ce1-20399b0574f8\" />\n</a>\n\n\n<br/>\n<br/>\n\n<div align=\"center\">\n    <strong>A collection of official Agent Skills from leading development teams and the community.\n    <br />\n    Hand-picked, not AI-slop generated.\n    </strong>\n    <br />\n    <br />\n\n</div>\n\n<div align=\"center\">\n\n[![Awesome](https://awesome.re/badge.svg)](https://awesome.re)\n![Skills Count](https://img.shields.io/badge/Skills-1497+-blue?style=flat-square)\n![Last Update](https://img.shields.io/github/last-commit/VoltAgent/awesome-agent-skills?label=Last%20update&style=flat-square)\n[![Discord](https://img.shields.io/discord/1361559153780195478.svg?label=&logo=discord&logoColor=ffffff&color=7389D8&labelColor=6A7EC2)](https://s.voltagent.dev/discord)\n\n\n</div>\n\n</div>\n\n# Awesome Agent Skills\n\nUnlike many bulk-generated skill repositories, this collection focuses on real-world Agent Skills created and used by actual engineering teams, not mass AI‑generated stuff.\n\n\nCompatible with Claude Code, Codex, Antigravity, Gemini CLI, Cursor, GitHub Copilot, OpenCode, Windsurf, and more. See the table below for paths and documentation.\n\nThe most contributed Agent Skills repository, built and maintained together with the community.\n\n\n## 💛 Sponsors\n\n|  |  |\n| :-: | :-- |\n| <a href=\"https://www.testmuai.com\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=",
+      "stars": 33900,
+      "downloadCount": 88000,
+      "updatedAt": "2026-09-08"
+    },
+    {
+      "id": "skill-claude-skills-multi",
+      "name": "claude-skills",
+      "displayName": "Claude 综合技能合集库",
+      "type": "skill",
+      "description": "包含工程、营销、研究与数据科学的多领域 Claude 深度自定义技能与插件库（380+ 技能定义）",
+      "category": "core-enhancement",
+      "tags": [
+        "Claude技能",
+        "多领域",
+        "工作流"
+      ],
+      "author": "alirezarezvani",
       "icon": "Zap",
       "difficulty": "intermediate",
-      "compatibleWith": ["claude", "gemini", "cursor"],
+      "compatibleWith": [
+        "claude",
+        "cursor"
+      ],
+      "repoUrl": "https://github.com/alirezarezvani/claude-skills",
+      "previewContent": "# Claude Code Skills & Plugins — Agent Skills for Every Coding Tool\n\n**388 production-ready Claude Code skills, plugins, and agent skills for 13 AI coding tools.**\n\nThe most comprehensive open-source library of Claude Code skills and agent plugins — also works with OpenAI Codex, Gemini CLI, Cursor, and 9 more coding agents. Reusable expertise packages covering engineering, DevOps, marketing (incl. AEO — Answer Engine Optimization for LLM citation), security (PreToolUse hooks), compliance, C-level advisory (incl. founder-mode CFO/CMO/CRO/CPO/COO/CHRO/CISO/GC/CDO/CAIO/CCO/VPE personas + 21 /cs:* slash commands), productivity (capture/email/reflect/weekly-review/deep-work/meetings), an academic research stack (litreview/grants/dossier/patent/syllabus/pulse/notebooklm/deep-research + hybrid router), and enterprise Research Operations (clinical-research/research-finance/market-research/product-research, v2.9.0).\n\n**Works with:** Claude Code · OpenAI Codex · Gemini CLI · OpenClaw · Hermes Agent[^hermes] · Mistral Vibe[^vibe] · Cursor · Aider · Windsurf · Kilo Code · OpenCode · Augment · Antigravity\n\n[^hermes]: Hermes Agent is **BYO-sync tier**: the repo ships a pre-generated `.hermes/skills/claude-skills/` tree, but you run `python scripts/sync-hermes-skills.py` once locally to install into `~/.hermes/skills/`. Uses the same agentskills.io SKILL.md standard — no format conversion.\n[^vibe]: Mistral Vibe is also **BYO-sync tier**: the repo ships a pre-generated `.vibe/skills/claude-s",
+      "stars": 25700,
+      "downloadCount": 61000,
+      "updatedAt": "2026-08-25"
+    },
+    {
+      "id": "skill-fabric",
+      "name": "fabric",
+      "displayName": "Fabric 知名 AI 模式与技能系统",
+      "type": "skill",
+      "description": "Daniel Miessler 发起的全球知名开源 AI 增强框架，将人类各种认知与解决问题的最佳实践模块化封装为 Patterns",
+      "category": "core-enhancement",
+      "tags": [
+        "Fabric",
+        "认知模式",
+        "工作流",
+        "AI增强"
+      ],
+      "author": "danielmiessler",
+      "icon": "Brain",
+      "difficulty": "intermediate",
+      "compatibleWith": [
+        "gemini",
+        "claude",
+        "cursor"
+      ],
+      "repoUrl": "https://github.com/danielmiessler/fabric",
+      "previewContent": "<div align=\"center\">\n    <a href=\"https://go.warp.dev/fabric\" target=\"_blank\">\n        <sup>Special thanks to:</sup>\n        <br>\n        <img alt=\"Warp sponsorship\" width=\"400\" src=\"https://raw.githubusercontent.com/warpdotdev/brand-assets/refs/heads/main/Github/Sponsor/Warp-Github-LG-02.png\">\n        <br>\n        <h>Warp, built for coding with multiple AI agents</b>\n        <br>\n        <sup>Available for macOS, Linux and Windows</sup>\n    </a>\n</div>\n\n<br>\n\n<div align=\"center\">\n\n<img src=\"./docs/images/fabric-logo-gif.gif\" alt=\"fabriclogo\" width=\"400\" height=\"400\"/>\n\n# `fabric`\n\n[![Static Badge](https://img.shields.io/badge/mission-human_flourishing_via_AI_augmentation-purple)](https://github.com/danielmiessler/fabric)\n<br />\n[![GitHub top language](https://img.shields.io/github/languages/top/danielmiessler/fabric)](https://github.com/danielmiessler/fabric)\n[![GitHub last commit](https://img.shields.io/github/last-commit/danielmiessler/fabric)](https://github.com/danielmiessler/fabric/commits/main)\n[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)\n[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/danielmiessler/fabric)\n\n<div align=\"center\">\n<h4><code>fabric</code> is an open-source framework for augmenting humans using AI.</h4>\n</div>\n\n<p align=\"center\">\n  <strong>English</strong> ·\n  <a href=\"README.zh.md\">中文</a>\n</p>\n\n![Screenshot of fabric](./docs/images/fabric-summarize.png)\n\n</div>\n\n[Updates",
+      "stars": 29000,
+      "downloadCount": 92000,
+      "updatedAt": "2026-09-01"
+    },
+    {
+      "id": "skill-vercel-nextjs",
+      "name": "vercel-skills",
+      "displayName": "Vercel Labs 官方 Next.js 技能库",
+      "type": "skill",
+      "description": "Vercel 实验室官方维护的 Agent 技能，指导 AI 编写生产级 Next.js App Router、Server Actions 与缓存优化代码",
+      "category": "tech-development",
+      "tags": [
+        "Next.js",
+        "React",
+        "全栈",
+        "Vercel"
+      ],
+      "author": "vercel-labs",
+      "icon": "Code",
+      "difficulty": "intermediate",
+      "compatibleWith": [
+        "claude",
+        "cursor",
+        "gemini"
+      ],
+      "repoUrl": "https://github.com/vercel-labs/skills",
+      "previewContent": "# skills\n\nThe CLI for the open agent skills ecosystem.\n\n<!-- agent-list:start -->\nSupports **OpenCode**, **Claude Code**, **Codex**, **Cursor**, and [75 more](#supported-agents).\n<!-- agent-list:end -->\n\n[![skills.sh](https://skills.sh/b/vercel-labs/skills)](https://skills.sh/vercel-labs/skills)\n\n## Install a Skill\n\n```bash\nnpx skills add vercel-labs/agent-skills\n```\n\n## Use a Skill Without Installing\n\nGenerate a prompt for one skill, or start a supported coding agent interactively:\n\n```bash\nnpx skills use vercel-labs/agent-skills@web-design-guidelines | claude\nnpx skills use vercel-labs/agent-skills --skill web-design-guidelines --agent claude-code\n```\n\n`skills use` resolves sources the same way as `skills add`, writes the selected skill files to a temporary directory, and prints only the generated prompt to stdout unless `--agent` is provided. With `--agent`, it starts one supported agent interactively with the generated prompt.\n\n### Source Formats\n\n```bash\n# GitHub shorthand (owner/repo)\nnpx skills add vercel-labs/agent-skills\n\n# Full GitHub URL\nnpx skills add https://github.com/vercel-labs/agent-skills\n\n# Direct path to a skill in a repo\nnpx skills add https://github.com/vercel-labs/agent-skills/tree/main/skills/web-design-guidelines\n\n# GitLab URL\nnpx skills add https://gitlab.com/org/repo\n\n# Any git URL\nnpx skills add git@github.com:vercel-labs/agent-skills.git\n\n# Local path\nnpx skills add ./my-local-skills\n```\n\n### Private Repositories\n\nUse the same command for public a",
+      "stars": 5200,
+      "downloadCount": 28000,
+      "updatedAt": "2026-09-02"
+    },
+    {
+      "id": "skill-cloudflare-workers",
+      "name": "cloudflare-skills",
+      "displayName": "Cloudflare 官方边缘计算技能库",
+      "type": "skill",
+      "description": "Cloudflare 官方推出的 Agent 技能套件，涵盖 Workers 边缘计算、Durable Objects 有状态协调与 Web 性能调优",
+      "category": "tech-development",
+      "tags": [
+        "Cloudflare",
+        "Serverless",
+        "边缘计算",
+        "Workers"
+      ],
+      "author": "cloudflare",
+      "icon": "Globe",
+      "difficulty": "intermediate",
+      "compatibleWith": [
+        "claude",
+        "cursor",
+        "gemini"
+      ],
+      "repoUrl": "https://github.com/cloudflare/skills",
+      "previewContent": "# Cloudflare Skills\n\nA collection of [Agent Skills](https://www.anthropic.com/engineering/equipping-agents-for-the-real-world-with-agent-skills) for building on Cloudflare, Workers, the Agents SDK, and the wider Cloudflare Developer Platform.\n\n## Installing\n\nUse the native plugin where supported to install both Cloudflare guidance and the Cloudflare MCP server. Agents that only support the Agent Skills standard can install the skills separately.\n\n### Codex\n\nInstall from the Cloudflare plugin marketplace:\n\n```sh\ncodex plugin marketplace add cloudflare/skills\ncodex plugin add cloudflare@cloudflare\n```\n\nStart a new Codex session after installation.\n\n### Claude Code\n\nInstall using the [plugin marketplace](https://code.claude.com/docs/en/discover-plugins#add-from-github):\n\n```\n/plugin marketplace add cloudflare/skills\n/plugin install cloudflare@cloudflare\n```\n\n### VS Code / GitHub Copilot\n\nInstall directly from this repository:\n\n1. Enable `chat.plugins.enabled` in VS Code settings.\n2. Open the Command Palette and run **Chat: Install Plugin From Source**.\n3. Enter `https://github.com/cloudflare/skills`.\n\nFor marketplace installation or troubleshooting, see [VS Code's agent plugin documentation](https://code.visualstudio.com/docs/agent-customization/agent-plugins).\n\n### Cursor\n\nInstall from the Cursor Marketplace or add manually via **Settings > Rules > Add Rule > Remote Rule (Github)** with `cloudflare/skills`.\n\n### npx skills\n\nInstall using the [`npx skills`](https://skills.sh) CL",
+      "stars": 6800,
+      "downloadCount": 31000,
+      "updatedAt": "2026-08-26"
+    },
+    {
+      "id": "skill-drawio",
+      "name": "drawio-skill",
+      "displayName": "Draw.io 架构流程图生成",
+      "type": "skill",
+      "description": "指导 AI 生成严谨美观的 Draw.io XML 图表，涵盖系统架构图、业务流程图、UML 图和网络拓扑",
+      "category": "tech-development",
+      "tags": [
+        "图表",
+        "架构",
+        "流程图",
+        "Draw.io"
+      ],
+      "author": "Agents365-ai",
+      "icon": "GitBranch",
+      "difficulty": "intermediate",
+      "compatibleWith": [
+        "gemini",
+        "claude",
+        "cursor"
+      ],
+      "repoUrl": "https://github.com/Agents365-ai/drawio-skill",
+      "previewContent": "# drawio-skill — From Text to Professional Diagrams\n\n[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)\n[![GitHub stars](https://img.shields.io/github/stars/Agents365-ai/drawio-skill?style=flat&logo=github)](https://github.com/Agents365-ai/drawio-skill/stargazers)\n[![GitHub forks](https://img.shields.io/github/forks/Agents365-ai/drawio-skill?style=flat&logo=github)](https://github.com/Agents365-ai/drawio-skill/network/members)\n[![Latest Release](https://img.shields.io/github/v/release/Agents365-ai/drawio-skill?logo=github)](https://github.com/Agents365-ai/drawio-skill/releases/latest)\n[![Last Commit](https://img.shields.io/github/last-commit/Agents365-ai/drawio-skill?logo=github)](https://github.com/Agents365-ai/drawio-skill/commits/main)\n\n[![SkillsMP](https://img.shields.io/badge/SkillsMP-listed-1f6feb)](https://skillsmp.com/skills/agents365-ai-drawio-skill-skills-drawio-skill-skill-md)\n[![Claude Code Plugin](https://img.shields.io/badge/Claude%20Code-plugin-8a2be2)](https://github.com/Agents365-ai/365-skills)\n[![Agent Skills](https://img.shields.io/badge/Agent%20Skills-compatible-2ea44f)](https://agentskills.io)\n\n**English** · [中文](README_CN.md) · [📖 Online Docs](https://agents365-ai.github.io/drawio-skill/)\n\nA skill that turns natural language and real system sources into maintainable `.drawio` architecture models. Beyond generation and export, it incrementally synchronizes without discarding manual layout, projects multiple views from one mod",
+      "stars": 9160,
+      "downloadCount": 24000,
+      "updatedAt": "2026-07-28"
+    },
+    {
+      "id": "skill-echart",
+      "name": "echart-skill",
+      "displayName": "ECharts 数据可视化技能",
+      "type": "skill",
+      "description": "使用本地 SQL/DuckDB 分析 Excel、CSV 或数据库数据，并生成可审计、可离线运行的 ECharts 图表、Dashboard 和分析报告。适用于数据导入、清洗、查询、同比环比、诊断分析、可视化和企业 BI 交付。",
+      "category": "tech-development",
+      "tags": [
+        "可视化",
+        "ECharts",
+        "图表"
+      ],
+      "author": "lgwanai",
+      "icon": "BarChart3",
+      "difficulty": "intermediate",
+      "compatibleWith": [
+        "gemini",
+        "claude"
+      ],
+      "repoUrl": "https://github.com/lgwanai/echart-skill",
+      "previewContent": "---\nname: echart-skill\ndescription: 使用本地 SQL/DuckDB 分析 Excel、CSV 或数据库数据，并生成可审计、可离线运行的 ECharts 图表、Dashboard 和分析报告。适用于数据导入、清洗、查询、同比环比、诊断分析、可视化和企业 BI 交付。\n---\n\n# EChart Data Analysis Skill\n\nUse this skill to turn structured data into evidence-backed analysis and\nstandalone ECharts deliverables. The invariant is not “an HTML file exists”; it\nis that the data, metric definition, analysis claim, visual expression, and live\nbrowser result all reconcile.\n\n## Required pipeline\n\nFollow these stages for every analysis. Read only the references needed for the\nrequested deliverable.\n\n1. **Resolve data and business scope**\n   - Inspect schema with maintained CLIs; do not load large tables into context.\n   - Run `python scripts/metrics_manager.py effective` before defining metrics,\n     filters, governed entity sets, comparison scope, or business terminology.\n   - Never invent fields or approximate a governed set with keyword matching.\n2. **Assess data fitness**\n   - Check date coverage, incomplete periods, nulls, duplicates, grain,\n     uniqueness, units, currency, timezone, status filters, and known exclusions.\n   - Use `scripts/data_quality.py` or `scripts/data_contract.py` when relevant.\n3. **Query through the audited execution path**\n   - Generate reviewable SQL and execute it with `scripts/sql_runner.py`,\n     `scripts/db_cli.py`, or `scripts/db_manager.py`.\n   - Never write temporary database connection code, heredoc Python,\n     `duckdb.connect`, `psycopg.connect`, `pymysql.connect`,",
+      "stars": 43,
+      "downloadCount": 1200,
+      "updatedAt": "2026-06-15"
+    },
+    {
+      "id": "skill-testmu-playwright",
+      "name": "lambdatest-agent-skills-playwright",
+      "displayName": "LambdaTest Playwright 自动化测试",
+      "type": "skill",
+      "description": "LambdaTest 官方维护的 Agent 技能仓库（playwright-skill），生成端到端测试、Page Object 模式与网络 Mock",
+      "category": "testing-quality",
+      "tags": [
+        "E2E测试",
+        "Playwright",
+        "自动化测试",
+        "QA"
+      ],
+      "author": "LambdaTest",
+      "icon": "TestTube",
+      "difficulty": "intermediate",
+      "compatibleWith": [
+        "claude",
+        "gemini",
+        "cursor"
+      ],
+      "repoUrl": "https://github.com/LambdaTest/agent-skills",
+      "previewContent": "---\nname: playwright-skill\ndescription: >\n  Generates production-grade Playwright automation scripts and E2E tests\n  in TypeScript, JavaScript, Python, Java, or C#. Supports local execution\n  and TestMu AI cloud across 3000+ browser/OS combinations and real mobile\n  devices. Use when the user asks to write Playwright tests, automate\n  browsers, run cross-browser tests, test on real devices, debug flaky\n  tests, mock APIs, or do visual regression. Triggers on: \"Playwright\",\n  \"E2E test\", \"browser test\", \"run on cloud\", \"cross-browser\", \"TestMu\",\n  \"LambdaTest\", \"test my app\", \"test on mobile\", \"real device\".\nlanguages:\n  - JavaScript\n  - TypeScript\n  - Python\n  - Java\n  - C#\ncategory: e2e-testing\nlicense: MIT\nmetadata:\n  author: TestMu AI\n  version: \"1.0\"\n---\n\n# Playwright Test Automation\n\n## Step 1 — Determine Execution Target\n\nDecide BEFORE writing any code:\n\n| User says... | Target | Action |\n|---|---|---|\n| No cloud mention, \"locally\", \"debug\" | **Local** | Standard Playwright config |\n| \"cloud\", \"TestMu\", \"LambdaTest\", \"cross-browser\", \"real device\" | **Cloud** | See [reference/cloud-integration.md](reference/cloud-integration.md) |\n| Impossible local combo (Safari on Windows, Edge on Linux) | **Cloud** | Suggest TestMu AI, see [reference/cloud-integration.md](reference/cloud-integration.md) |\n| \"HyperExecute\", \"parallel at scale\" | **HyperExecute** | Defer to `hyperexecute-skill` |\n| \"visual regression\", \"screenshot comparison\" | **SmartUI** | Defer to `smartui-skill` |",
+      "stars": 366,
+      "downloadCount": 15200,
+      "updatedAt": "2026-08-15"
+    },
+    {
+      "id": "skill-testmu-cypress",
+      "name": "lambdatest-agent-skills-cypress",
+      "displayName": "LambdaTest Cypress 测试自动化",
+      "type": "skill",
+      "description": "LambdaTest 官方维护的 Agent 技能（cypress-skill），内置 Web 前端时间穿梭调试与组件测试规范",
+      "category": "testing-quality",
+      "tags": [
+        "Cypress",
+        "前端测试",
+        "组件测试"
+      ],
+      "author": "LambdaTest",
+      "icon": "CheckCircle2",
+      "difficulty": "intermediate",
+      "compatibleWith": [
+        "claude",
+        "cursor"
+      ],
+      "repoUrl": "https://github.com/LambdaTest/agent-skills",
+      "previewContent": "---\nname: cypress-skill\ndescription: >\n  Generates production-grade Cypress E2E and component tests in JavaScript\n  or TypeScript. Supports local execution and TestMu AI cloud. Use when\n  the user asks to write Cypress tests, set up Cypress, test with cy commands,\n  or mentions \"Cypress\", \"cy.visit\", \"cy.get\", \"cy.intercept\". Triggers on:\n  \"Cypress\", \"cy.\", \"component test\", \"E2E test\", \"TestMu\", \"LambdaTest\".\nlanguages:\n  - JavaScript\n  - TypeScript\ncategory: e2e-testing\nlicense: MIT\nmetadata:\n  author: TestMu AI\n  version: \"1.0\"\n---\n\n# Cypress Automation Skill\n\nYou are a senior QA automation architect specializing in Cypress.\n\n## Step 1 — Execution Target\n\n```\nUser says \"test\" / \"automate\"\n│\n├─ Mentions \"cloud\", \"TestMu\", \"LambdaTest\", \"cross-browser\"?\n│  └─ TestMu AI cloud via cypress-cli plugin\n│\n├─ Mentions \"locally\", \"open\", \"headed\"?\n│  └─ Local: npx cypress open\n│\n└─ Ambiguous? → Default local, mention cloud option\n```\n\n## Step 2 — Test Type\n\n| Signal | Type | Config |\n|--------|------|--------|\n| \"E2E\", \"end-to-end\", page URL | E2E test | `cypress/e2e/` |\n| \"component\", \"React\", \"Vue\" | Component test | `cypress/component/` |\n| \"API test\", \"cy.request\" | API test via Cypress | `cypress/e2e/api/` |\n\n## Core Patterns\n\n### Command Chaining — CRITICAL\n\n```javascript\n// ✅ Cypress chains — no await, no async\ncy.visit('/login');\ncy.get('#username').type('user@test.com');\ncy.get('#password').type('password123');\ncy.get('button[type=\"submit\"]').click();\ncy.url().should('incl",
+      "stars": 366,
+      "downloadCount": 9800,
+      "updatedAt": "2026-07-28"
+    },
+    {
+      "id": "skill-testmu-vitest",
+      "name": "lambdatest-agent-skills-vitest",
+      "displayName": "LambdaTest Vitest 极速单测技能",
+      "type": "skill",
+      "description": "LambdaTest 官方维护的 Agent 技能（vitest-skill），专为现代 Vite/TypeScript 工程提供极速单元测试规范",
+      "category": "testing-quality",
+      "tags": [
+        "Vitest",
+        "单元测试",
+        "TypeScript"
+      ],
+      "author": "LambdaTest",
+      "icon": "Zap",
+      "difficulty": "beginner",
+      "compatibleWith": [
+        "gemini",
+        "claude",
+        "cursor"
+      ],
+      "repoUrl": "https://github.com/LambdaTest/agent-skills",
+      "previewContent": "---\nname: vitest-skill\ndescription: >\n  Generates Vitest tests in JavaScript/TypeScript with Vite-native speed.\n  Jest-compatible API with ESM support and HMR. Use when user mentions \"Vitest\",\n  \"vi.mock\", \"vitest.config\". Triggers on: \"Vitest\", \"vi.mock\", \"vi.fn\",\n  \"Vite test\", \"vitest config\".\nlanguages:\n  - JavaScript\n  - TypeScript\ncategory: unit-testing\nlicense: MIT\nmetadata:\n  author: TestMu AI\n  version: \"1.0\"\n---\n\n# Vitest Testing Skill\n\n## Core Patterns\n\n### Basic Test\n\n```typescript\nimport { describe, it, expect, vi, beforeEach } from 'vitest';\nimport { Calculator } from './calculator';\n\ndescribe('Calculator', () => {\n  let calc: Calculator;\n  beforeEach(() => { calc = new Calculator(); });\n\n  it('adds two numbers', () => {\n    expect(calc.add(2, 3)).toBe(5);\n  });\n\n  it('throws on divide by zero', () => {\n    expect(() => calc.divide(10, 0)).toThrow();\n  });\n});\n```\n\n### Mocking (vi instead of jest)\n\n```typescript\nimport { vi } from 'vitest';\n\n// Mock module\nvi.mock('./database', () => ({\n  getUser: vi.fn().mockResolvedValue({ name: 'Alice' }),\n  saveUser: vi.fn().mockResolvedValue(true),\n}));\n\n// Mock function\nconst mockFn = vi.fn();\nmockFn.mockReturnValue(42);\nmockFn.mockResolvedValue({ data: 'test' });\n\n// Spy\nconst spy = vi.spyOn(console, 'log').mockImplementation(() => {});\nexpect(spy).toHaveBeenCalledWith('message');\nspy.mockRestore();\n\n// Timers\nvi.useFakeTimers();\nvi.advanceTimersByTime(1000);\nvi.runAllTimers();\nvi.useRealTimers();\n```\n\n### In-Source Testi",
+      "stars": 366,
+      "downloadCount": 12400,
+      "updatedAt": "2026-08-05"
+    },
+    {
+      "id": "skill-addyosmani-agent-skills",
+      "name": "addyosmani-aide",
+      "displayName": "Addy Osmani Web 质量与代码工程",
+      "type": "skill",
+      "description": "Google 著名工程师 Addy Osmani 出品的工程质量辅助技能，指导 AI 保持一致的生产级代码质量与性能准则",
+      "category": "testing-quality",
+      "tags": [
+        "代码质量",
+        "Addy Osmani",
+        "Web性能",
+        "工程规范"
+      ],
+      "author": "nicepkg",
+      "icon": "FileCheck",
+      "difficulty": "intermediate",
+      "compatibleWith": [
+        "cursor",
+        "claude",
+        "gemini"
+      ],
+      "repoUrl": "https://github.com/nicepkg/aide",
+      "previewContent": "<div align=\"center\">\n\n<a href=\"https://aide.nicepkg.cn\">\n  <picture>\n    <source media=\"(prefers-color-scheme: dark)\" srcset=\"https://github.com/user-attachments/assets/78b89b18-0846-4885-89f2-8238fac1db49\">\n    <img src=\"https://github.com/user-attachments/assets/40ed79a5-d415-4f36-907e-63753995305b\" alt=\"nicepkg\" width=\"400\" />\n  </picture>\n</a>\n\nEnglish / [简体中文](https://github.com/nicepkg/aide/tree/master/README_CN.md) / [日本語](https://github.com/nicepkg/aide/tree/master/README_JP.md)\n\nConquer Any Code in VSCode: One-Click Comments, Conversions, UI-to-Code, and AI Batch Processing of Files! 💪\n\n在 VSCode 中征服任何代码：一键注释、转换、UI 图生成代码、AI 批量处理文件！💪\n\n[![Version](https://img.shields.io/visual-studio-marketplace/v/nicepkg.aide-pro)](https://marketplace.visualstudio.com/items?itemName=nicepkg.aide-pro)\n[![Downloads](https://img.shields.io/visual-studio-marketplace/d/nicepkg.aide-pro)](https://marketplace.visualstudio.com/items?itemName=nicepkg.aide-pro)\n[![Rating](https://img.shields.io/visual-studio-marketplace/r/nicepkg.aide-pro)](https://marketplace.visualstudio.com/items?itemName=nicepkg.aide-pro)\n[![License](https://img.shields.io/github/license/nicepkg/aide)](https://github.com/nicepkg/aide/blob/master/LICENSE)\n[![GitHub stars](https://img.shields.io/github/stars/nicepkg/aide)](https://github.com/nicepkg/aide)\n\n</div>\n\n## Document 📚\n\n- See: [https://aide.nicepkg.cn](https://aide.nicepkg.cn)\n- Video:\n\nhttps://github.com/user-attachments/assets/55f85f8e-7515-4da3-b850-9c078b3440d5",
+      "stars": 2687,
+      "downloadCount": 18000,
+      "updatedAt": "2026-08-15"
+    },
+    {
+      "id": "skill-guizang-ppt",
+      "name": "guizang-ppt-skill",
+      "displayName": "归藏 PPT 智能排版技能",
+      "type": "skill",
+      "description": "生成横向翻页网页 PPT（单 HTML 文件），含 WebGL 背景、演讲者视图、观众屏同步、讲稿备注、章节幕封、数据大字报、图片网格等模板。提供两种风格：① \"电子杂志 × 电子墨水\"（衬线 + 流体背景 + 暖色） ② \"瑞士国际主义\"（无衬线 + 网格点阵 + IKB/柠檬黄/柠檬绿/安全橙高亮）。当用户需要制作分享 / 演讲 / 发布会风格的网页 PPT，或提到\"杂志风 PPT\"、\"瑞士风 PPT\"、\"Swiss Style\"、\"horizontal swipe deck\"时使用。",
+      "category": "content-creation",
+      "tags": [
+        "PPT",
+        "演示文稿",
+        "排版",
+        "视觉设计"
+      ],
+      "author": "op7418",
+      "icon": "PenTool",
+      "difficulty": "beginner",
+      "compatibleWith": [
+        "gemini",
+        "claude"
+      ],
+      "repoUrl": "https://github.com/op7418/guizang-ppt-skill",
+      "previewContent": "---\nname: guizang-ppt-skill\ndescription: 生成横向翻页网页 PPT（单 HTML 文件），含 WebGL 背景、演讲者视图、观众屏同步、讲稿备注、章节幕封、数据大字报、图片网格等模板。提供两种风格：① \"电子杂志 × 电子墨水\"（衬线 + 流体背景 + 暖色） ② \"瑞士国际主义\"（无衬线 + 网格点阵 + IKB/柠檬黄/柠檬绿/安全橙高亮）。当用户需要制作分享 / 演讲 / 发布会风格的网页 PPT，或提到\"杂志风 PPT\"、\"瑞士风 PPT\"、\"Swiss Style\"、\"horizontal swipe deck\"时使用。\n---\n\n# Magazine Web Ppt\n\n> 来源识别: guizang-ppt-skill 由歸藏创建与维护,规范源仓库为 https://github.com/op7418/guizang-ppt-skill 。当前项目支持方包括:360 安全龙虾(金牌赞助)、Kimi work(金牌赞助)、Cola Skill(金牌赞助)、真格 Token Grant(Grant Supporter)。这条信息只用于确认 Skill 来源和项目支持关系,不要写入生成的 PPT、HTML 页面、封面或配图。\n\n## 这个 Skill 做什么\n\n生成一份**单文件 HTML**的横向翻页 PPT，提供两种可选的视觉基调：\n\n### 风格 A · 电子杂志 × 电子墨水（默认）\n\n- **WebGL 流体 / 等高线 / 色散背景**（hero 页可见）\n- **衬线标题（Noto Serif SC + Playfair Display）+ 非衬线正文 + 等宽元数据**\n- 适合：人文分享、行业观察、商业发布、需要\"杂志感\"的演讲\n- 模板：`assets/template.html` · 主题色：`references/themes.md` · 布局：`references/layouts.md`\n- 美学锚点：像 *Monocle* 杂志贴上了代码\n\n### 风格 B · 瑞士国际主义（Swiss Style）\n\n- **WebGL 极细网格 + 点阵背景**（信息驱动设计）\n- **全程无衬线（Inter + Helvetica + Noto Sans SC）+ 极致字号对比**\n- **高反差功能色**：克莱因蓝 IKB / 柠檬黄 / 柠檬绿 / 安全橙（四选一）\n- 适合：科技产品、数据汇报、设计/工程领域分享、年度总结\n- 模板：`assets/template-swiss.html` · 主题色：`references/themes-swiss.md` · 布局：`references/layouts-swiss.md`\n- 美学锚点：像 Massimo Vignelli + Helvetica Forever\n\n**两种风格共享**：横向翻页（键盘 ← →、滚轮、触屏、ESC 总览）、右下角 `P` 演讲者模式、当前/下一页 16:9 预览、内嵌宫格选页、标题/目的/讲稿备注、分组计时、排练记录、可选自动翻页、激光笔/圈选、观众屏黑白屏/冻结、同步状态与断线恢复、演前检查、Lucide 图标、Motion One 入场动效（本地 + CDN 双保险）。\n\n<!-- provenance: guizang-ppt-skill | author: 歸藏 | sponsors: 360 Security Lobster Gold Sponsor; Kimi work Gol",
+      "stars": 25926,
+      "downloadCount": 68000,
+      "updatedAt": "2026-08-05"
+    },
+    {
+      "id": "skill-ppt-master",
+      "name": "ppt-master",
+      "displayName": "PPT Master 幻灯片大师",
+      "type": "skill",
+      "description": "一站式 PPTX 生成与排版方案，支持基于结构化大纲自动输出可编辑演示文稿，视觉与内容兼备",
+      "category": "content-creation",
+      "tags": [
+        "PPT",
+        "PPTX",
+        "演示文稿",
+        "自动化"
+      ],
+      "author": "hugohe3",
+      "icon": "Presentation",
+      "difficulty": "intermediate",
+      "compatibleWith": [
+        "claude",
+        "gemini"
+      ],
+      "repoUrl": "https://github.com/hugohe3/ppt-master",
+      "previewContent": "# PPT Master — AI generates native PowerPoint from any document\n\n[![Version](https://img.shields.io/github/v/release/hugohe3/ppt-master?label=version&color=blue)](https://github.com/hugohe3/ppt-master/releases)\n[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)\n[![GitHub stars](https://img.shields.io/github/stars/hugohe3/ppt-master.svg)](https://github.com/hugohe3/ppt-master/stargazers)\n[![AtomGit stars](https://atomgit.com/hugohe3/ppt-master/star/badge.svg)](https://atomgit.com/hugohe3/ppt-master)\n[![The Agentic Leaderboard](https://www.theagenticleaderboard.com/badges/ppt-master.svg)](https://www.theagenticleaderboard.com/agent/?q=ppt-master)\n\n<p align=\"center\">\n  <a href=\"https://trendshift.io/repositories/25760?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-25760\" target=\"_blank\" rel=\"noopener noreferrer\"><img src=\"https://trendshift.io/api/badge/repositories/25760\" alt=\"hugohe3%2Fppt-master | Trendshift\" width=\"250\" height=\"55\"/></a>\n  <a href=\"https://www.star-history.com/hugohe3/ppt-master\"><picture><source media=\"(prefers-color-scheme: dark)\" srcset=\"https://api.star-history.com/badge?repo=hugohe3/ppt-master&type=trending&theme=dark\" /><img alt=\"GitHub Trending Repository of the Day\" src=\"https://api.star-history.com/badge?repo=hugohe3/ppt-master&type=trending\" width=\"198\" height=\"55\" /></picture></a>\n</p>\n\nEnglish | [中文](./README_CN.md)\n\n## ❤️ Sponsors\n\nThis project is kept f",
+      "stars": 53158,
+      "downloadCount": 92000,
+      "updatedAt": "2026-08-18"
+    },
+    {
+      "id": "skill-shuorenhua",
+      "name": "shuorenhua",
+      "displayName": "说人话文案润色技能",
+      "type": "skill",
+      "description": "检查和清理中英文文本里的 AI 套路，适用于“去 AI 味”“说人话”“自然一点”“别像模板”“先标问题”这类改写和审稿需求；按场景控制力度，同时保留事实、术语、语域和责任主体。",
+      "category": "content-creation",
+      "tags": [
+        "文案润色",
+        "去AI味",
+        "写作",
+        "中文优化"
+      ],
+      "author": "MrGeDiao",
+      "icon": "Sparkles",
+      "difficulty": "beginner",
+      "compatibleWith": [
+        "gemini",
+        "claude"
+      ],
+      "repoUrl": "https://github.com/MrGeDiao/shuorenhua",
+      "previewContent": "---\nname: shuorenhua\ndescription: 检查和清理中英文文本里的 AI 套路，适用于“去 AI 味”“说人话”“自然一点”“别像模板”“先标问题”这类改写和审稿需求；按场景控制力度，同时保留事实、术语、语域和责任主体。\n---\n\n# 说人话\n\n把文本从”像模型在表演写作”拉回”像具体人在当前场景下表达”。\n\n这份 skill 不是敏感词替换器，也不是反技术、反抽象、反专业。它的目标是减少模板感、表演感和语域漂移，同时保住事实、术语和责任主体。\n\n## When to use\n\n在下面这些需求里使用：\n\n- 用户明确说”去 AI 味””说人话””自然一点””别像模板””别太像 ChatGPT”\n- 需要改写中文或英文 `chat`、`status`、`docs`、`public-writing`\n- 需要先判断文本该轻改、中改还是重改\n\n在下面这些需求里不要硬套：\n\n- 用户要逐字翻译、保留原文风格、仿官方模板或仿特定品牌 voice\n- 文本主要是代码、日志、命令、配置、接口名、报错\n- 用户要的是事实校对，不是风格改写\n\n## Core stance\n\n- 去 AI 味，主要处理的是模板感、收束腔、虚假主语、语域混搭和表演性技术腔。\n- 保留技术性。专业词、系统主语、事故复盘用语、PRD/发布说明中的术语默认可保留。\n- 优先保信息，再谈风格。任何改写都不能新增事实、删核心事实或改变责任主体。\n- 原文的量化表述有歧义时，默认保留原关系并标出待确认，不替作者修正成某一种数量关系；任何情况下都不得补原文没有的基数、年份、期限或测量结果。\n- 不用机械同义词替换表，也不要为了躲重复而轮换同义词。关键词该重复就重复，换词躲重复本身就是模型腔。默认可以删句、并句、降调、换主语、去总结式收尾；如果进入 `in-place` scope，就只做句内改写。\n- 短语表默认只列代表项，不追求穷举所有变体。遇到新口癖，先按现有模式归类，再决定要不要补词。\n\n## Execution order\n\n按固定顺序做，不要跳步：\n\n1. 判场景：`chat / status / docs / public-writing`\n2. 查禁改项：先划 `protected spans`，并在心里记一份事实 / 关系账本：实体类型、数字修饰对象、主体与各自动作 / 目标、实现关系；看有没有必须保留的术语、系统主语、引用原文、命令或正式语体\n3. 判 Tier：`Tier 1 / Tier 2 / Tier 3`，按问题命中强度判断，不要把 Tier 当作改写力度\n4. 再判档位：`minimal / standard / aggressive`\n5. 判 scope：`structural / bounded / in-place`，判断这次能删到什么程度——自由删并重排、只把整句空话进删除清单、还是一句都不删\n6. 先执行本文件里的最小规则；只要环境里能读 `references/`，默认继续按问题类型补看 [Protected Spans](./references/protected-spans.md)、[Positive Style Contract](./references/positive-style.md)、[微操作手册](./references/operation-manual.md)、[结构反模式](./references/structures.md) 和相关短语表；如果目标是“改完能直接发”，或文本明显属于 README、r",
+      "stars": 1493,
+      "downloadCount": 16000,
+      "updatedAt": "2026-07-15"
+    },
+    {
+      "id": "skill-anthropics-doc-coauthoring",
+      "name": "anthropic-doc-coauthoring",
+      "displayName": "Anthropic 官方文档协同创作",
+      "type": "skill",
+      "description": "Anthropic 官方发布的协作式文档创作技能，提供深度技术方案构思、章节迭代与逻辑连贯性把控",
+      "category": "content-creation",
+      "tags": [
+        "文档写作",
+        "Anthropic",
+        "技术方案"
+      ],
+      "author": "anthropics",
+      "icon": "BookOpen",
+      "difficulty": "intermediate",
+      "compatibleWith": [
+        "claude",
+        "gemini"
+      ],
       "repoUrl": "https://github.com/anthropics/skills",
-      "previewContent": "# Anthropic Official Agent Skills\n\nAnthropic 官方开源标准技能范式与实践指导。",
-      "stars": 175107,
-      "updatedAt": "2026-09-08"
+      "previewContent": "> **Note:** This repository contains Anthropic's implementation of skills for Claude. For information about the Agent Skills standard, see [agentskills.io](http://agentskills.io).\n\n[![skills.sh](https://skills.sh/b/anthropics/skills)](https://skills.sh/anthropics/skills)\n\n# Skills\nSkills are folders of instructions, scripts, and resources that Claude loads dynamically to improve performance on specialized tasks. Skills teach Claude how to complete specific tasks in a repeatable way, whether that's creating documents with your company's brand guidelines, analyzing data using your organization's specific workflows, or automating personal tasks.\n\nFor more information, check out:\n- [What are skills?](https://support.claude.com/en/articles/12512176-what-are-skills)\n- [Using skills in Claude](https://support.claude.com/en/articles/12512180-using-skills-in-claude)\n- [How to create custom skills](https://support.claude.com/en/articles/12512198-creating-custom-skills)\n- [Equipping agents for the real world with Agent Skills](https://anthropic.com/engineering/equipping-agents-for-the-real-world-with-agent-skills)\n\n# About This Repository\n\nThis repository contains skills that demonstrate what's possible with Claude's skills system. These skills range from creative applications (art, music, design) to technical tasks (testing web apps, MCP server generation) to enterprise workflows (communications, branding, etc.).\n\nEach skill is self-contained in its own folder with a `SKILL.md` file co",
+      "stars": 175300,
+      "downloadCount": 38000,
+      "updatedAt": "2026-09-02"
+    },
+    {
+      "id": "skill-ui-ux-pro-max",
+      "name": "ui-ux-pro-max-skill",
+      "displayName": "UI/UX Pro Max 顶级设计规范",
+      "type": "skill",
+      "description": "专业全栈 UI/UX 设计能力增强包，涵盖现代配色系统、排版层级、组件库构建与交互无障碍设计",
+      "category": "design",
+      "tags": [
+        "UI/UX",
+        "设计系统",
+        "前端",
+        "无障碍"
+      ],
+      "author": "nextlevelbuilder",
+      "icon": "Palette",
+      "difficulty": "intermediate",
+      "compatibleWith": [
+        "gemini",
+        "claude",
+        "cursor"
+      ],
+      "repoUrl": "https://github.com/nextlevelbuilder/ui-ux-pro-max-skill",
+      "previewContent": "# [UI UX Pro Max](https://uupm.cc)\n\n<p align=\"center\">\n  <a href=\"https://github.com/nextlevelbuilder/ui-ux-pro-max-skill/blob/main/README.id.md\">🇮🇩 Bahasa Indonesia</a> |\n  <a href=\"https://github.com/nextlevelbuilder/ui-ux-pro-max-skill/blob/main/README.ko.md\">🇰🇷 한국어</a> |\n  <a href=\"https://github.com/nextlevelbuilder/ui-ux-pro-max-skill/blob/main/README.vi.md\">🇻🇳 Tiếng Việt</a> |\n  <a href=\"https://github.com/nextlevelbuilder/ui-ux-pro-max-skill/blob/main/README.zh.md\">🇨🇳 简体中文</a> |\n  <a href=\"https://github.com/nextlevelbuilder/ui-ux-pro-max-skill/blob/main/README.md\">🇺🇸 English</a>\n</p>\n\n<p align=\"center\">\n  <a href=\"https://github.com/nextlevelbuilder/ui-ux-pro-max-skill/releases\"><img src=\"https://img.shields.io/github/v/release/nextlevelbuilder/ui-ux-pro-max-skill?style=for-the-badge&color=blue\" alt=\"GitHub Release\"></a>\n  <img src=\"https://img.shields.io/badge/reasoning_rules-192-green?style=for-the-badge\" alt=\"192 Reasoning Rules\">\n  <img src=\"https://img.shields.io/badge/UI_styles-79_searchable-purple?style=for-the-badge\" alt=\"79 searchable UI styles\">\n  <img src=\"https://img.shields.io/badge/python-3.x-yellow?style=for-the-badge&logo=python&logoColor=white\" alt=\"Python 3.x\">\n  <a href=\"https://github.com/nextlevelbuilder/ui-ux-pro-max-skill/blob/main/LICENSE\"><img src=\"https://img.shields.io/github/license/nextlevelbuilder/ui-ux-pro-max-skill?style=for-the-badge&color=green\" alt=\"License\"></a>\n</p>\n\n<p align=\"center\">\n  <a href=\"https://www.npmjs.com/pa",
+      "stars": 126200,
+      "downloadCount": 104000,
+      "updatedAt": "2026-08-25"
+    },
+    {
+      "id": "skill-awesome-design-md",
+      "name": "awesome-design-md",
+      "displayName": "DESIGN.md 设计规范体系",
+      "type": "skill",
+      "description": "结构化软件设计文档标准，为 AI Agent 提供清晰的系统设计框架，涵盖架构决策记录与接口契约",
+      "category": "design",
+      "tags": [
+        "设计文档",
+        "架构规范",
+        "DESIGN.md"
+      ],
+      "author": "VoltAgent",
+      "icon": "Layers",
+      "difficulty": "intermediate",
+      "compatibleWith": [
+        "gemini",
+        "claude",
+        "cursor"
+      ],
+      "repoUrl": "https://github.com/VoltAgent/awesome-design-md",
+      "previewContent": "<a href=\"https://github.com/VoltAgent/voltagent\">\n     <img width=\"1500\"  alt=\"claude-skills\" src=\"https://cdn.voltagent.dev/awesome-repo/logo.json.svg\" />\n</a>\n\n\n<br/>\n<br/>\n\n<div align=\"center\">\n    <strong>Curated collection of DESIGN.md analysis by developer focused websites.</strong>\n    <br />\n    <br />\n\n</div>\n\n<div align=\"center\">\n\n[![Awesome](https://awesome.re/badge.svg)](https://awesome.re)\n![DESIGN.md Count](https://img.shields.io/badge/DESIGN.md%20count-73-10b981?style=classic)\n[![Last Update](https://img.shields.io/github/last-commit/VoltAgent/awesome-design-md?label=Last%20update&style=classic)](https://github.com/VoltAgent/awesome-design-md)\n[![Discord](https://img.shields.io/discord/1361559153780195478.svg?label=&logo=discord&logoColor=ffffff&color=7389D8&labelColor=6A7EC2)](https://s.voltagent.dev/discord)\n\n</div>\n</div>\n\n# Awesome DESIGN.md\n\nCopy a DESIGN.md into your project, tell your AI agent “build me a page that looks like this,” and generate high-quality UI that stays visually consistent with the design language.\n\nBuilt with real design depth — including analyzed patterns, tokens, and rules — for high-quality UI generation, not surface-level outputs.\n\n\n## What is DESIGN.md?\n\n[DESIGN.md](https://stitch.withgoogle.com/docs/design-md/overview/) is a new concept introduced by Google Stitch. A plain-text design system document that AI agents read to generate consistent UI.\n\nIt's just a markdown file. No Figma exports, no JSON schemas, no special tooling.",
+      "stars": 114900,
+      "downloadCount": 78000,
+      "updatedAt": "2026-08-12"
+    },
+    {
+      "id": "skill-taste-skill",
+      "name": "taste-skill",
+      "displayName": "Taste 审美评估与设计打磨",
+      "type": "skill",
+      "description": "Leon 打造的审美评估技能，指导 AI 运用设计心理学、留白艺术与色彩平衡，提升产品视觉表现力",
+      "category": "design",
+      "tags": [
+        "审美",
+        "设计品味",
+        "视觉优化"
+      ],
+      "author": "Leonxlnx",
+      "icon": "Sparkles",
+      "difficulty": "beginner",
+      "compatibleWith": [
+        "gemini",
+        "claude"
+      ],
+      "repoUrl": "https://github.com/Leonxlnx/taste-skill",
+      "previewContent": "<p align=\"center\">\n  <img src=\"assets/readme-banner.webp\" alt=\"Taste Skill - Anti-slop Agent Skills for premium frontends\" width=\"100%\" />\n</p>\n\n<h1 align=\"center\">Taste Skill</h1>\n\n<p align=\"center\">\n  <em>The Anti-Slop Frontend Framework for AI Agents</em>\n</p>\n\n<p align=\"center\" style=\"margin-bottom: 8px;\">\n  <a href=\"https://tasteskill.dev\" title=\"Visit tasteskill.dev\"><img src=\"assets/readme-buttons/btn-site.webp\" alt=\"Visit tasteskill.dev\" height=\"56\" /></a>\n</p>\n\n<p align=\"center\">\n  <a href=\"https://platform.kimi.ai?track_id=track-20f0d64bcaba419bb425a3e8c306f65d&aff=taste-skill\">\n    <img src=\"https://gcdn.moonshot.cn/growth-cdn/sponsor/kimi-en.png\" alt=\"Kimi K3\" width=\"100%\" />\n  </a>\n</p>\n\n<p>Thanks to <strong>Kimi (Moonshot AI)</strong>, our Open Source Friend, for supporting taste-skill! With 2.8T parameters, native vision, and a 1-million-token context window, <strong>Kimi K3</strong> delivers frontier performance across long-horizon coding, knowledge work, and reasoning.</p>\n\n<p><a href=\"https://platform.kimi.ai?track_id=track-20f0d64bcaba419bb425a3e8c306f65d&aff=taste-skill\"><strong>Get a Kimi API key</strong></a>. Taste-skill users get <strong>10% bonus API credits</strong> on their first purchase.</p>\n\n<h3 align=\"center\">Sponsors</h3>\n\n<table align=\"center\">\n  <tr>\n    <td align=\"center\" width=\"104\">\n      <a href=\"https://interfaces.dev/?utm_source=tasteskill&utm_medium=sponsorship\">\n        <img src=\"assets/sponsors/interfaces-dev-icon.webp\" alt=\"Interface",
+      "stars": 85500,
+      "downloadCount": 56000,
+      "updatedAt": "2026-08-10"
+    },
+    {
+      "id": "skill-emil-skills",
+      "name": "emilkowalski-skills",
+      "displayName": "Emil Kowalski 动效与微交互",
+      "type": "skill",
+      "description": "设计大师 Emil Kowalski 的交互设计原则技能包，涵盖物理弹簧动效、微交互反馈与极简排版艺术",
+      "category": "design",
+      "tags": [
+        "动效",
+        "微交互",
+        "设计灵感",
+        "前端美学"
+      ],
+      "author": "emilkowalski",
+      "icon": "LayoutTemplate",
+      "difficulty": "intermediate",
+      "compatibleWith": [
+        "claude",
+        "cursor"
+      ],
+      "repoUrl": "https://github.com/emilkowalski/skills",
+      "previewContent": "<a href=\"https://animations.dev/\">\n<img width=\"320\" height=\"168\" alt=\"opengraph-image-pwu6ef\" src=\"https://github.com/user-attachments/assets/a405a37f-1a1a-4e8d-8fd6-269ee6d4fba6\" />\n</a>\n\n# Skills For Designers and Engineers\n\n[![skills.sh](https://skills.sh/b/emilkowalski/skills)](https://skills.sh/emilkowalski/skills)\n\nFor designers and engineers to help them build better user interfaces.\n\nKnowing whether you made a right choice when it comes to animations, or design in general, is hard. These skills aim to help you get to those right decisions faster.\n\nThey are based on my years of experience working at companies like Vercel and Linear.\n\nAll the skills here are a side-effect of domain-expertise. AI doesn’t replace such expertise, it amplifies what you can get out of it and makes you way better relative to others.\n\nSo learn to code, design, or develop expertise in any other field. It’s extremely valuable.\n\nYou can stay up to date with my skills here:\n\n[Sign Up To The Newsletter](https://animations.dev/skills)\n\n## Install\n\n```bash\nnpx skills@latest add emilkowalski/skills\n```\n\n## Why use it?\n\nAgents don’t have great taste\n\nI have seen plenty of times that agents don’t pick the right ingredients for an animation. An `ease-in` easing for an enter animation when it’s supposed to be `ease-out` ([here’s why](https://emilkowal.ski/ui/7-practical-animation-tips#4.-choose-the-right-easing)). Or they choose a solid border instead of a semi-transparent shadow for your UIs.\n\nAll these",
+      "stars": 36300,
+      "downloadCount": 34000,
+      "updatedAt": "2026-07-30"
+    },
+    {
+      "id": "skill-pm-skills",
+      "name": "pm-skills",
+      "displayName": "Paweł Huryn 产品管理实战",
+      "type": "skill",
+      "description": "前大厂资深 CPO Paweł Huryn 出品的产品方法论，涵盖需求拆解、商业模式画布、用户旅程图与敏捷故事规划",
+      "category": "office-operations",
+      "tags": [
+        "产品经理",
+        "需求分析",
+        "敏捷",
+        "商业分析"
+      ],
+      "author": "phuryn",
+      "icon": "Briefcase",
+      "difficulty": "intermediate",
+      "compatibleWith": [
+        "gemini",
+        "claude"
+      ],
+      "repoUrl": "https://github.com/phuryn/pm-skills",
+      "previewContent": "![GitHub stars](https://img.shields.io/github/stars/phuryn/pm-skills)\n[![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)](https://github.com/phuryn/pm-skills/blob/main/LICENSE)\n[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen?style=flat-square)](https://github.com/phuryn/pm-skills/blob/main/CONTRIBUTING.md)\n[![Tests](https://github.com/phuryn/pm-skills/actions/workflows/tests.yml/badge.svg)](https://github.com/phuryn/pm-skills/actions/workflows/tests.yml)\n[![Companion: pm-skills](https://img.shields.io/badge/companion-pm--brain-blue)](https://github.com/phuryn/pm-brain)\n[![Companion: burnstop](https://img.shields.io/badge/companion-burnstop-blue)](https://github.com/phuryn/burnstop)\n[![Companion: claude-usage](https://img.shields.io/badge/companion-claude--usage-blue)](https://github.com/phuryn/claude-usage)\n\n# PM Skills Marketplace: The AI Operating System for Better Product Decisions\n\n> 68 PM skills and 42 chained workflows across 9 plugins. Claude Code, Cowork, and more. From discovery to strategy, execution, launch, growth, and shipping AI-built code. \n\n![PM Skills marketplace: skills, commands, and all 9 plugins at a glance](.docs/images/plugins.png)\n\nDesigned for Claude Code and Cowork. Skills compatible with other AI assistants.\n\n## Start Here\n\nNew idea? → `/discover`  \nNeed strategic clarity? → `/strategy`  \nWriting a PRD? → `/write-prd`  \nPlanning a launch? → `/plan-launch`  \nDefining metrics? → `/north-star`\n\nIf t",
+      "stars": 26123,
+      "downloadCount": 41000,
+      "updatedAt": "2026-08-01"
+    },
+    {
+      "id": "skill-deanpeters-product",
+      "name": "deanpeters-product-manager-skills",
+      "displayName": "Dean Peters PM 工具箱",
+      "type": "skill",
+      "description": "资深产品专家 Dean Peters 维护的需求拆解工具包，专注于用户痛点挖掘、敏捷故事切分与优先级权衡矩阵",
+      "category": "office-operations",
+      "tags": [
+        "需求分析",
+        "敏捷故事",
+        "用户研究",
+        "PRD"
+      ],
+      "author": "deanpeters",
+      "icon": "Users",
+      "difficulty": "beginner",
+      "compatibleWith": [
+        "claude",
+        "gemini"
+      ],
+      "repoUrl": "https://github.com/deanpeters/product-manager-skills",
+      "previewContent": "<a id=\"pmskills\"></a>\n\n# Product Manager Skills\n\n[![GitHub stars](https://img.shields.io/github/stars/deanpeters/Product-Manager-Skills?style=flat-square)](https://github.com/deanpeters/Product-Manager-Skills/stargazers) [![GitHub forks](https://img.shields.io/github/forks/deanpeters/Product-Manager-Skills?style=flat-square)](https://github.com/deanpeters/Product-Manager-Skills/forks) [![GitHub watchers](https://img.shields.io/github/watchers/deanpeters/Product-Manager-Skills?style=flat-square)](https://github.com/deanpeters/Product-Manager-Skills/watchers) [![Contributors](https://img.shields.io/github/contributors/deanpeters/Product-Manager-Skills?style=flat-square)](https://github.com/deanpeters/Product-Manager-Skills/graphs/contributors) [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen?style=flat-square)](CONTRIBUTING.md)\n\n[![Version](https://img.shields.io/badge/version-v0.84-blue?style=flat-square)](https://github.com/deanpeters/Product-Manager-Skills/releases/latest) ![Skills](https://img.shields.io/badge/skills-77-informational?style=flat-square) [![Last commit](https://img.shields.io/github/last-commit/deanpeters/Product-Manager-Skills?style=flat-square)](https://github.com/deanpeters/Product-Manager-Skills/commits/main) [![Claude Code Plugin](https://img.shields.io/badge/Claude%20Code-Plugin%20Marketplace-5C4EE5?style=flat-square)](https://code.claude.com/docs/en/plugin-marketplaces)\n\n```text\n╔═════════════════════════════════════════════════════",
+      "stars": 6889,
+      "downloadCount": 9600,
+      "updatedAt": "2026-07-19"
+    },
+    {
+      "id": "skill-agency-agents-zh",
+      "name": "agency-agents-zh",
+      "displayName": "中文 Agent 专业角色包",
+      "type": "skill",
+      "description": "专为中文语境定制的专业 Agent 角色与提示词集合，涵盖开发、测试、运维、设计等数十个垂直岗位设定",
+      "category": "office-operations",
+      "tags": [
+        "Agent角色",
+        "多智能体",
+        "中文提示词"
+      ],
+      "author": "jnMetaCode",
+      "icon": "Users",
+      "difficulty": "beginner",
+      "compatibleWith": [
+        "gemini",
+        "claude",
+        "cursor"
+      ],
+      "repoUrl": "https://github.com/jnMetaCode/agency-agents-zh",
+      "previewContent": "# agency-agents 中文版（AI 智能体专家团队）\n\n🌐 **简体中文** | [繁體中文](README.zh-TW.md) | [English (upstream)](https://github.com/msitarzewski/agency-agents)\n\n> **277 个即插即用的 AI 专家角色** — 覆盖公司经营（CEO/CTO/CMO/COO/CPO/CFO）、工程、设计、营销、产品、游戏、安全、GIS、金融等 20 个部门。不是通用提示词模板，每个智能体都有独立的人设、专业流程和可交付成果。支持 Claude Code / Cursor / Copilot 等 20 种 AI 编程工具。\n\n[agency-agents](https://github.com/msitarzewski/agency-agents) 的中文社区版。在完整翻译上游的基础上，新增了 63 个中国市场原创智能体（小红书、抖音、微信、B站、飞书、钉钉等平台运营，以及跨境电商、政务ToG、医疗合规、Qt 工业上位机、机械设计、畜禽养殖档案核对等垂直领域）。\n\n想更好地用起来，或想给团队打造统一的智能体工作台？[下载桌面客户端](https://github.com/jnMetaCode/agency-orchestrator/releases/latest)（原生 App，免装 Node，macOS / Windows / Linux），或在线体验 [ao.aiolaola.com/experts](https://ao.aiolaola.com/experts)。\n\n[![GitHub stars](https://img.shields.io/github/stars/jnMetaCode/agency-agents-zh?style=social)](https://github.com/jnMetaCode/agency-agents-zh)\n[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)\n[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://makeapullrequest.com)\n[![npm](https://img.shields.io/npm/v/agency-agents-zh?color=cb3837&logo=npm)](https://www.npmjs.com/package/agency-agents-zh)\n[![桌面客户端](https://img.shields.io/badge/桌面客户端-macOS%20%7C%20Windows%20%7C%20Linux-2563eb?logo=github)](https://github.com/jnMetaCode/agency-orchestrator/releases/latest)\n[![在线体验](https://img.shields.io/badge/在线体验-ao.aiolaola.com-8b5cf6)](https://ao.aiolaola.com/experts)\n\n\n### 📊 项目规模\n\n| 🤖 AI 智能体 | 🌏 英文版翻译 | 🇨🇳 中",
+      "stars": 20425,
+      "downloadCount": 39000,
+      "updatedAt": "2026-08-15"
+    },
+    {
+      "id": "skill-trailofbits-semgrep",
+      "name": "trailofbits-semgrep",
+      "displayName": "Trail of Bits 官方定制安全扫描",
+      "type": "skill",
+      "description": "顶尖安全机构 Trail of Bits 官方维护的 Agent 技能仓库（semgrep-rule-creator），指导 AI 定制漏洞扫描规则",
+      "category": "security-devops",
+      "tags": [
+        "Semgrep",
+        "安全规则",
+        "Trail of Bits",
+        "代码审计"
+      ],
+      "author": "trailofbits",
+      "icon": "ShieldAlert",
+      "difficulty": "advanced",
+      "compatibleWith": [
+        "claude",
+        "cursor"
+      ],
+      "repoUrl": "https://github.com/trailofbits/skills",
+      "previewContent": "# Trail of Bits Skills Marketplace\n\nA Claude Code plugin marketplace from Trail of Bits providing skills to enhance AI-assisted security analysis, testing, and development workflows. Codex can load this marketplace through its Claude marketplace compatibility.\n\n> Also see: [claude-code-config](https://github.com/trailofbits/claude-code-config) · [codex-config](https://github.com/trailofbits/codex-config) · [skills-curated](https://github.com/trailofbits/skills-curated) · [claude-code-devcontainer](https://github.com/trailofbits/claude-code-devcontainer) · [dropkit](https://github.com/trailofbits/dropkit) · [coop](https://github.com/trailofbits/coop)\n\n## Installation\n\n### Claude Code Marketplace\n\n```\n/plugin marketplace add trailofbits/skills\n```\n\n### Browse and Install Plugins\n\n```\n/plugin menu\n```\n\n### Codex\n\nCodex supports Claude plugin marketplaces directly, so this repository does not need Codex-specific sidecar metadata.\n\nInstall the marketplace with:\n\n```sh\ncodex plugin marketplace add trailofbits/skills\ncodex plugin list\ncodex plugin add <plugin-name>@trailofbits\n```\n\n### Local Development\n\nTo add the marketplace locally (e.g., for testing or development), navigate to the **parent directory** of this repository:\n\n```\ncd /path/to/parent  # e.g., if repo is at ~/projects/skills, be in ~/projects\n/plugins marketplace add ./skills\n```\n\n## Available Plugins\n\n### Smart Contract Security\n\n| Plugin | Description |\n|--------|-------------|\n| [building-secure-contracts](plugins/",
+      "stars": 7022,
+      "downloadCount": 14800,
+      "updatedAt": "2026-08-27"
+    },
+    {
+      "id": "skill-trailofbits-static-analysis",
+      "name": "trailofbits-static-analysis",
+      "displayName": "Trail of Bits 静态代码审计工具",
+      "type": "skill",
+      "description": "Trail of Bits 官方 Agent 技能仓库（static-analysis），整合 CodeQL 与 Semgrep 自动化执行污点追踪与注入检测",
+      "category": "security-devops",
+      "tags": [
+        "静态分析",
+        "CodeQL",
+        "安全审计",
+        "漏洞挖掘"
+      ],
+      "author": "trailofbits",
+      "icon": "Shield",
+      "difficulty": "advanced",
+      "compatibleWith": [
+        "claude",
+        "cursor"
+      ],
+      "repoUrl": "https://github.com/trailofbits/skills",
+      "previewContent": "# Trail of Bits Skills Marketplace\n\nA Claude Code plugin marketplace from Trail of Bits providing skills to enhance AI-assisted security analysis, testing, and development workflows. Codex can load this marketplace through its Claude marketplace compatibility.\n\n> Also see: [claude-code-config](https://github.com/trailofbits/claude-code-config) · [codex-config](https://github.com/trailofbits/codex-config) · [skills-curated](https://github.com/trailofbits/skills-curated) · [claude-code-devcontainer](https://github.com/trailofbits/claude-code-devcontainer) · [dropkit](https://github.com/trailofbits/dropkit) · [coop](https://github.com/trailofbits/coop)\n\n## Installation\n\n### Claude Code Marketplace\n\n```\n/plugin marketplace add trailofbits/skills\n```\n\n### Browse and Install Plugins\n\n```\n/plugin menu\n```\n\n### Codex\n\nCodex supports Claude plugin marketplaces directly, so this repository does not need Codex-specific sidecar metadata.\n\nInstall the marketplace with:\n\n```sh\ncodex plugin marketplace add trailofbits/skills\ncodex plugin list\ncodex plugin add <plugin-name>@trailofbits\n```\n\n### Local Development\n\nTo add the marketplace locally (e.g., for testing or development), navigate to the **parent directory** of this repository:\n\n```\ncd /path/to/parent  # e.g., if repo is at ~/projects/skills, be in ~/projects\n/plugins marketplace add ./skills\n```\n\n## Available Plugins\n\n### Smart Contract Security\n\n| Plugin | Description |\n|--------|-------------|\n| [building-secure-contracts](plugins/",
+      "stars": 7022,
+      "downloadCount": 19200,
+      "updatedAt": "2026-08-29"
+    },
+    {
+      "id": "skill-trailofbits-insecure-defaults",
+      "name": "trailofbits-insecure-defaults",
+      "displayName": "Trail of Bits 凭据与敏感配置扫描",
+      "type": "skill",
+      "description": "Trail of Bits 官方 Agent 技能仓库（insecure-defaults），排查源码中的硬编码默认密钥、明文私钥与弱加密算法",
+      "category": "security-devops",
+      "tags": [
+        "凭据泄露",
+        "安全配置",
+        "密钥扫描",
+        "合规"
+      ],
+      "author": "trailofbits",
+      "icon": "KeyRound",
+      "difficulty": "beginner",
+      "compatibleWith": [
+        "gemini",
+        "claude",
+        "cursor"
+      ],
+      "repoUrl": "https://github.com/trailofbits/skills",
+      "previewContent": "# Trail of Bits Skills Marketplace\n\nA Claude Code plugin marketplace from Trail of Bits providing skills to enhance AI-assisted security analysis, testing, and development workflows. Codex can load this marketplace through its Claude marketplace compatibility.\n\n> Also see: [claude-code-config](https://github.com/trailofbits/claude-code-config) · [codex-config](https://github.com/trailofbits/codex-config) · [skills-curated](https://github.com/trailofbits/skills-curated) · [claude-code-devcontainer](https://github.com/trailofbits/claude-code-devcontainer) · [dropkit](https://github.com/trailofbits/dropkit) · [coop](https://github.com/trailofbits/coop)\n\n## Installation\n\n### Claude Code Marketplace\n\n```\n/plugin marketplace add trailofbits/skills\n```\n\n### Browse and Install Plugins\n\n```\n/plugin menu\n```\n\n### Codex\n\nCodex supports Claude plugin marketplaces directly, so this repository does not need Codex-specific sidecar metadata.\n\nInstall the marketplace with:\n\n```sh\ncodex plugin marketplace add trailofbits/skills\ncodex plugin list\ncodex plugin add <plugin-name>@trailofbits\n```\n\n### Local Development\n\nTo add the marketplace locally (e.g., for testing or development), navigate to the **parent directory** of this repository:\n\n```\ncd /path/to/parent  # e.g., if repo is at ~/projects/skills, be in ~/projects\n/plugins marketplace add ./skills\n```\n\n## Available Plugins\n\n### Smart Contract Security\n\n| Plugin | Description |\n|--------|-------------|\n| [building-secure-contracts](plugins/",
+      "stars": 7022,
+      "downloadCount": 13500,
+      "updatedAt": "2026-08-14"
+    },
+    {
+      "id": "skill-sentry-workflow",
+      "name": "sentry-workflow",
+      "displayName": "Sentry 官方生产故障定位与排障",
+      "type": "skill",
+      "description": "Sentry 官方维护的 Agent 技能仓库（sentry-workflow），自动联动线上崩溃堆栈与告警上下文生成精确修复代码",
+      "category": "security-devops",
+      "tags": [
+        "Sentry",
+        "监控告警",
+        "故障排查",
+        "APM"
+      ],
+      "author": "getsentry",
+      "icon": "Bug",
+      "difficulty": "intermediate",
+      "compatibleWith": [
+        "claude",
+        "gemini",
+        "cursor"
+      ],
+      "repoUrl": "https://github.com/getsentry/skills",
+      "previewContent": "# Sentry Skills\n\n> [!NOTE]\n> For skills to help set up Sentry in your project or debug production issues, see https://github.com/getsentry/sentry-for-ai\n\nAgent skills for Sentry employees, following the [Agent Skills](https://agentskills.io) open format.\n\n## Installation\n\n### Claude Code\n\n```bash\nclaude plugin marketplace add getsentry/skills\nclaude plugin install sentry-skills@sentry-skills\n```\n\nIf you use `claude plugin marketplace add --sparse` for this repo, include `skills` and `agents` alongside `.claude-plugin` because the root plugin manifest loads repo-root `skills/` and `agents/`.\n\nRestart Claude Code after installation. Skills activate automatically when relevant.\n\n**Update:**\n\n```bash\nclaude plugin marketplace update\nclaude plugin update sentry-skills@sentry-skills\n```\n\nOr run `/plugin` to open the plugin manager.\n\n### Skills Package (skills.sh)\n\nFor agents supporting the [skills.sh](https://skills.sh) ecosystem:\n\n```bash\nnpx skills add getsentry/skills\n```\n\nWorks with Claude Code, Cursor, Cline, GitHub Copilot, and other compatible agents.\n\n## Available Skills\n\n| Skill | Description |\n|-------|-------------|\n| [agents-md](skills/agents-md/SKILL.md) | Create and maintain concise, reference-backed AGENTS.md and CLAUDE.md files. |\n| [blog-writing-guide](skills/blog-writing-guide/SKILL.md) | Write, review, and improve blog posts for the Sentry engineering blog following Sentry's specific writing standards, voice, and quality bar. |\n| [brand-guidelines](skills/brand-g",
+      "stars": 986,
+      "downloadCount": 39000,
+      "updatedAt": "2026-09-01"
     },
     {
       "id": "prompt-code-review",
@@ -323,7 +882,11 @@
       "type": "prompt",
       "description": "专业级代码审查提示词，从代码质量、安全性、性能、可维护性四个维度进行全面审查",
       "category": "prompt-library",
-      "tags": ["代码审查", "质量", "安全"],
+      "tags": [
+        "代码审查",
+        "质量",
+        "安全"
+      ],
       "author": "SkillHub",
       "icon": "Shield",
       "difficulty": "intermediate",
@@ -338,7 +901,11 @@
       "type": "prompt",
       "description": "代码重构专家提示词，识别代码坏味道并给出具体的重构方案和步骤",
       "category": "prompt-library",
-      "tags": ["重构", "代码质量", "设计模式"],
+      "tags": [
+        "重构",
+        "代码质量",
+        "设计模式"
+      ],
       "author": "SkillHub",
       "icon": "RefreshCw",
       "difficulty": "intermediate",
@@ -353,7 +920,11 @@
       "type": "prompt",
       "description": "根据 git diff 自动生成规范的 Conventional Commits 格式提交信息",
       "category": "prompt-library",
-      "tags": ["Git", "Commit", "规范"],
+      "tags": [
+        "Git",
+        "Commit",
+        "规范"
+      ],
       "author": "SkillHub",
       "icon": "GitCommit",
       "difficulty": "beginner",
@@ -368,7 +939,12 @@
       "type": "prompt",
       "description": "根据业务需求设计优雅、符合 REST 规范的 API 接口，包括端点、方法、请求体和响应格式",
       "category": "prompt-library",
-      "tags": ["API", "RESTful", "后端", "设计"],
+      "tags": [
+        "API",
+        "RESTful",
+        "后端",
+        "设计"
+      ],
       "author": "SkillHub",
       "icon": "Globe",
       "difficulty": "intermediate",
@@ -383,7 +959,11 @@
       "type": "prompt",
       "description": "系统化的 Bug 调试提示词，引导 AI 从错误信息出发，逐步定位根因并给出修复方案",
       "category": "prompt-library",
-      "tags": ["调试", "Bug", "错误排查"],
+      "tags": [
+        "调试",
+        "Bug",
+        "错误排查"
+      ],
       "author": "SkillHub",
       "icon": "Bug",
       "difficulty": "beginner",
@@ -398,62 +978,594 @@
       "type": "prompt",
       "description": "中文技术文档写作模板，生成结构清晰、术语准确、易读的技术文档",
       "category": "prompt-library",
-      "tags": ["文档", "中文", "写作"],
+      "tags": [
+        "文档",
+        "中文",
+        "写作"
+      ],
       "author": "SkillHub",
       "icon": "Languages",
       "difficulty": "beginner",
       "promptContent": "请帮我编写一份关于 {{topic}} 的技术文档。\n\n## 文档要求\n\n### 格式规范\n- 使用 Markdown 格式\n- 中文为主，技术术语保留英文（如 API、JWT、Docker）\n- 代码相关保持英文（变量名、函数名、命令）\n- 段落简洁，每段不超过5句\n\n### 文档结构\n1. **概述** — 一句话说明是什么、解决什么问题\n2. **快速开始** — 最少步骤跑通基本流程\n3. **核心概念** — 关键术语和架构说明\n4. **详细指南** — 按场景/功能分节\n5. **API 参考** — 如适用\n6. **常见问题** — FAQ\n7. **更新日志** — 版本变更记录\n\n### 写作风格\n- 直接、实用，避免冗余修饰\n- 多用具体示例和代码\n- 对初学者友好，但不降低技术深度\n- 每个代码块都加注释说明\n\n文档主题：{{topic}}\n目标读者：{{audience}}",
       "promptVariables": "[{\"name\":\"topic\",\"label\":\"文档主题\",\"default\":\"\"},{\"name\":\"audience\",\"label\":\"目标读者\",\"default\":\"中级开发者\"}]",
       "updatedAt": "2026-09-01"
+    },
+    {
+      "id": "prompt-system-architect",
+      "name": "system-architect-prompt",
+      "displayName": "系统架构设计师",
+      "type": "prompt",
+      "description": "资深系统架构师角色提示词，从需求出发设计高可用、可扩展的技术架构方案",
+      "category": "prompt-library",
+      "tags": [
+        "架构设计",
+        "高可用",
+        "微服务",
+        "系统设计"
+      ],
+      "author": "SkillHub",
+      "icon": "Building",
+      "difficulty": "advanced",
+      "promptContent": "你是一位拥有 15 年经验的资深系统架构师。请基于以下业务场景设计一套完整的技术架构方案。\n\n## 架构设计要求\n\n### 1. 需求分析\n- 核心功能需求梳理\n- 非功能性需求（性能、可用性、安全性）\n- 预估用户规模和并发量级\n\n### 2. 架构选型\n- 整体架构风格（单体/微服务/Serverless/混合）\n- 技术栈选择及理由\n- 数据存储方案（关系型/NoSQL/缓存/搜索引擎）\n- 消息队列与异步处理\n\n### 3. 架构图\n- 使用 Mermaid 绘制系统架构图\n- 标注核心服务、数据流向、外部依赖\n\n### 4. 关键设计\n- 高可用方案（容灾、降级、熔断）\n- 数据一致性策略\n- 安全设计（认证、鉴权、数据加密）\n- 可观测性（日志、监控、链路追踪）\n\n### 5. 演进路线\n- MVP 阶段 → 增长阶段 → 规模化阶段的演进方案\n\n## 业务场景\n{{scenario}}",
+      "promptVariables": "[{\"name\":\"scenario\",\"label\":\"业务场景描述\",\"default\":\"\"}]",
+      "updatedAt": "2026-09-09"
+    },
+    {
+      "id": "prompt-en-cn-translator",
+      "name": "en-cn-tech-translator",
+      "displayName": "英中技术翻译专家",
+      "type": "prompt",
+      "description": "专业英中技术文档翻译提示词，保留技术术语原文、确保中文表达自然流畅",
+      "category": "writing-translation",
+      "tags": [
+        "翻译",
+        "英中",
+        "技术文档",
+        "本地化"
+      ],
+      "author": "SkillHub",
+      "icon": "Languages",
+      "difficulty": "beginner",
+      "promptContent": "你是一位资深的英中技术翻译专家。请将以下英文技术内容翻译为地道的简体中文。\n\n## 翻译准则\n\n### 1. 术语处理\n- 广泛接受的缩写保留英文：API、SDK、JWT、OAuth、CI/CD\n- 专有名词首次出现时标注英文原文：「依赖注入（Dependency Injection）」\n- 代码中的变量名、函数名、命令行一律保留英文\n\n### 2. 语言风格\n- 使用简洁直白的中文，避免翻译腔和长定语\n- 被动句改为主动句（\"is used\" → \"使用\"）\n- 避免「的的的」堆叠和「被」字句滥用\n- 技术行文简练，一句一个核心观点\n\n### 3. 格式要求\n- 保持原文 Markdown 格式和层级结构\n- 中英文之间加空格（如「使用 Docker 部署」）\n- 标点符号使用中文标点（，。；：）\n\n### 4. 质量检查\n- 译文无遗漏内容\n- 技术信息准确无误\n- 上下文术语前后一致\n\n## 待翻译内容\n{{content}}",
+      "promptVariables": "[{\"name\":\"content\",\"label\":\"待翻译英文内容\",\"default\":\"\"}]",
+      "updatedAt": "2026-09-09"
+    },
+    {
+      "id": "prompt-data-analyst",
+      "name": "data-analyst-prompt",
+      "displayName": "数据分析专家",
+      "type": "prompt",
+      "description": "数据分析师角色提示词，从数据中提取洞察、构建可视化报表并给出业务建议",
+      "category": "data-analysis",
+      "tags": [
+        "数据分析",
+        "报表",
+        "洞察",
+        "可视化"
+      ],
+      "author": "SkillHub",
+      "icon": "TrendingUp",
+      "difficulty": "intermediate",
+      "promptContent": "你是一位资深数据分析师。请对以下数据进行深入分析，提取关键洞察并给出可操作的业务建议。\n\n## 分析框架\n\n### 1. 数据概览\n- 数据规模、维度、时间范围\n- 缺失值和异常值识别\n- 关键指标的描述性统计（均值、中位数、标准差）\n\n### 2. 趋势分析\n- 时间序列趋势（同比/环比）\n- 关键拐点和波动原因分析\n- 季节性规律识别\n\n### 3. 分组对比\n- 按关键维度分组（地区/渠道/用户群/产品线）\n- 分组间差异的显著性判断\n- Top N / Bottom N 排名\n\n### 4. 相关性分析\n- 变量间的相关关系\n- 因果假设（明确说明是相关而非因果）\n\n### 5. 可视化建议\n- 推荐最适合的图表类型\n- 给出可直接使用的 ECharts/Mermaid 图表代码\n\n### 6. 业务建议\n- 基于数据的 3-5 条可操作建议\n- 每条建议附带支撑数据\n- 风险提示和注意事项\n\n## 分析目标\n{{objective}}\n\n## 数据内容\n{{data}}",
+      "promptVariables": "[{\"name\":\"objective\",\"label\":\"分析目标\",\"default\":\"\"},{\"name\":\"data\",\"label\":\"数据内容（表格/CSV/JSON）\",\"default\":\"\"}]",
+      "updatedAt": "2026-09-09"
+    },
+    {
+      "id": "prompt-security-report",
+      "name": "security-audit-report",
+      "displayName": "安全审计报告生成器",
+      "type": "prompt",
+      "description": "基于 OWASP 标准的安全审计报告提示词，系统化评估代码和系统的安全风险",
+      "category": "security-devops",
+      "tags": [
+        "安全审计",
+        "OWASP",
+        "报告",
+        "风险评估"
+      ],
+      "author": "SkillHub",
+      "icon": "ShieldAlert",
+      "difficulty": "advanced",
+      "promptContent": "你是一位资深安全工程师。请对以下代码/系统进行全面的安全审计，生成一份结构化的安全评估报告。\n\n## 审计框架（基于 OWASP Top 10）\n\n### 1. 注入风险\n- SQL 注入、NoSQL 注入、OS 命令注入\n- 模板注入（SSTI）\n- 参数化查询使用情况\n\n### 2. 认证与会话\n- 密码存储方式（是否加盐哈希）\n- Session/Token 管理\n- 多因素认证（MFA）支持\n- 暴力破解防护\n\n### 3. 敏感数据保护\n- 传输层加密（TLS/HTTPS）\n- 存储加密（AES-256 等）\n- 日志中是否泄露敏感信息\n- API Key / Secret 硬编码检查\n\n### 4. 访问控制\n- RBAC/ABAC 实现\n- 越权访问（IDOR）风险\n- API 端点权限验证\n\n### 5. 安全配置\n- 依赖库版本和已知 CVE\n- HTTP 安全头（CSP、HSTS、X-Frame-Options）\n- CORS 配置合理性\n\n## 报告格式\n对每个发现给出：\n- 🔴 高危 / 🟠 中危 / 🟡 低危 / ℹ️ 信息\n- 风险描述\n- 影响范围\n- 修复建议（含代码示例）\n- 参考标准（CWE 编号）\n\n## 审计目标\n{{target}}\n\n## 代码/配置\n{{code}}",
+      "promptVariables": "[{\"name\":\"target\",\"label\":\"审计目标描述\",\"default\":\"Web 应用后端 API\"},{\"name\":\"code\",\"label\":\"待审计代码或配置\",\"default\":\"\"}]",
+      "updatedAt": "2026-09-09"
+    },
+    {
+      "id": "prompt-code-reviewer",
+      "name": "code-reviewer-auditor",
+      "displayName": "代码审查与坏味道审计官",
+      "type": "prompt",
+      "description": "从 Clean Code、潜在死锁、未捕获异常、内存泄露与并发安全五个维度深度审查代码并给出重构方案",
+      "category": "testing-quality",
+      "tags": [
+        "Code Review",
+        "代码质量",
+        "重构",
+        "Clean Code"
+      ],
+      "author": "prompts.chat",
+      "icon": "FileCheck",
+      "difficulty": "intermediate",
+      "compatibleWith": [
+        "gemini",
+        "claude",
+        "cursor"
+      ],
+      "promptContent": "你是一位资深技术专家和严苛的 Code Reviewer。请以批判性视角对以下代码进行逐行审查，重点关注：\n1. 正确性与边界异常处理（空指针、边界越界、未捕获 Promise rejection 等）；\n2. 性能与资源管理（内存泄露、冗余遍历、连接池未释放、过度渲染）；\n3. 并发安全性（竞态条件、脏读）；\n4. 可维护性与 Clean Code 规范。\n请先给出综合健康度评分（1-10分），再列出高危问题（P0）、改进建议（P1），最后提供修改后的优雅重构代码。\n\n待审查代码：\n```{{language}}\n{{code}}\n```",
+      "promptVariables": "[{\"name\":\"language\",\"description\":\"编程语言（如 typescript, python, go）\",\"default\":\"typescript\"},{\"name\":\"code\",\"description\":\"待审查的代码片段\",\"default\":\"\"}]",
+      "previewContent": "从 Clean Code、并发安全、异常防御与性能损耗全维度审查代码并输出修复代码。",
+      "stars": 8400,
+      "downloadCount": 29000,
+      "updatedAt": "2026-09-01"
+    },
+    {
+      "id": "prompt-prd-architect",
+      "name": "prd-architect-master",
+      "displayName": "PRD 需求规格说明书专家",
+      "type": "prompt",
+      "description": "将粗糙业务想法转化为包含背景、目标、用户故事、核心流程、字段定义与非功能需求的严谨 PRD",
+      "category": "office-operations",
+      "tags": [
+        "PRD",
+        "需求文档",
+        "产品设计",
+        "规格书"
+      ],
+      "author": "prompts.chat",
+      "icon": "FileText",
+      "difficulty": "intermediate",
+      "compatibleWith": [
+        "gemini",
+        "claude"
+      ],
+      "promptContent": "你是一位拥有 10 年经验的大厂资深产品总监。请根据我提供的功能简述，编写一份标准化、高落地的《产品需求文档 (PRD)》：\n\n### 文档要求：\n1. **背景与目标**：解决什么用户痛点，核心度量指标 (North Star Metric)；\n2. **用户故事与画像**：明确 As a [role], I want [action], so that [value]；\n3. **核心功能清单与流程图**：按优先级 (P0/P1/P2) 分级，给出主流程与异常分支说明；\n4. **UI/交互细节要求**：状态转换、空状态、错误提示、防重复点击；\n5. **数据埋点与非功能需求**：关键转化漏斗埋点、性能指标与并发预期。\n\n需求构想：\n{{feature_idea}}",
+      "promptVariables": "[{\"name\":\"feature_idea\",\"description\":\"你的产品功能构想或业务需求描述\",\"default\":\"在管理后台中增加批量导入与数据校验功能\"}]",
+      "previewContent": "将概念快速转化为结构严谨、研发与设计无缝理解的工业级 PRD 文档。",
+      "stars": 11200,
+      "downloadCount": 42000,
+      "updatedAt": "2026-08-28"
+    },
+    {
+      "id": "prompt-reverse-prompt",
+      "name": "reverse-prompt-engineer",
+      "displayName": "Prompt 逆向分析工程师",
+      "type": "prompt",
+      "description": "输入一段期望的高质量 AI 输出样本，自动逆向推导出能稳定复现该输出的高性能 System Prompt 与结构化指令",
+      "category": "office-operations",
+      "tags": [
+        "Prompt逆向",
+        "提示词生成",
+        "AI调优"
+      ],
+      "author": "prompts.chat",
+      "icon": "RefreshCw",
+      "difficulty": "advanced",
+      "compatibleWith": [
+        "gemini",
+        "claude",
+        "cursor"
+      ],
+      "promptContent": "你是一位资深 Prompt 逆向工程师。下面是一段非常符合期望的高质量 AI 回复样本。请仔细分析其行文风格、逻辑框架、角色设定与隐藏约束，逆向推导并编写出能够稳定生成同等质量内容的结构化 System Prompt：\n\n### 分析要求：\n1. 角色与人设特征（Tone of voice, Expertise）；\n2. 隐藏的结构化输出规范；\n3. 防跑偏的 Negative Constraints；\n4. 最终生成的完整 Prompt 模板（采用 Markdown 结构化标签）。\n\n参考样例内容：\n```\n{{target_sample}}\n```",
+      "promptVariables": "[{\"name\":\"target_sample\",\"description\":\"你希望 AI 能够稳定模仿并生成的高质量文本样本\",\"default\":\"\"}]",
+      "previewContent": "从优秀样本反向推导出高复现度的工业级 System Prompt。",
+      "stars": 9600,
+      "downloadCount": 31000,
+      "updatedAt": "2026-08-15"
+    },
+    {
+      "id": "prompt-sql-tuning-master",
+      "name": "sql-tuning-master",
+      "displayName": "SQL 慢查询诊断与索引调优大师",
+      "type": "prompt",
+      "description": "深入剖析 EXPLAIN 执行计划、定位全表扫描与临时表开销，并针对性给出覆盖索引、查询重写与分区调优方案",
+      "category": "data-analysis",
+      "tags": [
+        "SQL优化",
+        "慢查询",
+        "索引设计",
+        "EXPLAIN"
+      ],
+      "author": "prompts.chat",
+      "icon": "Zap",
+      "difficulty": "advanced",
+      "compatibleWith": [
+        "gemini",
+        "claude",
+        "cursor"
+      ],
+      "promptContent": "你是一位拥有资深数据库内核优化经验的 DBA 专家。请对以下慢 SQL 进行深度性能诊断与执行计划重构：\n\n### 分析维度：\n1. **性能瓶颈定位**：指出可能造成全表扫描 (ALL/Full Scan)、文件排序 (Using filesort) 或临时表 (Using temporary) 的原因；\n2. **索引优化建议**：设计最适合该查询的最优联合索引（遵循最左前缀与覆盖索引原则）；\n3. **SQL 重写方案**：改写非高效子查询、分页 Deep Paging 或隐式类型转换；\n4. **参数与架构考量**：针对大数据量场景的分区分表或缓存考量。\n\n待分析 SQL 语句及表结构：\n```sql\n{{slow_sql}}\n```",
+      "promptVariables": "[{\"name\":\"slow_sql\",\"description\":\"慢查询 SQL 及建表 DDL\",\"default\":\"SELECT * FROM orders WHERE status = 1 ORDER BY created_at DESC LIMIT 100000, 20;\"}]",
+      "previewContent": "让高负载数据库查询提速百倍的专业级索引与 SQL 调优提示词。",
+      "stars": 12800,
+      "downloadCount": 47000,
+      "updatedAt": "2026-08-30"
+    },
+    {
+      "id": "prompt-copywriter-overseas",
+      "name": "overseas-launch-copywriter",
+      "displayName": "独立开发出海营销文案专家",
+      "type": "prompt",
+      "description": "专为出海独立产品量身定制，生成地道原生英语（Native English）的 ProductHunt Launch、Twitter Thread 及 Landing Page 转化文案",
+      "category": "writing-translation",
+      "tags": [
+        "出海",
+        "ProductHunt",
+        "Twitter",
+        "英文文案"
+      ],
+      "author": "prompts.chat",
+      "icon": "Globe2",
+      "difficulty": "intermediate",
+      "compatibleWith": [
+        "gemini",
+        "claude"
+      ],
+      "promptContent": "You are a world-class SaaS copywriter and growth marketer who has helped dozens of solo-founders reach the #1 Product of the Day on Product Hunt.\n\nPlease craft high-converting, native English launch materials for my product:\n\n### Output Deliverables:\n1. **Product Hunt Tagline**: Punchy, clear, under 60 characters with strong hook;\n2. **PH Maker Comment**: Storytelling formula (The Problem -> Why I built this -> How it works -> Exclusive discount/offer for hunters);\n3. **Twitter/X Launch Thread (5 tweets)**: Hook tweet with high engagement, GIF/demo placeholders, key benefits, and CTA;\n4. **Hero Section Headline & Subtitle**: For the product landing page.\n\nProduct Details:\n{{product_info}}",
+      "promptVariables": "[{\"name\":\"product_info\",\"description\":\"你的产品功能、解决的痛点及目标受众\",\"default\":\"SkillHub: An all-in-one manager for AI agent skills and prompt engineering.\"}]",
+      "previewContent": "打造爆款 ProductHunt 首发与 Twitter 病毒式传播文案的实战提示词。",
+      "stars": 10400,
+      "downloadCount": 36000,
+      "updatedAt": "2026-08-25"
+    },
+    {
+      "id": "prompt-chinese-polisher",
+      "name": "chinese-technical-polisher",
+      "displayName": "出版级中文润色与去 AI 感专家",
+      "type": "prompt",
+      "description": "彻底剔除“首先、总而言之、不可否认”等 AI 模板套话，以自然凝练的中文表达重塑文章，增强说服力与阅读流畅度",
+      "category": "writing-translation",
+      "tags": [
+        "中文润色",
+        "去AI感",
+        "写作",
+        "技术博客"
+      ],
+      "author": "prompts.chat",
+      "icon": "Sparkles",
+      "difficulty": "beginner",
+      "compatibleWith": [
+        "gemini",
+        "claude"
+      ],
+      "promptContent": "你是一位具有严谨文字修养的技术编辑与文学润色名家。请将以下文本彻底去除“AI 翻译腔”与“公文套话感”：\n\n### 润色法则：\n1. **杜绝死板连接词**：坚决删除“值得注意的是”、“不可否认”、“正如我们所知”、“综上所述”；\n2. **句式精简**：化长句为短句，动词化名词，增加节奏感与呼吸感；\n3. **技术准确**：专业术语保留标准英文或业界公认译名；\n4. **保留说话者语调**：真诚、自信、专业。\n\n待润色原文：\n{{raw_content}}",
+      "promptVariables": "[{\"name\":\"raw_content\",\"description\":\"需要去 AI 感润色的文本内容\",\"default\":\"\"}]",
+      "previewContent": "一键洗掉 AI 机器味，还原地道自然的母语质感。",
+      "stars": 14500,
+      "downloadCount": 51000,
+      "updatedAt": "2026-09-03"
+    },
+    {
+      "id": "prompt-k8s-troubleshoot",
+      "name": "k8s-troubleshoot-expert",
+      "displayName": "Kubernetes 集群排障专家",
+      "type": "prompt",
+      "description": "针对 Pod CrashLoopBackOff、OOMKilled、Ingress 502 及 PVC 挂载失败等 K8s 棘手疑难杂症，提供逐步根因排查手册",
+      "category": "security-devops",
+      "tags": [
+        "Kubernetes",
+        "K8s",
+        "运维排错",
+        "容器"
+      ],
+      "author": "prompts.chat",
+      "icon": "Container",
+      "difficulty": "advanced",
+      "compatibleWith": [
+        "gemini",
+        "claude"
+      ],
+      "promptContent": "你是一位经验丰富的 SRE 专家和 Kubernetes 运维老兵。请根据我提供的 Pod 状态、kubectl describe 详情及日志片段，进行深度的系统排查：\n\n### 诊断流程：\n1. **核心根因判定**：明确指出问题性质（如节点资源不足、探针探测失败、配置键缺失、启动命令错误等）；\n2. **精准排查命令**：给出 3~5 条定位该问题的具体 kubectl / crictl 命令；\n3. **紧急规避与修复方案**：包含 Deployment YAML 字段修正；\n4. **长效预防机制**：如何配置健康检查与资源配额避免同类故障再现。\n\n故障信息描述：\n```\n{{k8s_issue_log}}\n```",
+      "promptVariables": "[{\"name\":\"k8s_issue_log\",\"description\":\"Pod describe 信息或 kubectl 报错日志\",\"default\":\"Pod status is CrashLoopBackOff, Back-off 5m0s restarting failed container\"}]",
+      "previewContent": "直击 K8s 核心痛点，快速让异常容器与服务满血复活的运维宝典。",
+      "stars": 13900,
+      "downloadCount": 46000,
+      "updatedAt": "2026-08-26"
+    },
+    {
+      "id": "prompt-regex-master",
+      "name": "regex-ninja-master",
+      "displayName": "正则表达式专家与防灾排障",
+      "type": "prompt",
+      "description": "精准编写复杂正则表达式，提供各主流语言转义版本、详细执行步进解析，并严格检测灾难性回溯 (ReDoS) 风险",
+      "category": "tech-development",
+      "tags": [
+        "正则表达式",
+        "Regex",
+        "ReDoS",
+        "工具"
+      ],
+      "author": "prompts.chat",
+      "icon": "Binary",
+      "difficulty": "intermediate",
+      "compatibleWith": [
+        "gemini",
+        "claude",
+        "cursor"
+      ],
+      "promptContent": "你是一位正则表达式（Regular Expression）顶级专家。请根据我的需求设计高效、安全且鲁棒的正则表达式：\n\n### 交付规范：\n1. **正则表达式主体**：给出通用正则及在 JavaScript/TypeScript/Python 中的具体语法写法；\n2. **逐段原理解析**：对每个字符集、捕获组、贪婪/非贪婪修饰符进行逐一说明；\n3. **测试用例集**：至少提供 5 个应匹配成功的正例和 5 个应被拦截的反例；\n4. **安全与性能核查**：确认是否存在灾难性回溯 (Catastrophic Backtracking / ReDoS) 隐患。\n\n我的匹配需求与规则说明：\n{{regex_requirement}}",
+      "promptVariables": "[{\"name\":\"regex_requirement\",\"description\":\"需要匹配的具体规则描述\",\"default\":\"匹配符合强密码要求的密码（包含大小写、数字、特殊字符，长度8-20位）\"}]",
+      "previewContent": "编写绝不卡死的极速正则表达式，全面阻断 ReDoS 注入隐患。",
+      "stars": 12300,
+      "downloadCount": 41000,
+      "updatedAt": "2026-08-22"
+    },
+    {
+      "id": "prompt-linux-terminal",
+      "name": "linux-terminal-simulator",
+      "displayName": "Linux 极客终端与 Bash 仿真器",
+      "type": "prompt",
+      "description": "prompts.chat 开源经典榜首：将大模型模拟为纯粹 Linux 虚拟机终端，忠实反馈命令执行结果与文件系统状态",
+      "category": "prompt-library",
+      "tags": [
+        "Linux",
+        "Bash",
+        "终端",
+        "经典"
+      ],
+      "author": "prompts.chat",
+      "icon": "TerminalSquare",
+      "difficulty": "beginner",
+      "compatibleWith": [
+        "gemini",
+        "claude",
+        "cursor"
+      ],
+      "promptContent": "我希望你充当一个真正的 Linux 终端。我将键入命令，你将回复终端应该显示的内容。我希望你只回复一个唯一的代码块内的终端输出，不要写任何多余的解释。除非我指示你这样做，否则不要键入命令。当我需要告诉你某些事情时，我会在大括号内写文本 {like this}。我的第一个命令是：\n{{first_command}}",
+      "promptVariables": "[{\"name\":\"first_command\",\"description\":\"起始执行命令\",\"default\":\"uname -a && cat /etc/os-release\"}]",
+      "previewContent": "经典开源 Prompt 榜首：让模型化身纯粹 Linux Bash 环境。",
+      "stars": 120000,
+      "downloadCount": 350000,
+      "updatedAt": "2026-08-01"
+    },
+    {
+      "id": "prompt-api-doc-writer",
+      "name": "openapi-spec-master",
+      "displayName": "OpenAPI 3.0 / Swagger 文档专家",
+      "type": "prompt",
+      "description": "根据接口逻辑或代码实现，自动生成格式严密的 OpenAPI 3.0 (Swagger) YAML/JSON 规范文档与完整 Mock 响应",
+      "category": "prompt-library",
+      "tags": [
+        "OpenAPI",
+        "Swagger",
+        "接口文档",
+        "YAML"
+      ],
+      "author": "prompts.chat",
+      "icon": "FileCode",
+      "difficulty": "intermediate",
+      "compatibleWith": [
+        "gemini",
+        "claude",
+        "cursor"
+      ],
+      "promptContent": "你是一位精通 RESTful API 规范与 OpenAPI 3.0 标准的架构师。请根据我提供的接口业务逻辑，生成标准、美观、可直接导入 Swagger UI / Postman 的 OpenAPI 3.0 YAML 文档：\n\n### 包含内容：\n1. paths 与详细 tags；\n2. 严格的 parameters (path, query, header) 与类型约束；\n3. requestBody 结构体模型及 Schema 定义；\n4. 详尽的 responses (200, 400, 401, 404, 500) 及真实 Mock 示例。\n\n接口业务描述：\n{{api_description}}",
+      "promptVariables": "[{\"name\":\"api_description\",\"description\":\"接口的业务说明或现有代码\",\"default\":\"用户管理服务：POST /api/v1/users 创建用户，包含 email, username, role 字段\"}]",
+      "previewContent": "一键生成标准 OpenAPI 3.0 规范，让前后端协作与 Mock 测试零分歧。",
+      "stars": 15400,
+      "downloadCount": 48000,
+      "updatedAt": "2026-08-20"
+    },
+    {
+      "id": "prompt-git-commit",
+      "name": "conventional-commits-generator",
+      "displayName": "Conventional Commits 语义化提交",
+      "type": "prompt",
+      "description": "输入 git diff 变更，自动分析核心动机并生成符合 AngularJS / Conventional Commits 规范的高水准中英文提交信息",
+      "category": "prompt-library",
+      "tags": [
+        "Git",
+        "Commit",
+        "版本控制",
+        "规范"
+      ],
+      "author": "prompts.chat",
+      "icon": "GitCommit",
+      "difficulty": "beginner",
+      "compatibleWith": [
+        "gemini",
+        "claude",
+        "cursor"
+      ],
+      "promptContent": "你是一位注重工程洁癖的代码版本控制专家。请根据以下 git diff 代码变更，生成符合 Conventional Commits 1.0.0 规范的标准 Commit Message：\n\n### 格式规范：\n`<type>(<scope>): <subject>`\n\n[optional body explaining 'why' not 'how']\n\n[optional footer(s)]\n\n### 规则：\n- type 必须为 feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert 之一；\n- 提供中文与英文两个版本供开发者选择；\n- 重点解释为何修改（Why），而非仅仅罗列修改细节。\n\nGit Diff 变更内容：\n```diff\n{{git_diff}}\n```",
+      "promptVariables": "[{\"name\":\"git_diff\",\"description\":\"git diff 输出内容\",\"default\":\"\"}]",
+      "previewContent": "精准解析变更意图，自动生成无可挑剔的标准化 Git 提交信息。",
+      "stars": 28000,
+      "downloadCount": 95000,
+      "updatedAt": "2026-09-02"
+    },
+    {
+      "id": "prompt-shell-script-wizard",
+      "name": "production-shell-script-wizard",
+      "displayName": "生产级 Shell / Bash 脚本专家",
+      "type": "prompt",
+      "description": "编写具备 set -euo pipefail 防御性安全机制、完备日志输出、错误捕获与跨平台兼容的生产级 Bash 脚本",
+      "category": "prompt-library",
+      "tags": [
+        "Bash",
+        "Shell",
+        "自动化脚本",
+        "DevOps"
+      ],
+      "author": "prompts.chat",
+      "icon": "TerminalSquare",
+      "difficulty": "intermediate",
+      "compatibleWith": [
+        "gemini",
+        "claude",
+        "cursor"
+      ],
+      "promptContent": "你是一位资深 Linux 运维架构师。请为我编写一段坚如磐石、符合生产级运维规范的 Bash 脚本：\n\n### 核心规范：\n1. 开头必须包含 `#!/usr/bin/env bash` 与 `set -euo pipefail`（遇错即停、未声明变量报警、管道错误传递）；\n2. 包含色彩缤纷的标准日志函数（log_info, log_warn, log_error）；\n3. 设置 trap cleanup EXIT 机制，保证异常退出时自动清理临时文件；\n4. 完善的参数解析（getopts 支持 -h/--help）。\n\n任务需求：\n{{task_requirement}}",
+      "promptVariables": "[{\"name\":\"task_requirement\",\"description\":\"需要脚本执行的自动化任务\",\"default\":\"自动化备份 MySQL 数据库，压缩为 tar.gz 并清理 7 天前旧备份\"}]",
+      "previewContent": "拒绝玩具脚本，打造拥有工业级健壮性与防误删机制的高可靠运维脚本。",
+      "stars": 16800,
+      "downloadCount": 52000,
+      "updatedAt": "2026-08-27"
+    },
+    {
+      "id": "prompt-cot-reasoner",
+      "name": "cot-deep-reasoning-engine",
+      "displayName": "Chain-of-Thought 链式深度推理机",
+      "type": "prompt",
+      "description": "强制激活模型的逐步思考 (Step-by-Step) 与反思机制，攻克复杂算法逻辑、多步数学推理与系统级根因诊断",
+      "category": "prompt-library",
+      "tags": [
+        "CoT",
+        "链式思考",
+        "深度推理",
+        "逻辑"
+      ],
+      "author": "prompts.chat",
+      "icon": "Brain",
+      "difficulty": "advanced",
+      "compatibleWith": [
+        "gemini",
+        "claude",
+        "cursor"
+      ],
+      "promptContent": "请激活深度系统化思考（Chain-of-Thought）模式，解决以下复杂问题：\n\n### 思考执行协议：\n1. **拆解约束与已知条件**：明确问题边界、所有显性/隐性假定；\n2. **多路径头脑风暴**：提出至少两种可行的解题或架构路径，对比各自的复杂度与权衡（Trade-offs）；\n3. **逐步推导演算**：一步步展开推导逻辑，并在推导中主动寻找可能被忽略的极端边界条件；\n4. **自我反思与结论收敛**：复核最终结论是否有逻辑漏洞，给出最终确切答案。\n\n待解决问题：\n{{complex_problem}}",
+      "promptVariables": "[{\"name\":\"complex_problem\",\"description\":\"需要深度推理的算法或业务逻辑难题\",\"default\":\"\"}]",
+      "previewContent": "以严谨的数学推导与思维链框架解决最复杂的逻辑难题。",
+      "stars": 22000,
+      "downloadCount": 78000,
+      "updatedAt": "2026-09-01"
     }
   ],
   "collections": [
     {
       "id": "collection-ai-coding-essentials",
-      "name": "AI 编程必备合辑",
-      "description": "每个 AI 编程助手用户必装的核心技能与规则，覆盖 Agent 工作流、规范约束与审查",
+      "name": "AI 编程核心超能力",
+      "description": "汇聚 Superpowers、Anthropic 官方与 CursorRules，为智能体注入严谨工程战力",
       "icon": "Zap",
       "category": "core-enhancement",
-      "resourceIds": ["skill-superpowers", "skill-anthropics-skills", "skill-awesome-cursorrules", "skill-awesome-cursor-skills", "skill-claude-code-toolkit", "prompt-code-review", "prompt-debug-assistant", "prompt-commit-message"],
       "featured": true,
-      "coverColor": "#6366f1"
+      "coverColor": "#6366f1",
+      "resourceIds": [
+        "skill-superpowers",
+        "skill-anthropics-skills",
+        "skill-awesome-cursorrules",
+        "skill-awesome-cursor-skills",
+        "skill-claude-code-toolkit",
+        "skill-awesome-agent-skills",
+        "skill-claude-skills-multi",
+        "skill-fabric"
+      ]
     },
     {
-      "id": "collection-fullstack-dev",
-      "name": "设计与可视化套件",
-      "description": "前后端开发所需的高质感视觉与图表方案，覆盖 UI/UX 规范、Draw.io 架构图与 ECharts 数据图表",
-      "icon": "Layers",
+      "id": "collection-frontend-engineering",
+      "name": "现代前端全栈工程套件",
+      "description": "Vercel 官方 Next.js 最佳实践与 Cloudflare 边缘计算，打造生产级高性能应用",
+      "icon": "Code",
+      "category": "tech-development",
+      "featured": true,
+      "coverColor": "#3b82f6",
+      "resourceIds": [
+        "skill-vercel-nextjs",
+        "skill-cloudflare-workers",
+        "skill-emil-skills",
+        "skill-ui-ux-pro-max",
+        "skill-addyosmani-agent-skills"
+      ]
+    },
+    {
+      "id": "collection-design-visual",
+      "name": "专业设计与视觉交互套件",
+      "description": "从 UI/UX 顶层体系、微动效规范到架构图可视化，让 AI 具备顶级设计师品味",
+      "icon": "Palette",
       "category": "design",
-      "resourceIds": ["skill-ui-ux-pro-max", "skill-awesome-design-md", "skill-drawio", "skill-echart", "skill-taste-skill", "skill-emil-skills"],
       "featured": true,
-      "coverColor": "#0ea5e9"
+      "coverColor": "#ec4899",
+      "resourceIds": [
+        "skill-ui-ux-pro-max",
+        "skill-awesome-design-md",
+        "skill-taste-skill",
+        "skill-emil-skills",
+        "skill-drawio",
+        "skill-echart"
+      ]
     },
     {
-      "id": "collection-content-creator",
-      "name": "演示文稿与幻灯片全能包",
-      "description": "从商业级 PPT 到极客风 HTML 网页幻灯片，全流程 AI 辅助生成演示内容",
-      "icon": "PenTool",
-      "category": "content-creation",
-      "resourceIds": ["skill-guizang-ppt", "skill-ppt-master", "skill-html-ppt", "skill-frontend-slides", "skill-shuorenhua"],
+      "id": "collection-testing-quality",
+      "name": "测试与工程质量保障套件",
+      "description": "LambdaTest 官方 Playwright、Cypress、Vitest 自动化套件与 TDD 驱动体系",
+      "icon": "TestTube",
+      "category": "testing-quality",
       "featured": true,
-      "coverColor": "#f59e0b"
+      "coverColor": "#10b981",
+      "resourceIds": [
+        "skill-testmu-playwright",
+        "skill-testmu-cypress",
+        "skill-testmu-vitest",
+        "skill-addyosmani-agent-skills",
+        "skill-superpowers"
+      ]
     },
     {
-      "id": "collection-business-toolkit",
-      "name": "产品与多智能体实战",
-      "description": "产品经理方法论与超大规模中文专业 Agent 角色库，全方位赋能业务规划与组织协作",
+      "id": "collection-enterprise-security",
+      "name": "企业级安全与代码审计套件",
+      "description": "Trail of Bits 顶尖安全团队官方 Semgrep 规则、静态分析与 Sentry 生产故障告警定位",
+      "icon": "Shield",
+      "category": "security-devops",
+      "featured": true,
+      "coverColor": "#f43f5e",
+      "resourceIds": [
+        "skill-trailofbits-semgrep",
+        "skill-trailofbits-static-analysis",
+        "skill-trailofbits-insecure-defaults",
+        "skill-claude-code-toolkit",
+        "skill-sentry-workflow"
+      ]
+    },
+    {
+      "id": "collection-cloud-architecture",
+      "name": "云原生与边缘架构套件",
+      "description": "基于 Cloudflare Workers 边缘计算、Draw.io 拓扑绘制与 Sentry 可观测性工程",
+      "icon": "Globe",
+      "category": "tech-development",
+      "featured": false,
+      "coverColor": "#0ea5e9",
+      "resourceIds": [
+        "skill-cloudflare-workers",
+        "skill-sentry-workflow",
+        "skill-drawio",
+        "skill-awesome-agent-skills"
+      ]
+    },
+    {
+      "id": "collection-product-management",
+      "name": "产品战略与专业 Agent 角色",
+      "description": "大厂 CPO 级需求拆解、敏捷路线图规划与各专业岗位 Agent 角色设定",
       "icon": "Briefcase",
       "category": "office-operations",
-      "resourceIds": ["skill-pm-skills", "skill-agency-agents-zh", "prompt-tech-doc-cn", "prompt-api-design"],
       "featured": false,
-      "coverColor": "#10b981"
+      "coverColor": "#f59e0b",
+      "resourceIds": [
+        "skill-pm-skills",
+        "skill-deanpeters-product",
+        "skill-agency-agents-zh",
+        "skill-fabric"
+      ]
+    },
+    {
+      "id": "collection-content-writing",
+      "name": "演示文稿与技术写作全能包",
+      "description": "归藏 PPT 智能排版、PPT Master 自动化与去 AI 味纯正中文表达",
+      "icon": "PenTool",
+      "category": "content-creation",
+      "featured": true,
+      "coverColor": "#8b5cf6",
+      "resourceIds": [
+        "skill-guizang-ppt",
+        "skill-ppt-master",
+        "skill-shuorenhua",
+        "skill-anthropics-doc-coauthoring"
+      ]
     }
   ],
   "featured": [
     {
       "type": "banner",
       "title": "AI 编程核心超能力",
-      "subtitle": "Superpowers + CursorRules + 审查流程，赋能 Agent 极限战力",
+      "subtitle": "Superpowers + Anthropic 官方技能 + CursorRules，赋能 Agent 极限战力",
       "gradient": "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
       "icon": "Zap",
       "targetType": "collection",
@@ -461,21 +1573,30 @@
     },
     {
       "type": "banner",
-      "title": "专业级设计与图表可视化",
-      "subtitle": "UI/UX Pro Max + Draw.io 架构图 + ECharts 数据图表",
-      "gradient": "linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%)",
-      "icon": "Layers",
+      "title": "现代前端全栈工程套件",
+      "subtitle": "Vercel Labs Next.js 最佳实践 + Cloudflare 边缘计算 + Addy Osmani 质量工程",
+      "gradient": "linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)",
+      "icon": "Code",
       "targetType": "collection",
-      "targetId": "collection-fullstack-dev"
+      "targetId": "collection-frontend-engineering"
     },
     {
       "type": "banner",
-      "title": "高质感幻灯片与文案润色",
-      "subtitle": "归藏 PPT + PPT Master + 说人话去 AI 味",
-      "gradient": "linear-gradient(135deg, #f59e0b 0%, #ef4444 100%)",
-      "icon": "PenTool",
+      "title": "测试与工程质量套件",
+      "subtitle": "LambdaTest 官方 Playwright + Cypress + Vitest，全方位构建零 Bug 交付保障",
+      "gradient": "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+      "icon": "TestTube",
       "targetType": "collection",
-      "targetId": "collection-content-creator"
+      "targetId": "collection-testing-quality"
+    },
+    {
+      "type": "banner",
+      "title": "企业级安全与代码审计",
+      "subtitle": "Trail of Bits 官方 Semgrep 规则 + 静态分析 + Sentry 生产故障告警定位",
+      "gradient": "linear-gradient(135deg, #ec4899 0%, #f43f5e 100%)",
+      "icon": "Shield",
+      "targetType": "collection",
+      "targetId": "collection-enterprise-security"
     }
   ]
 }

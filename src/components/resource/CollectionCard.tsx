@@ -26,7 +26,7 @@ export function CollectionCard({ collection, resources = [], onClick }: Collecti
         {/* 头部 */}
         <div className="flex items-start justify-between mb-2">
           <div>
-            <p className="text-[10px] font-medium text-[var(--color-muted)] uppercase tracking-wider mb-0.5">合辑</p>
+            <p className="text-[10px] font-medium text-[var(--color-muted)] uppercase tracking-wider mb-0.5">技能合辑</p>
             <h3 className="text-[14px] font-semibold text-[var(--foreground)] leading-snug">{collection.name}</h3>
           </div>
           <div className="w-7 h-7 rounded-lg bg-black/[0.04] flex items-center justify-center shrink-0 group-hover:bg-black/[0.08] transition-colors">

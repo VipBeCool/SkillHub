@@ -4,7 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { HardDrive, Settings, Search, Plus, RefreshCw, ChevronRight, X, LayoutGrid, Sparkles, Globe, FolderX, FolderSearch, Trash2, Info, Folder, FolderPlus, Copy, Link as LinkIcon, Check, Download, FileArchive, MessageSquareText, Store, Puzzle, CheckSquare, Star, Clock, Tag, ExternalLink, Users, Lightbulb, Code, PenTool, Palette, Briefcase, MessageSquare, Zap, Layers, FileEdit, BarChart3 } from "lucide-react";
+import { HardDrive, Settings, Search, Plus, RefreshCw, ChevronRight, X, LayoutGrid, Sparkles, Globe, FolderX, FolderSearch, Trash2, Info, Folder, FolderPlus, Copy, Link as LinkIcon, Check, Download, FileArchive, MessageSquareText, Store, Puzzle, CheckSquare, Star, Clock, Tag, ExternalLink, Users } from "lucide-react";
 import { open } from '@tauri-apps/plugin-dialog';
 import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import { AddRepositoryDialog } from "./components/library/AddRepositoryDialog";
@@ -41,6 +41,7 @@ import { ResourceDetail } from "./components/resource/ResourceDetail";
 import { InstallTargetModal } from "./components/resource/InstallTargetModal";
 import type { ResourceItem } from "./types/resource";
 import registryData from "./data/resource-registry.json";
+import { ResourceIcon } from "./components/resource/ResourceIcon";
 import {
   findStoreResourceForRepo,
   findStoreResourceForSkill,
@@ -1791,7 +1792,7 @@ function App() {
             />
 
 
-            <div className="flex-1 overflow-y-auto sidebar-scroll-area">
+            <div className="flex-1 min-h-0 overflow-y-auto sidebar-scroll-area">
               <div className="px-3 mt-1 mb-5 space-y-0.5">
                 <h3 className="text-[11px] font-semibold text-[var(--color-muted)]/60 mb-1 px-2 uppercase tracking-wide">
                   快捷筛选
@@ -1899,7 +1900,7 @@ function App() {
             </div>
           </>
         ) : activeModule === 'prompts' ? (
-          <div className="flex-1 overflow-y-auto px-0 sidebar-scroll-area">
+          <div className="flex-1 min-h-0 overflow-y-auto px-0 sidebar-scroll-area">
             <PromptSidebarNav
               filter={isSidebarMatch ? promptFilter : null as any}
               groups={promptGroups}
@@ -1912,7 +1913,7 @@ function App() {
           </div>
         ) : (
           /* 资源社区侧边栏 */
-          <div className="flex-1 overflow-y-auto sidebar-scroll-area">
+          <div className="flex-1 min-h-0 overflow-y-auto sidebar-scroll-area">
             {(() => {
               const activeResCat = currentTab?.context?.resourceCategory || (currentTab?.type === 'resource-home' ? 'all' : undefined);
               return (
@@ -1961,60 +1962,42 @@ function App() {
                       分类
                     </h3>
                     <div className="space-y-0.5">
-                      {[
-                        { id: 'core-enhancement', name: '核心增强', icon: Lightbulb },
-                        { id: 'tech-development', name: '技术开发', icon: Code },
-                        { id: 'content-creation', name: '内容创作', icon: PenTool },
-                        { id: 'design', name: '设计交互', icon: Palette },
-                        { id: 'office-operations', name: '产品运营', icon: Briefcase },
-                        { id: 'prompt-library', name: '提示词库', icon: MessageSquare },
-                      ].map(cat => {
-                        const IconComponent = cat.icon;
-                        return (
-                          <button
-                            key={cat.id}
-                            onClick={() => navigateTo('resource-home', cat.name, { resourceCategory: cat.id }, 'Store')}
-                            className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none text-[13px] ${
-                              activeResCat === cat.id
-                                ? 'bg-black/5 text-[var(--foreground)] font-semibold'
-                                : 'text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] font-medium'
-                            }`}
-                          >
-                            <IconComponent className="w-4 h-4 shrink-0" />
-                            <span>{cat.name}</span>
-                          </button>
-                        );
-                      })}
+                      {registryData.categories.map(cat => (
+                        <button
+                          key={cat.id}
+                          onClick={() => navigateTo('resource-home', cat.name, { resourceCategory: cat.id }, 'Store')}
+                          className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none text-[13px] ${
+                            activeResCat === cat.id
+                              ? 'bg-black/5 text-[var(--foreground)] font-semibold'
+                              : 'text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] font-medium'
+                          }`}
+                        >
+                          <ResourceIcon name={cat.icon} className="w-4 h-4 shrink-0" />
+                          <span>{cat.name}</span>
+                        </button>
+                      ))}
                     </div>
                   </div>
 
                   <div className="px-3 mb-5">
                     <h3 className="text-[11px] font-semibold text-[var(--color-muted)]/60 mb-1 px-2 uppercase tracking-wide">
-                      合辑
+                      技能合辑
                     </h3>
                     <div className="space-y-0.5">
-                      {[
-                        { id: 'collection-ai-coding-essentials', name: 'AI 编程必备合辑', icon: Zap },
-                        { id: 'collection-fullstack-dev', name: '设计与可视化套件', icon: Layers },
-                        { id: 'collection-content-creator', name: '演示文稿与幻灯片全能包', icon: FileEdit },
-                        { id: 'collection-business-toolkit', name: '产品与多智能体实战', icon: BarChart3 },
-                      ].map(col => {
-                        const IconComponent = col.icon;
-                        return (
-                          <button
-                            key={col.id}
-                            onClick={() => navigateTo('resource-home', col.name, { resourceCategory: `collection:${col.id}` }, 'Store')}
-                            className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none text-[13px] ${
-                              activeResCat === `collection:${col.id}`
-                                ? 'bg-black/5 text-[var(--foreground)] font-semibold'
-                                : 'text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] font-medium'
-                            }`}
-                          >
-                            <IconComponent className="w-4 h-4 shrink-0" />
-                            <span className="truncate">{col.name}</span>
-                          </button>
-                        );
-                      })}
+                      {registryData.collections.map(col => (
+                        <button
+                          key={col.id}
+                          onClick={() => navigateTo('resource-home', col.name, { resourceCategory: `collection:${col.id}` }, 'Store')}
+                          className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none text-[13px] ${
+                            activeResCat === `collection:${col.id}`
+                              ? 'bg-black/5 text-[var(--foreground)] font-semibold'
+                              : 'text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] font-medium'
+                          }`}
+                        >
+                          <ResourceIcon name={col.icon} className="w-4 h-4 shrink-0" />
+                          <span className="truncate">{col.name}</span>
+                        </button>
+                      ))}
                     </div>
                   </div>
                 </>
@@ -2643,7 +2626,7 @@ function App() {
             </div>
           ) : (
           /* 资源社区页面 */
-          <div className="flex-1 flex flex-col h-full min-w-0 bg-[var(--color-background)] relative overflow-hidden">
+          <div className="flex-1 flex flex-col h-full min-h-0 min-w-0 bg-[var(--color-background)] relative overflow-hidden">
             {currentTab?.type === 'resource-detail' && currentTab.context.resourceId ? (
               <ResourceDetail
                 resourceId={currentTab.context.resourceId}
@@ -2791,6 +2774,8 @@ function App() {
         onClose={() => setIsSearchModalOpen(false)}
         repos={groupedRepos}
         prompts={allPrompts}
+        allResources={registryData.resources as ResourceItem[]}
+        installedResourceNames={installedResourceNames}
         onDeleteRepo={(e, r) => handleDeleteRepos(e as any, [r])}
         onCopyPath={handleCopyPath}
         onSelectRepo={(repoId) => {
@@ -2822,6 +2807,34 @@ function App() {
           setTimeout(() => {
             window.dispatchEvent(new CustomEvent('select-prompt', { detail: prompt.id }));
           }, 100);
+        }}
+        onSelectResource={(resource) => {
+          setActiveModule('resources');
+          const targetCat = resource.category || 'all';
+          const catDef = registryData.categories.find(c => c.id === targetCat);
+          navigateTo('resource-detail', resource.displayName, {
+            resourceId: resource.id,
+            resourceCategory: targetCat,
+            categoryName: catDef?.name || '发现',
+          }, 'Store');
+        }}
+        onInstallSkill={requestInstallSkill}
+        onInstallPrompt={handleInstallPrompt}
+        onInstallGitHub={async (repo) => {
+          const pseudoResource: ResourceItem = {
+            id: `gh-${repo.id}`,
+            name: repo.name,
+            displayName: repo.name,
+            type: 'skill',
+            category: 'workflow',
+            description: repo.description || '',
+            repoUrl: repo.clone_url || repo.html_url,
+            stars: repo.stargazers_count,
+            tags: repo.topics || [],
+            author: repo.owner?.login || '',
+            updatedAt: repo.updated_at || new Date().toISOString(),
+          };
+          await requestInstallSkill(pseudoResource);
         }}
       />
 

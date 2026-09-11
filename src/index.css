@@ -207,6 +207,15 @@ body > div[style*="overflow: hidden"][style*="position: fixed"] {
   transition: background-color 0.2s ease;
 }
 
+/* 鼠标悬停在滚动区域时，滚动条滑块平滑显现 */
+.custom-scrollbar:hover::-webkit-scrollbar-thumb,
+.hover-scrollbar:hover::-webkit-scrollbar-thumb,
+.hover-scroll:hover::-webkit-scrollbar-thumb,
+.sidebar-scroll-area:hover::-webkit-scrollbar-thumb,
+.inspector-scroll-area:hover::-webkit-scrollbar-thumb {
+  background-color: var(--scrollbar-thumb-base, rgba(0, 0, 0, 0.22));
+}
+
 /* 强制隐藏滚动条工具类 */
 .no-scrollbar::-webkit-scrollbar {
   display: none;
@@ -225,11 +234,45 @@ body > div[style*="overflow: hidden"][style*="position: fixed"] {
   -webkit-mask-image: linear-gradient(to right, #000 0%, #000 calc(100% - 18px), transparent 100%);
 }
 
-.mask-fade-y {
-  overflow: hidden;
-  mask-image: linear-gradient(to bottom, #000 0%, #000 calc(100% - 24px), transparent 100%);
-  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 calc(100% - 24px), transparent 100%);
+/* 老虎机/机械滚轮 3D 反转翻动动效 */
+@keyframes slotMachineFlip3D {
+  0% {
+    transform: perspective(280px) rotateX(0deg) scale(1);
+    opacity: 1;
+  }
+  22% {
+    transform: perspective(280px) rotateX(-180deg) scale(0.82);
+    opacity: 0.65;
+  }
+  45% {
+    transform: perspective(280px) rotateX(-360deg) scale(0.9);
+    opacity: 0.8;
+  }
+  68% {
+    transform: perspective(280px) rotateX(-540deg) scale(0.82);
+    opacity: 0.65;
+  }
+  85% {
+    transform: perspective(280px) rotateX(-735deg) scale(1.08);
+    opacity: 1;
+  }
+  93% {
+    transform: perspective(280px) rotateX(-715deg) scale(0.98);
+    opacity: 1;
+  }
+  100% {
+    transform: perspective(280px) rotateX(-720deg) scale(1);
+    opacity: 1;
+  }
 }
+
+.animate-slot-machine-flip {
+  animation: slotMachineFlip3D 420ms cubic-bezier(0.2, 0.85, 0.25, 1.15) forwards;
+  transform-style: preserve-3d;
+  will-change: transform, opacity;
+  backface-visibility: visible;
+}
+
 
 
 

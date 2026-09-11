@@ -29,6 +29,43 @@ import {
   FolderCode,
   Sliders,
   LucideProps,
+  // 新增分类与资源用图标
+  Library,
+  GraduationCap,
+  FileCheck,
+  GitBranch,
+  GitPullRequest,
+  Database,
+  ShieldAlert,
+  Container,
+  BookOpen,
+  TestTube,
+  Building,
+  Shield,
+  BarChart,
+  BookMarked,
+  Wrench,
+  Users,
+  RefreshCw,
+  GitCommit,
+  Bug,
+  Workflow,
+  // 补充新图标
+  Activity,
+  Binary,
+  Boxes,
+  FileCode,
+  Fingerprint,
+  Globe2,
+  HardDrive,
+  KeyRound,
+  LayoutTemplate,
+  Network,
+  Paintbrush,
+  Presentation,
+  Share2,
+  TerminalSquare,
+  Video,
 } from 'lucide-react';
 
 // 图标名称到 Lucide 组件的映射表
@@ -66,6 +103,45 @@ const ICON_MAP: Record<string, React.ComponentType<LucideProps>> = {
   FolderCode,
   Sliders,
   Puzzle,
+
+  // 扩充图标
+  Library,
+  GraduationCap,
+  FileCheck,
+  GitBranch,
+  GitPullRequest,
+  Database,
+  ShieldAlert,
+  Container,
+  BookOpen,
+  TestTube,
+  Building,
+  Shield,
+  BarChart,
+  BookMarked,
+  Wrench,
+  Users,
+  RefreshCw,
+  GitCommit,
+  Bug,
+  Workflow,
+
+  // 补充专业图标
+  Activity,
+  Binary,
+  Boxes,
+  FileCode,
+  Fingerprint,
+  Globe2,
+  HardDrive,
+  KeyRound,
+  LayoutTemplate,
+  Network,
+  Paintbrush,
+  Presentation,
+  Share2,
+  TerminalSquare,
+  Video,
 };
 
 interface ResourceIconProps extends LucideProps {
@@ -92,3 +168,4 @@ export function ResourceIcon({ name, type = 'skill', className = 'w-4 h-4', ...p
 
   return <Puzzle className={className} {...props} />;
 }
+

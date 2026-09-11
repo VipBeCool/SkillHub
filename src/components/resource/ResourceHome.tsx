@@ -163,7 +163,7 @@ function CollectionTopBar({
 
             {collections.length > 1 && (
               <div className="mt-1 pt-1.5 border-t border-black/[0.05] px-2.5 py-1 text-[11px] text-[var(--color-muted)] flex items-center justify-between">
-                <span>精选合辑</span>
+                <span>精选技能合辑</span>
                 <span>共 {collections.length} 个</span>
               </div>
             )}
@@ -335,7 +335,7 @@ export function ResourceHome({
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full overflow-hidden bg-[var(--color-background)]">
+    <div className="flex-1 min-h-0 flex flex-col h-full overflow-hidden bg-[var(--color-background)]">
       {/* 顶部栏 */}
       <div className="h-12 border-b border-[var(--color-border)] bg-white/70 backdrop-blur-xl flex items-center px-5 shrink-0 gap-3">
         <h1 className="text-[14px] font-semibold text-[var(--foreground)] tracking-tight">{getCategoryTitle()}</h1>
@@ -354,7 +354,7 @@ export function ResourceHome({
       </div>
 
       {/* 内容区 */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 min-h-0 overflow-y-auto hover-scrollbar pb-16">
         {searchQuery.trim() ? (
           /* 搜索结果 */
           <div className="p-5">
@@ -437,7 +437,7 @@ export function ResourceHome({
 
             {/* 合辑精选 */}
             {collections.filter(c => c.featured).length > 0 && (
-              <Section title="精选合辑">
+              <Section title="精选技能合辑">
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 px-5">
                   {collections.filter(c => c.featured).map(c => {
                     const data = getCollectionWithResources(c.id);
@@ -562,7 +562,7 @@ function BannerCarousel({
           <div className="flex items-center gap-1.5 mb-1">
             <span className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-black/[0.04] text-[var(--color-primary)] flex items-center gap-1">
               <Sparkles className="w-3 h-3" />
-              精选合辑
+              精选技能合辑
             </span>
           </div>
           <h3 className="text-[16px] font-bold text-[var(--foreground)] leading-tight mb-0.5">{item.title}</h3>

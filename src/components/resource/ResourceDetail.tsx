@@ -119,6 +119,17 @@ export function ResourceDetail({
   const [isUninstalling, setIsUninstalling] = useState(false);
   const [showUninstallConfirm, setShowUninstallConfirm] = useState(false);
 
+  // 解析提示词中包含的变量占位符
+  const parsedVariables = useMemo(() => {
+    if (!resource?.promptVariables) return [];
+    try {
+      const vars = JSON.parse(resource.promptVariables);
+      return Array.isArray(vars) ? vars : [];
+    } catch {
+      return [];
+    }
+  }, [resource?.promptVariables]);
+
   // 实时同步 GitHub 官方 Star 数（静默拉取并写入全局共享缓存）
   useEffect(() => {
     if (!resource?.repoUrl) return;
@@ -133,7 +144,7 @@ export function ResourceDetail({
 
   if (!resource) {
     return (
-      <div className="flex-1 flex flex-col bg-[var(--color-background)]">
+      <div className="flex-1 min-h-0 flex flex-col bg-[var(--color-background)]">
         <TopBar onBack={onBack} title="" />
         <div className="flex-1 flex items-center justify-center text-[var(--color-muted)] text-[14px]">
           未找到该资源
@@ -190,7 +201,7 @@ export function ResourceDetail({
   const currentStars = resource.stars;
 
   return (
-    <div className="flex-1 flex flex-col h-full overflow-hidden bg-[var(--color-background)] relative">
+    <div className="flex-1 min-h-0 flex flex-col h-full overflow-hidden bg-[var(--color-background)] relative">
       <TopBar 
         onBack={onBack} 
         title={resource.displayName} 
@@ -200,7 +211,7 @@ export function ResourceDetail({
         onSelectSibling={onSelectSibling}
       />
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 min-h-0 overflow-y-auto hover-scrollbar pb-16">
         {/* 头部卡片 */}
         <div className="m-5 p-5 bg-white rounded-xl border border-black/5 shadow-xs">
           <div className="flex items-start gap-4">
@@ -342,19 +353,6 @@ export function ResourceDetail({
 
         {/* 详细信息区块 */}
         <div className="mx-5 mb-5 bg-white rounded-xl border border-black/5 p-5 space-y-4 shadow-xs">
-          {/* 兼容性 */}
-          {resource.compatibleWith && resource.compatibleWith.length > 0 && (
-            <div>
-              <h2 className="text-[12px] font-semibold text-[var(--foreground)] mb-2">兼容 AI 工具</h2>
-              <div className="flex gap-1.5">
-                {resource.compatibleWith.map(tool => (
-                  <span key={tool} className="text-[11px] px-2 py-0.5 bg-black/[0.04] text-[var(--color-muted)] rounded-md font-medium capitalize">
-                    {tool}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
 
           {/* 描述 */}
           <div>
@@ -376,39 +374,69 @@ export function ResourceDetail({
             </div>
           )}
 
-          {/* 内容预览 */}
+          {/* 提示词插槽变量（若有） */}
+          {parsedVariables.length > 0 && (
+            <div className="pt-3 border-t border-[var(--color-border)]/40">
+              <h2 className="text-[12px] font-semibold text-[var(--foreground)] mb-2.5 flex items-center gap-1.5">
+                <span>插槽变量</span>
+                <span className="text-[11px] font-normal text-[var(--color-muted)]">（提示词执行时的动态参数占位符）</span>
+              </h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {parsedVariables.map((v: any, idx: number) => (
+                  <div key={idx} className="p-2.5 rounded-lg bg-black/[0.02] border border-black/5 text-[12px]">
+                    <div className="flex items-center gap-1.5 font-mono font-medium text-[var(--color-primary)]">
+                      <span>{`{{${v.name}}}`}</span>
+                      {v.default && (
+                        <span className="text-[10px] text-[var(--color-muted)] font-normal font-sans">
+                          (默认: {v.default})
+                        </span>
+                      )}
+                    </div>
+                    {(v.label || v.description) && (
+                      <p className="text-[11px] text-[var(--color-muted)] mt-1">{v.label || v.description}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 内容预览 / 提示词内容 */}
           {(resource.previewContent || resource.promptContent) && (
-            <div className="pt-2">
-              <div className="flex items-center justify-between mb-2">
+            <div className="pt-3 border-t border-[var(--color-border)]/40">
+              <div className="flex items-center justify-between mb-2.5">
                 <div className="flex items-center gap-1.5">
                   {resource.type === 'skill' ? (
-                    <FileText className="w-3.5 h-3.5 text-[var(--color-muted)]" />
+                    <FileText className="w-4 h-4 text-[var(--color-primary)]" />
                   ) : (
-                    <Code className="w-3.5 h-3.5 text-[var(--color-muted)]" />
+                    <Code className="w-4 h-4 text-[var(--color-primary)]" />
                   )}
-                  <h2 className="text-[12px] font-semibold text-[var(--foreground)]">
-                    {resource.type === 'skill' ? '内容预览' : '提示词内容'}
+                  <h2 className="text-[13px] font-bold text-[var(--foreground)]">
+                    {resource.type === 'skill' ? '内容预览' : '提示词正文'}
                   </h2>
                 </div>
                 <button
                   onClick={handleCopyContent}
-                  className="flex items-center gap-1 text-[11px] text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/[0.04] px-2 py-1 rounded transition-colors"
+                  className="flex items-center gap-1 text-[11.5px] text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/[0.05] active:scale-[0.98] px-2.5 py-1 rounded-md transition-all cursor-pointer font-medium"
                 >
                   {copied ? (
-                    <><Check className="w-3 h-3 text-emerald-500" /> 已复制</>
+                    <><Check className="w-3.5 h-3.5 text-emerald-500" /> 已复制</>
                   ) : (
-                    <><Copy className="w-3 h-3" /> 复制内容</>
+                    <><Copy className="w-3.5 h-3.5" /> 复制内容</>
                   )}
                 </button>
               </div>
-              <div className="bg-black/[0.03] border border-black/5 rounded-lg p-3">
-                <pre className="text-[11px] text-[var(--color-muted)] leading-relaxed whitespace-pre-wrap font-mono select-text">
+              <div className="bg-black/[0.02] border border-black/6 rounded-xl p-4 shadow-2xs">
+                <pre className="text-[12px] text-[var(--foreground)] leading-relaxed whitespace-pre-wrap font-mono select-text break-words">
                   {resource.promptContent || resource.previewContent}
                 </pre>
               </div>
             </div>
           )}
         </div>
+
+        {/* 底部充足的呼吸留白空间 */}
+        <div className="h-12 shrink-0" />
       </div>
     </div>
   );
