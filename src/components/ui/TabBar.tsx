@@ -15,9 +15,9 @@ function TabIcon({ type, iconName }: { type: TabType, iconName?: string }) {
       return <IconComponent className="w-3.5 h-3.5 shrink-0" />;
     }
   }
-  if (type.startsWith('prompt')) return <LucideIcons.MessageSquareText className="w-3.5 h-3.5 shrink-0" />;
+  if (type.startsWith('prompt')) return <LucideIcons.MessageSquareQuote className="w-3.5 h-3.5 shrink-0" />;
   if (type.startsWith('resource')) return <LucideIcons.Store className="w-3.5 h-3.5 shrink-0" />;
-  return <LucideIcons.Puzzle className="w-3.5 h-3.5 shrink-0" />;
+  return <LucideIcons.FileCode className="w-3.5 h-3.5 shrink-0" />;
 }
 
 interface TabBarProps {

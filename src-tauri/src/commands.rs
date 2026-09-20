@@ -2547,3 +2547,61 @@ pub async fn import_database(app: tauri::AppHandle, zip_path: String) -> Result<
     
     Ok(())
 }
+
+#[tauri::command]
+pub async fn show_main_window(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri::Manager;
+    
+    #[cfg(target_os = "macos")]
+    let _ = app.set_activation_policy(tauri::ActivationPolicy::Regular);
+    
+    if let Some(tray_window) = app.get_webview_window("tray-panel") {
+        let _ = tray_window.hide();
+    }
+    
+    if let Some(main_window) = app.get_webview_window("main") {
+        let _ = main_window.show();
+        let _ = main_window.unminimize();
+        let _ = main_window.set_focus();
+    }
+    
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn hide_tray_panel(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri::Manager;
+    if let Some(tray_window) = app.get_webview_window("tray-panel") {
+        let _ = tray_window.hide();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn open_preferences(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri::Manager;
+    use tauri::Emitter;
+    
+    #[cfg(target_os = "macos")]
+    let _ = app.set_activation_policy(tauri::ActivationPolicy::Regular);
+    
+    if let Some(tray_window) = app.get_webview_window("tray-panel") {
+        let _ = tray_window.hide();
+    }
+    
+    if let Some(main_window) = app.get_webview_window("main") {
+        let _ = main_window.show();
+        let _ = main_window.unminimize();
+        let _ = main_window.set_focus();
+        let _ = main_window.emit("open-preferences", ());
+    }
+    
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn exit_app(app: tauri::AppHandle) -> Result<(), String> {
+    app.exit(0);
+    Ok(())
+}
+

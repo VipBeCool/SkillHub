@@ -53,6 +53,16 @@
     background-color: #FFFFFF;
   }
 
+  /* 托盘快捷助手专属透明背景与布局 */
+  html.tray-panel-mode,
+  body.tray-panel-mode,
+  body.tray-panel-mode #root {
+    background: transparent !important;
+    background-color: transparent !important;
+    box-shadow: none !important;
+    overflow: hidden !important;
+  }
+
   /* Prevent text selection everywhere except where explicitly allowed */
   * {
     user-select: none;

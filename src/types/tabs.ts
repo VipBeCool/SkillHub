@@ -61,7 +61,7 @@ export function createDefaultTab(workspaceId?: string): Tab {
   return {
     id: `tab-${Date.now()}`,
     ...initialState,
-    icon: 'Puzzle',
+    icon: 'FileCode',
     historyStack: [initialState],
     historyIndex: 0,
   };

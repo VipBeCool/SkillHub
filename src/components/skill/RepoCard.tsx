@@ -1,5 +1,5 @@
 import React from 'react';
-import { Puzzle } from 'lucide-react';
+import { FileCode } from 'lucide-react';
 import { GroupedRepo, SyncRecord, AgentConfig } from '../../types';
 import { Tooltip } from '../ui/Tooltip';
 
@@ -52,7 +52,7 @@ export const RepoCard: React.FC<RepoCardProps> = ({
               ? 'bg-[#0066FF]/10 text-[#0066FF]'
               : 'bg-[#86868B]/10 text-[#86868B]'
         }`}>
-          <Puzzle className="w-4 h-4" />
+          <FileCode className="w-4 h-4" />
           {repo.is_missing && repo.source_type !== 'online' && (
             <div className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-red-500 rounded-full flex items-center justify-center text-white text-[8px] font-bold border border-white">!</div>
           )}

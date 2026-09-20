@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileText, Star } from 'lucide-react';
+import { FileCode, Star } from 'lucide-react';
 import { Skill, SyncRecord, AgentConfig } from '../../types';
 import { Tooltip } from '../ui/Tooltip';
 
@@ -53,7 +53,7 @@ export const SkillCard: React.FC<SkillCardProps> = ({
         {/* 图标 + 名称 */}
         <div className="flex items-center space-x-2.5 min-w-0 flex-1">
           <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-[var(--color-primary)]/5 text-[var(--color-primary)] relative">
-            <FileText className="w-4 h-4" />
+            <FileCode className="w-4 h-4" />
           </div>
           <div className="min-w-0 flex-1 flex flex-col justify-center gap-0.5 pr-1">
             <Tooltip content={skill.name}>

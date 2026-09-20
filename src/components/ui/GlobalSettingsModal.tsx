@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { save, open } from "@tauri-apps/plugin-dialog";
-import { X, Save, Upload, ShieldCheck, Database, Globe, FolderGit2 } from "lucide-react";
+import { X, Save, Upload, ShieldCheck, Database, Globe, Sliders, FolderGit2 } from "lucide-react";
 import { AgentSettingsDialog } from "../agent/AgentSettingsDialog";
 import { showToast } from "./Toast";
 import type { SourceDirectory } from "../../types";
@@ -10,11 +10,11 @@ import { getDefaultInstallDirId, setDefaultInstallDirId } from "../../utils/stor
 interface GlobalSettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  defaultTab?: "agent" | "backup" | "store";
+  defaultTab?: "general" | "agent" | "backup" | "store";
 }
 
-export function GlobalSettingsModal({ isOpen, onClose, defaultTab = "agent" }: GlobalSettingsModalProps) {
-  const [activeTab, setActiveTab] = useState<"agent" | "backup" | "store">(defaultTab);
+export function GlobalSettingsModal({ isOpen, onClose, defaultTab = "general" }: GlobalSettingsModalProps) {
+  const [activeTab, setActiveTab] = useState<"general" | "agent" | "backup" | "store">(defaultTab);
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [directories, setDirectories] = useState<SourceDirectory[]>([]);
@@ -111,6 +111,13 @@ export function GlobalSettingsModal({ isOpen, onClose, defaultTab = "agent" }: G
           
           <div className="flex-1 overflow-y-auto px-3 py-2 space-y-1">
             <button
+              onClick={() => setActiveTab("general")}
+              className={tabBtnCls("general")}
+            >
+              <Sliders className={`w-4 h-4 mr-3 ${activeTab === "general" ? "text-[var(--color-primary)]" : "opacity-70"}`} />
+              通用偏好
+            </button>
+            <button
               onClick={() => setActiveTab("agent")}
               className={tabBtnCls("agent")}
             >
@@ -145,6 +152,62 @@ export function GlobalSettingsModal({ isOpen, onClose, defaultTab = "agent" }: G
 
         {/* Content Scroll Area */}
         <div className="flex-1 overflow-y-auto">
+          {activeTab === "general" && (
+            <div className="p-8 max-w-3xl mx-auto h-full">
+              <div className="mb-6">
+                <h3 className="text-2xl font-bold text-[var(--foreground)]">通用偏好</h3>
+                <p className="text-[var(--color-muted)] mt-1 text-sm">
+                  定制 SkillHub 桌面客户端的运行形态与常驻交互方式。
+                </p>
+              </div>
+
+              <div className="bg-white dark:bg-[#1A1A1A] border border-black/5 dark:border-white/5 rounded-xl overflow-hidden divide-y divide-black/5 dark:divide-white/5">
+                <div className="p-5">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <h4 className="text-[14px] font-semibold text-[var(--foreground)]">轻量常驻模式 (菜单栏 / 托盘快捷助手)</h4>
+                      <p className="text-[13px] text-[var(--color-muted)] mt-1 leading-relaxed">
+                        关闭主窗口后，应用将自动退至顶部菜单栏（或系统托盘）常驻。点击托盘图标可毫秒级呼出随身快捷助手，随时检索并一键复制技能与提示词。
+                      </p>
+                    </div>
+                    <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 shrink-0 ml-4">
+                      已启用
+                    </span>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="p-3 rounded-lg bg-black/[0.02] dark:bg-white/[0.02] border border-black/5 dark:border-white/5">
+                      <div className="text-xs font-semibold text-[var(--foreground)] flex items-center space-x-1">
+                        <span>🍏 macOS</span>
+                      </div>
+                      <p className="text-[11px] text-[var(--color-muted)] mt-1 leading-relaxed">
+                        点 X 隐藏主窗口与 Dock 图标；点顶部菜单栏弹出快捷助手，失焦自动收起。
+                      </p>
+                    </div>
+
+                    <div className="p-3 rounded-lg bg-black/[0.02] dark:bg-white/[0.02] border border-black/5 dark:border-white/5">
+                      <div className="text-xs font-semibold text-[var(--foreground)] flex items-center space-x-1">
+                        <span>🪟 Windows</span>
+                      </div>
+                      <p className="text-[11px] text-[var(--color-muted)] mt-1 leading-relaxed">
+                        点 X 隐藏任务栏图标常驻托盘；左键单击托盘在任务栏上方弹出快捷助手。
+                      </p>
+                    </div>
+
+                    <div className="p-3 rounded-lg bg-black/[0.02] dark:bg-white/[0.02] border border-black/5 dark:border-white/5">
+                      <div className="text-xs font-semibold text-[var(--foreground)] flex items-center space-x-1">
+                        <span>🐧 Linux</span>
+                      </div>
+                      <p className="text-[11px] text-[var(--color-muted)] mt-1 leading-relaxed">
+                        保持标准原生窗口模式（点 X 直接退出程序），兼容 GNOME 等无托盘桌面。
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {activeTab === "store" && (
             <div className="p-8 max-w-3xl mx-auto h-full">
               <div className="mb-6">

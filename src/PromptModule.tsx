@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
-import { Plus, Download, Star, LayoutGrid, Trash2, Trash, FolderPlus, MoreHorizontal, X, Folder, Edit2, FolderX, Tag, PanelRightClose, ChevronRight, Search, Loader2, Copy, RotateCcw, MessageSquareText, Globe } from "lucide-react";
+import { Plus, Download, Star, LayoutGrid, Trash2, Trash, FolderPlus, MoreHorizontal, X, Folder, Edit2, FolderX, Tag, PanelRightClose, ChevronRight, Search, Loader2, Copy, RotateCcw, MessageSquareQuote, Globe } from "lucide-react";
 import { Prompt, PromptGroup, PromptVersion } from "./types";
 import { PromptCard } from "./components/prompt/PromptCard";
 import { SelectionArea, SelectionEvent } from "@viselect/react";
@@ -776,7 +776,7 @@ export function PromptModule({ filter, refreshKey, activePromptId, onGroupsChang
     if (filter === "trash") return 'Trash2';
     if (filter.startsWith("group:")) return 'Folder';
     if (filter.startsWith("tag:")) return 'Tag';
-    return 'MessageSquareText';
+    return 'MessageSquareQuote';
   };
 
   useEffect(() => {
@@ -1042,7 +1042,7 @@ export function PromptModule({ filter, refreshKey, activePromptId, onGroupsChang
                             className={`w-5 h-5 rounded-md flex items-center justify-center shrink-0 text-white shadow-sm ${!currentGroup?.color ? 'bg-blue-500' : ''}`}
                             style={currentGroup?.color ? { backgroundColor: currentGroup.color } : undefined}
                           >
-                            <MessageSquareText className="w-3 h-3" />
+                            <MessageSquareQuote className="w-3 h-3" />
                           </div>
                           <span className="text-[14px] font-semibold text-[var(--foreground)] truncate">
                             {overviewTitle}

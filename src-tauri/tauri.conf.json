@@ -10,8 +10,10 @@
     "frontendDist": "../dist"
   },
   "app": {
+    "macOSPrivateApi": true,
     "windows": [
       {
+        "label": "main",
         "title": "SkillHub",
         "width": 1280,
         "height": 800,
@@ -19,6 +21,19 @@
         "minHeight": 600,
         "titleBarStyle": "Overlay",
         "hiddenTitle": true,
+        "shadow": true
+      },
+      {
+        "label": "tray-panel",
+        "title": "SkillHub 快捷助手",
+        "width": 380,
+        "height": 520,
+        "resizable": false,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "visible": false,
+        "skipTaskbar": true,
         "shadow": true
       }
     ],

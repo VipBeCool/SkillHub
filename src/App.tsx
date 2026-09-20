@@ -4,7 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { HardDrive, Settings, Search, Plus, RefreshCw, ChevronRight, X, LayoutGrid, Sparkles, Globe, FolderX, FolderSearch, Trash2, Info, Folder, FolderPlus, Copy, Link as LinkIcon, Check, Download, FileArchive, MessageSquareText, Store, Puzzle, CheckSquare, Star, Clock, Tag, ExternalLink, Users } from "lucide-react";
+import { HardDrive, Settings, Search, Plus, RefreshCw, ChevronRight, X, LayoutGrid, Sparkles, Globe, FolderX, FolderSearch, Trash2, Info, Folder, FolderPlus, Copy, Link as LinkIcon, Check, Download, FileArchive, MessageSquareQuote, Store, FileCode, CheckSquare, Star, Clock, Tag, ExternalLink, Users } from "lucide-react";
 import { open } from '@tauri-apps/plugin-dialog';
 import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import { AddRepositoryDialog } from "./components/library/AddRepositoryDialog";
@@ -130,7 +130,7 @@ function App() {
           activeSourceTab: 'all',
           filter: 'all',
         },
-        icon: 'Puzzle',
+        icon: 'FileCode',
       },
       prompts: {
         type: 'prompt-home',
@@ -143,7 +143,7 @@ function App() {
           repoId: undefined,
           skillId: undefined,
         },
-        icon: 'MessageSquareText',
+        icon: 'MessageSquareQuote',
       },
       resources: {
         type: 'resource-home',
@@ -237,7 +237,7 @@ function App() {
   // Prompt 模块状态（提升，供 App 侧边栏和 PromptModule 共享）
   const promptFilter = (currentTab?.context?.promptFilter as PromptFilter) || "all";
   const setPromptFilter = (filter: string, e?: React.MouseEvent) => {
-    handleSidebarNav('prompt-home', '提示词', { promptFilter: filter, repoId: undefined }, 'MessageSquareText', e);
+    handleSidebarNav('prompt-home', '提示词', { promptFilter: filter, repoId: undefined }, 'MessageSquareQuote', e);
   };
   const [promptGroups, setPromptGroups] = useState<PromptGroup[]>([]);
   const [isCreateGroupOpen, setIsCreateGroupOpen] = useState(false);
@@ -1739,8 +1739,8 @@ function App() {
         <div className="px-3 pb-3 flex items-center justify-between gap-2">
           <div className="flex items-center gap-1">
             {([
-              { id: 'skills' as AppModule, label: '技能', icon: Puzzle },
-              { id: 'prompts' as AppModule, label: '提示词', icon: MessageSquareText },
+              { id: 'skills' as AppModule, label: '技能', icon: FileCode },
+              { id: 'prompts' as AppModule, label: '提示词', icon: MessageSquareQuote },
               { id: 'resources' as AppModule, label: '资源', icon: Store },
             ]).map(tab => (
               <button
@@ -1941,7 +1941,7 @@ function App() {
                           : 'text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] font-medium'
                       }`}
                     >
-                      <Puzzle className="w-4 h-4" />
+                      <FileCode className="w-4 h-4" />
                       <span>技能</span>
                     </button>
                     <button
@@ -1952,7 +1952,7 @@ function App() {
                           : 'text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] font-medium'
                       }`}
                     >
-                      <MessageSquareText className="w-4 h-4" />
+                      <MessageSquareQuote className="w-4 h-4" />
                       <span>提示词</span>
                     </button>
                   </div>
@@ -2055,11 +2055,11 @@ function App() {
             onCloseTab={closeTab}
             onNewTab={() => {
               if (currentTabModule === 'prompts') {
-                openTab('prompt-home', '提示词', { promptFilter: 'all' }, 'MessageSquareText');
+                openTab('prompt-home', '提示词', { promptFilter: 'all' }, 'MessageSquareQuote');
               } else if (currentTabModule === 'resources') {
                 openTab('resource-home', '发现', { resourceCategory: 'all', categoryName: '发现' }, 'Store');
               } else {
-                openTab('skill-home', '技能库', { workspaceId: selectedWorkspaceId || undefined, activeView: 'all', selectedTag: 'all', filter: 'all' }, 'Puzzle');
+                openTab('skill-home', '技能库', { workspaceId: selectedWorkspaceId || undefined, activeView: 'all', selectedTag: 'all', filter: 'all' }, 'FileCode');
               }
             }}
             onGoBack={tabGoBack}
@@ -2757,7 +2757,7 @@ function App() {
       <GlobalSettingsModal
         isOpen={isSettingsOpen}
         onClose={() => { setIsSettingsOpen(false); fetchData(); }}
-        defaultTab="agent"
+        defaultTab="general"
       />
 
       <InstallTargetModal

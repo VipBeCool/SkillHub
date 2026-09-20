@@ -1,5 +1,6 @@
 import React from 'react';
 import {
+  MessageSquareQuote,
   Puzzle,
   MessageSquareText,
   Lightbulb,
@@ -103,6 +104,7 @@ const ICON_MAP: Record<string, React.ComponentType<LucideProps>> = {
   FolderCode,
   Sliders,
   Puzzle,
+  MessageSquareQuote,
 
   // 扩充图标
   Library,
@@ -161,11 +163,10 @@ export function ResourceIcon({ name, type = 'skill', className = 'w-4 h-4', ...p
     return <IconComponent className={className} {...props} />;
   }
 
-  // 降级回退：技能使用 Puzzle，提示词使用 MessageSquareText
+  // 降级回退：技能使用 FileCode，提示词使用 MessageSquareQuote
   if (type === 'prompt') {
-    return <MessageSquareText className={className} {...props} />;
+    return <MessageSquareQuote className={className} {...props} />;
   }
 
-  return <Puzzle className={className} {...props} />;
+  return <FileCode className={className} {...props} />;
 }
-

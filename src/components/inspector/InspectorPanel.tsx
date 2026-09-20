@@ -5,7 +5,7 @@ import { openUrl } from '@tauri-apps/plugin-opener';
 import { open } from '@tauri-apps/plugin-dialog';
 import { 
   FolderGit2, HardDrive, Folder, Copy, Link as LinkIcon, Unlink, Globe,
-  FileText, ChevronRight, Loader2, PanelRightClose, Plus,
+  FileText, FileCode, ChevronRight, Loader2, PanelRightClose, Plus,
   Database, RefreshCw, Trash2, Download, FileArchive, Sparkles, X, Search, ExternalLink
 } from 'lucide-react';
 import { Tooltip } from '../ui/Tooltip';
@@ -790,7 +790,7 @@ export function InspectorPanel({
                   onClick={() => onOpenDrawer(skill)}
                   className="w-full flex items-center space-x-2 px-2 py-1.5 rounded-md text-left hover:bg-black/5 transition-colors group"
                 >
-                  <FileText className="w-3.5 h-3.5 text-[var(--color-muted)] shrink-0" />
+                  <FileCode className="w-3.5 h-3.5 text-[var(--color-muted)] shrink-0" />
                   <span className="text-[12px] text-[var(--foreground)] truncate flex-1">{skill.name}</span>
                   <ChevronRight className="w-3 h-3 text-[var(--color-muted)] opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
                 </button>

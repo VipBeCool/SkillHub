@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { FolderGit2, HardDrive, X, Command, PanelRight, Filter, Type, Globe, Copy, FolderOpen, Trash2, RefreshCw, Clock, ArrowDownAZ, Check, MessageSquareText, Star, Tag, Puzzle, Compass, ExternalLink, Download, Loader2, Code2, AlertCircle, GitFork } from 'lucide-react';
+import { FolderGit2, HardDrive, X, Command, PanelRight, Filter, Type, Globe, Copy, FolderOpen, Trash2, RefreshCw, Clock, ArrowDownAZ, Check, MessageSquareQuote, Star, Tag, FileCode, Compass, ExternalLink, Download, Loader2, Code2, AlertCircle, GitFork } from 'lucide-react';
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { showToast } from "../ui/Toast";
@@ -988,7 +988,11 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                     onClick={() => setCommunityFilterType(communityFilterType === 'all' ? 'skill' : communityFilterType === 'skill' ? 'prompt' : 'all')}
                     className={`flex items-center px-2 py-1 text-xs font-medium rounded transition-all hover:bg-black/5 ${communityFilterType !== 'all' ? 'bg-black/10 text-[var(--foreground)]' : 'text-[var(--color-muted)]'}`}
                   >
-                    <Puzzle className="w-3.5 h-3.5 mr-1.5 opacity-70" />
+                    {communityFilterType === 'prompt' ? (
+                      <MessageSquareQuote className="w-3.5 h-3.5 mr-1.5 opacity-70" />
+                    ) : (
+                      <FileCode className="w-3.5 h-3.5 mr-1.5 opacity-70" />
+                    )}
                     {communityFilterType === 'all' ? '全部类型' : communityFilterType === 'skill' ? '仅技能' : '仅提示词'}
                   </button>
                   <button 
@@ -1131,7 +1135,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                                               : 'bg-gray-100 text-gray-500'
                                       }`}
                                     >
-                                      <Puzzle className="w-4 h-4 stroke-[2px]" />
+                                      <FileCode className="w-4 h-4 stroke-[2px]" />
                                     </div>
                                     <div>
                                       <div className="text-[13px] font-medium truncate">{repo.name}</div>
@@ -1229,7 +1233,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                                 >
                                   <div className="flex items-center space-x-3 truncate">
                                     <div className="w-7 h-7 rounded-md bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
-                                      <MessageSquareText className="w-4 h-4" />
+                                      <MessageSquareQuote className="w-4 h-4" />
                                     </div>
                                     <div>
                                       <div className="text-[13px] font-medium truncate flex items-center gap-1.5">
@@ -1292,7 +1296,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                               <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
                                 resource.type === 'skill' ? 'bg-blue-50 text-blue-600' : 'bg-purple-50 text-purple-600'
                               }`}>
-                                {resource.type === 'skill' ? <Puzzle className="w-4 h-4" /> : <MessageSquareText className="w-4 h-4" />}
+                                {resource.type === 'skill' ? <FileCode className="w-4 h-4" /> : <MessageSquareQuote className="w-4 h-4" />}
                               </div>
                               <div className="min-w-0">
                                 <div className="text-[13px] font-medium truncate flex items-center space-x-2">
@@ -1489,7 +1493,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                                 ? 'bg-blue-50 text-blue-600'
                                 : 'bg-gray-100 text-gray-500'
                           }`}>
-                            <Puzzle className="w-5 h-5 stroke-[2px]" />
+                            <FileCode className="w-5 h-5 stroke-[2px]" />
                           </div>
                           <div className="min-w-0 flex-1">
                             <h3 className="font-semibold text-gray-800 text-base truncate">{hoveredItem.repo.name}</h3>
@@ -1651,7 +1655,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                       <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm w-full flex flex-col">
                         <div className="flex items-center space-x-3 mb-4">
                           <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
-                            <MessageSquareText className="w-5 h-5" />
+                            <MessageSquareQuote className="w-5 h-5" />
                           </div>
                           <div className="min-w-0 flex-1">
                             <h3 className="font-semibold text-gray-800 text-base truncate flex items-center gap-2">
@@ -1741,7 +1745,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                             <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
                               res.type === 'skill' ? 'bg-blue-50 text-blue-600' : 'bg-purple-50 text-purple-600'
                             }`}>
-                              {res.type === 'skill' ? <Puzzle className="w-5 h-5" /> : <MessageSquareText className="w-5 h-5" />}
+                              {res.type === 'skill' ? <FileCode className="w-5 h-5" /> : <MessageSquareQuote className="w-5 h-5" />}
                             </div>
                             <div className="min-w-0 flex-1">
                               <h3 className="font-semibold text-gray-800 text-base truncate">{res.displayName}</h3>
