@@ -15,6 +15,7 @@ import { SkillDetailPage } from "./components/skill/SkillDetailPage";
 import { PromptPreviewModal } from "./components/skill/PromptPreviewModal";
 import { GlobalSettingsModal } from "./components/ui/GlobalSettingsModal";
 import { ConfirmDialog } from './components/ui/ConfirmDialog';
+import { UnderConstructionModal } from "./components/ui/UnderConstructionModal";
 import { SearchModal } from "./components/search/SearchModal";
 import { RepoCard } from "./components/skill/RepoCard";
 import { SkillCard } from "./components/skill/SkillCard";
@@ -88,6 +89,7 @@ function App() {
   }, []);
 
   const [activeModule, setActiveModuleState] = useState<AppModule>('skills');
+  const [isUnderConstructionOpen, setIsUnderConstructionOpen] = useState(false);
   const currentTabModule = getTabModule(currentTab);
   
   // 记录各模块最近一次激活的有效标签页 ID，以便切回时精准恢复上下文
@@ -114,6 +116,16 @@ function App() {
 
   // 统一的模块切换逻辑（方案 1：单 Tab 原地无筛选导航，或 ⌘/中键新开无筛选标签页）
   const handleSwitchModule = useCallback((mod: AppModule, e?: React.MouseEvent) => {
+    // 资源社区功能深度升级建设中，拦截并提示弹窗
+    if (mod === 'resources') {
+      if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      setIsUnderConstructionOpen(true);
+      return;
+    }
+
     setActiveModuleState(mod);
 
     // 针对三大模块定义纯净无筛选的初始目标
@@ -1068,36 +1080,14 @@ function App() {
     }
   }, [selectedRepoId]);
 
-  // 跳转到社区资源详情页
-  const handleViewInStore = useCallback((resource: ResourceItem) => {
-    const title = resource.displayName || '资源详情';
-    const targetCat = resource.category || 'all';
-    const catDef = registryData.categories.find(c => c.id === targetCat);
-    const targetCatName = catDef ? catDef.name : '发现';
+  // 跳转到社区资源详情页（资源社区升级中，统一弹窗提示建设中）
+  const handleViewInStore = useCallback((_resource?: ResourceItem) => {
+    setIsUnderConstructionOpen(true);
+  }, []);
 
-    // 检查是否已存在该资源的详情页标签
-    const existingTab = tabs.find(
-      t => t.type === 'resource-detail' && t.context?.resourceId === resource.id
-    );
-
-    if (existingTab) {
-      switchTab(existingTab.id);
-    } else {
-      openTab('resource-detail', title, {
-        resourceId: resource.id,
-        resourceCategory: targetCat,
-        categoryName: targetCatName,
-      }, 'Store');
-    }
-    setActiveModule('resources');
-  }, [tabs, openTab, switchTab]);
-
-  const handleViewInStoreById = useCallback((resourceId: string) => {
-    const res = registryData.resources.find(r => r.id === resourceId);
-    if (res) {
-      handleViewInStore(res as ResourceItem);
-    }
-  }, [handleViewInStore]);
+  const handleViewInStoreById = useCallback((_resourceId: string) => {
+    setIsUnderConstructionOpen(true);
+  }, []);
 
   // 构建右键菜单项
   const buildRepoContextMenu = useCallback((repo: GroupedRepo): ContextMenuItem[] => {
@@ -1434,9 +1424,9 @@ function App() {
       const target = e.target as HTMLElement;
       const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
       if ((e.metaKey || e.ctrlKey)) {
-        if (e.key === 'k') {
+        if (e.key.toLowerCase() === 'k') {
           e.preventDefault();
-          setIsSearchModalOpen(true);
+          setIsSearchModalOpen(prev => !prev);
         } else if (e.key === 't') {
           e.preventDefault();
           openTab('skill-home', '技能库', { workspaceId: selectedWorkspaceId || undefined }, 'home');
@@ -1727,13 +1717,20 @@ function App() {
       <div 
         className="w-64 bg-transparent flex flex-col h-full shrink-0 relative z-20 text-[13px] border-r border-[var(--color-border)] sidebar-container"
       >
-        <div 
-          data-tauri-drag-region 
-          className="h-10 w-full shrink-0"
-          style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
-          onPointerDown={(e) => { if (e.target === e.currentTarget) getCurrentWindow().startDragging(); }}
-          onDoubleClick={(e) => { if (e.target === e.currentTarget) getCurrentWindow().toggleMaximize(); }}
-        ></div>
+        {/* 侧边栏顶部拖拽区域：左侧 72px 专供 macOS 原生红绿灯按钮，设置 no-drag 避免抢占最小化/关闭点击 */}
+        <div className="h-10 w-full shrink-0 flex items-center">
+          <div 
+            className="w-[72px] h-full shrink-0" 
+            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties} 
+          />
+          <div 
+            data-tauri-drag-region 
+            className="flex-1 h-full"
+            style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+            onPointerDown={(e) => { if (e.target === e.currentTarget) getCurrentWindow().startDragging(); }}
+            onDoubleClick={(e) => { if (e.target === e.currentTarget) getCurrentWindow().toggleMaximize(); }}
+          />
+        </div>
 
         {/* 模块 Tab 导航与全局搜索 */}
         <div className="px-3 pb-3 flex items-center justify-between gap-2">
@@ -2057,7 +2054,7 @@ function App() {
               if (currentTabModule === 'prompts') {
                 openTab('prompt-home', '提示词', { promptFilter: 'all' }, 'MessageSquareQuote');
               } else if (currentTabModule === 'resources') {
-                openTab('resource-home', '发现', { resourceCategory: 'all', categoryName: '发现' }, 'Store');
+                setIsUnderConstructionOpen(true);
               } else {
                 openTab('skill-home', '技能库', { workspaceId: selectedWorkspaceId || undefined, activeView: 'all', selectedTag: 'all', filter: 'all' }, 'FileCode');
               }
@@ -2760,15 +2757,6 @@ function App() {
         defaultTab="general"
       />
 
-      <InstallTargetModal
-        isOpen={!!installTargetResource}
-        onClose={() => setInstallTargetResource(null)}
-        resource={installTargetResource}
-        directories={directories}
-        defaultSelectedDirId={selectedWorkspaceId !== "all" ? selectedWorkspaceId : null}
-        onConfirm={handleConfirmInstallTarget}
-      />
-
       <SearchModal
         isOpen={isSearchModalOpen}
         onClose={() => setIsSearchModalOpen(false)}
@@ -2808,15 +2796,8 @@ function App() {
             window.dispatchEvent(new CustomEvent('select-prompt', { detail: prompt.id }));
           }, 100);
         }}
-        onSelectResource={(resource) => {
-          setActiveModule('resources');
-          const targetCat = resource.category || 'all';
-          const catDef = registryData.categories.find(c => c.id === targetCat);
-          navigateTo('resource-detail', resource.displayName, {
-            resourceId: resource.id,
-            resourceCategory: targetCat,
-            categoryName: catDef?.name || '发现',
-          }, 'Store');
+        onSelectResource={(_resource) => {
+          setIsUnderConstructionOpen(true);
         }}
         onInstallSkill={requestInstallSkill}
         onInstallPrompt={handleInstallPrompt}
@@ -2836,6 +2817,20 @@ function App() {
           };
           await requestInstallSkill(pseudoResource);
         }}
+      />
+
+      <InstallTargetModal
+        isOpen={!!installTargetResource}
+        onClose={() => setInstallTargetResource(null)}
+        resource={installTargetResource}
+        directories={directories}
+        defaultSelectedDirId={selectedWorkspaceId !== "all" ? selectedWorkspaceId : null}
+        onConfirm={handleConfirmInstallTarget}
+      />
+
+      <UnderConstructionModal
+        isOpen={isUnderConstructionOpen}
+        onClose={() => setIsUnderConstructionOpen(false)}
       />
 
       <CreateSkillLibraryModal
@@ -2901,7 +2896,7 @@ function App() {
       />
 
       {deleteConfirmRepos && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/10 backdrop-blur-sm p-4">
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/10 backdrop-blur-sm p-4">
           <div className="bg-white/95 backdrop-blur-xl border border-[var(--color-border)] rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden flex flex-col relative transition-all duration-300">
             <div className="flex items-center justify-between p-4 border-b border-[var(--color-border)]/60 bg-[#fafbfc]">
               <h2 className="text-[15px] font-semibold text-[var(--foreground)] flex items-center">

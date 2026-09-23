@@ -83,7 +83,12 @@ export function TabBar({
       onDoubleClick={(e) => { if (e.target === e.currentTarget) getCurrentWindow().toggleMaximize(); }}
     >
       {/* 2处：macOS 红绿灯占位区域 (仅侧边栏收起时需要，展开时红绿灯在侧边栏上方) */}
-      {!isSidebarOpen && <div className="w-[72px] shrink-0" data-tauri-drag-region />}
+      {!isSidebarOpen && (
+        <div
+          className="w-[72px] h-full shrink-0 pointer-events-none"
+          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+        />
+      )}
 
       {/* 左侧控制区：收起侧边栏 + 前进后退 */}
       <div

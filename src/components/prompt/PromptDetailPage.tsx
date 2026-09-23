@@ -1,14 +1,12 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Loader2, Edit2, Save, X, FileText, Folder, Copy, Languages, Star, ChevronDown } from "lucide-react";
+import { Loader2, Edit2, Save, X, FileText, Folder, Copy, Languages, Star, ChevronDown, FileCode } from "lucide-react";
 import { Tooltip } from '../ui/Tooltip';
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
 import { showToast } from '../ui/Toast';
 import { Prompt, PromptGroup } from "../../types";
-
-
 
 interface PromptDetailPageProps {
   promptId?: string; // 如果为空，表示新建
@@ -22,6 +20,7 @@ export function PromptDetailPage({ promptId, isEditingInit = false, onSaveSucces
   const [loading, setLoading] = useState(false);
   const [isEditing, setIsEditing] = useState(isEditingInit || !promptId);
   const [saving, setSaving] = useState(false);
+  const [viewMode, setViewMode] = useState<'formatted' | 'raw'>('formatted');
   
   // 翻译状态
   const [translating, setTranslating] = useState(false);
@@ -552,6 +551,22 @@ export function PromptDetailPage({ promptId, isEditingInit = false, onSaveSucces
                 </div>
               )}
 
+              {/* 视图模式切换：排版渲染 vs 纯文本 */}
+              {(prompt?.content || content) && (
+                <Tooltip content={viewMode === 'formatted' ? "切换为纯文本视图" : "切换为排版渲染视图"}>
+                  <button
+                    onClick={() => setViewMode(v => v === 'formatted' ? 'raw' : 'formatted')}
+                    className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                      viewMode === 'raw'
+                        ? 'bg-[var(--color-primary)]/10 text-[var(--color-primary)] font-medium'
+                        : 'text-[var(--color-muted)] hover:bg-black/5 dark:hover:bg-white/5 hover:text-[var(--foreground)]'
+                    }`}
+                  >
+                    {viewMode === 'formatted' ? <FileCode className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
+                  </button>
+                </Tooltip>
+              )}
+
               <Tooltip content="复制提示词内容">
                 <button 
                   onClick={handleCopy} 
@@ -841,41 +856,55 @@ export function PromptDetailPage({ promptId, isEditingInit = false, onSaveSucces
                 </div>
               )}
 
-              {/* 正文 Markdown 渲染 */}
+              {/* 正文渲染：支持 Markdown 排版（保留原生换行）与纯文本视图 */}
               {displayedContent ? (
-                <div className="prose max-w-none prose-headings:text-left prose-a:text-[#024ad8] prose-p:leading-relaxed pb-12">
-                  <ReactMarkdown 
-                    remarkPlugins={[remarkGfm]}
-                    rehypePlugins={[rehypeRaw]}
-                    components={{
-                      code({node, inline, className, children, ...props}: any) {
-                        return !inline ? (
-                          <div className="relative group/code mt-3 mb-5 bg-gray-50 rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                            <pre className="p-4 m-0 overflow-x-auto text-[13px] leading-relaxed" {...props}>
-                              <code className={className}>{children}</code>
-                            </pre>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                navigator.clipboard.writeText(String(children));
-                                showToast("代码已复制", "success");
-                              }}
-                              className="absolute top-2.5 right-2.5 p-1.5 bg-white border border-gray-200 rounded-md text-gray-400 hover:text-gray-700 opacity-0 group-hover/code:opacity-100 transition-opacity shadow-sm"
-                            >
-                              <Copy className="w-4 h-4" />
-                            </button>
-                          </div>
-                        ) : (
-                          <code className="bg-gray-100 text-[13px] px-1.5 py-0.5 rounded-md text-gray-800 font-mono" {...props}>
-                            {children}
-                          </code>
-                        );
-                      }
-                    }}
-                  >
-                    {displayedContent}
-                  </ReactMarkdown>
-                </div>
+                viewMode === 'raw' ? (
+                  <div className="relative pb-12">
+                    <div className="p-5 rounded-xl bg-black/[0.02] dark:bg-white/[0.02] border border-black/5 dark:border-white/5 font-mono text-[13.5px] text-[var(--foreground)] leading-relaxed whitespace-pre-wrap break-words select-text">
+                      {displayedContent}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="prose max-w-none prose-headings:text-left prose-a:text-[#024ad8] prose-p:leading-relaxed prose-p:whitespace-pre-wrap prose-li:whitespace-pre-wrap pb-12">
+                    <ReactMarkdown 
+                      remarkPlugins={[remarkGfm]}
+                      rehypePlugins={[rehypeRaw]}
+                      components={{
+                        p({ children }) {
+                          return <p className="leading-relaxed mb-4 whitespace-pre-wrap break-words">{children}</p>;
+                        },
+                        li({ children }) {
+                          return <li className="leading-relaxed whitespace-pre-wrap break-words">{children}</li>;
+                        },
+                        code({node, inline, className, children, ...props}: any) {
+                          return !inline ? (
+                            <div className="relative group/code mt-3 mb-5 bg-gray-50 rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                              <pre className="p-4 m-0 overflow-x-auto text-[13px] leading-relaxed" {...props}>
+                                <code className={className}>{children}</code>
+                              </pre>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigator.clipboard.writeText(String(children));
+                                  showToast("代码已复制", "success");
+                                }}
+                                className="absolute top-2.5 right-2.5 p-1.5 bg-white border border-gray-200 rounded-md text-gray-400 hover:text-gray-700 opacity-0 group-hover/code:opacity-100 transition-opacity shadow-sm"
+                              >
+                                <Copy className="w-4 h-4" />
+                              </button>
+                            </div>
+                          ) : (
+                            <code className="bg-gray-100 text-[13px] px-1.5 py-0.5 rounded-md text-gray-800 font-mono" {...props}>
+                              {children}
+                            </code>
+                          );
+                        }
+                      }}
+                    >
+                      {displayedContent}
+                    </ReactMarkdown>
+                  </div>
+                )
               ) : (
                 <div className="flex flex-col items-center justify-center py-20 text-[var(--color-muted)] opacity-60">
                   <FileText className="w-12 h-12 mb-3 opacity-20" />

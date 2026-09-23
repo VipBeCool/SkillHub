@@ -263,8 +263,19 @@ export function QuickLookModal({
               </div>
             </div>
           ) : previewType === 'prompt' && prompt ? (
-            <article className="prose prose-sm dark:prose-invert max-w-none prose-headings:font-semibold prose-a:text-[var(--color-primary)]">
-              <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
+            <article className="prose prose-sm dark:prose-invert max-w-none prose-headings:font-semibold prose-a:text-[var(--color-primary)] prose-p:whitespace-pre-wrap prose-li:whitespace-pre-wrap">
+              <ReactMarkdown 
+                remarkPlugins={[remarkGfm]} 
+                rehypePlugins={[rehypeRaw]}
+                components={{
+                  p({ children }) {
+                    return <p className="leading-relaxed mb-3 whitespace-pre-wrap break-words">{children}</p>;
+                  },
+                  li({ children }) {
+                    return <li className="leading-relaxed whitespace-pre-wrap break-words">{children}</li>;
+                  },
+                }}
+              >
                 {cleanMarkdownContent(prompt.content) || '*空内容*'}
               </ReactMarkdown>
             </article>

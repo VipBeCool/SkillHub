@@ -292,24 +292,46 @@ pub fn run() {
             commands::hide_tray_panel,
             commands::open_preferences,
             commands::exit_app,
+            commands::get_general_settings,
+            commands::update_general_settings,
             commands::export_database,
             commands::import_database
         ])
         .on_window_event(|window, event| match event {
             tauri::WindowEvent::CloseRequested { api, .. } => {
                 if window.label() == "main" {
-                    // macOS 和 Windows 下保持隐藏常驻后台；
-                    // Linux（尤其是 GNOME）默认无托盘区域，为避免应用失联假死，直接退出
-                    #[cfg(target_os = "macos")]
-                    {
+                    let (close_action, keep_dock_icon) = {
+                        if let Some(state) = window.try_state::<crate::AppState>() {
+                            if let Ok(db) = state.db.lock() {
+                                let action = crate::db::get_setting(&db, "close_action")
+                                    .ok()
+                                    .flatten()
+                                    .unwrap_or_else(|| "minimize_to_tray".to_string());
+                                let keep_dock = crate::db::get_setting(&db, "keep_dock_icon")
+                                    .ok()
+                                    .flatten()
+                                    .map(|v| v == "true")
+                                    .unwrap_or(true);
+                                (action, keep_dock)
+                            } else {
+                                ("minimize_to_tray".to_string(), true)
+                            }
+                        } else {
+                            ("minimize_to_tray".to_string(), true)
+                        }
+                    };
+
+                    if close_action == "quit" {
+                        window.app_handle().exit(0);
+                    } else {
                         api.prevent_close();
                         let _ = window.hide();
-                        let _ = window.app_handle().set_activation_policy(tauri::ActivationPolicy::Accessory);
-                    }
-                    #[cfg(target_os = "windows")]
-                    {
-                        api.prevent_close();
-                        let _ = window.hide();
+                        #[cfg(target_os = "macos")]
+                        {
+                            if !keep_dock_icon {
+                                let _ = window.app_handle().set_activation_policy(tauri::ActivationPolicy::Accessory);
+                            }
+                        }
                     }
                 }
             }
@@ -325,17 +347,22 @@ pub fn run() {
 
     app.run(|app_handle, event| match event {
         #[cfg(target_os = "macos")]
-        tauri::RunEvent::Reopen { has_visible_windows, .. } => {
-            if !has_visible_windows {
-                let _ = app_handle.set_activation_policy(tauri::ActivationPolicy::Regular);
-                if let Some(tray_window) = app_handle.get_webview_window("tray-panel") {
-                    let _ = tray_window.hide();
-                }
-                if let Some(window) = app_handle.get_webview_window("main") {
-                    let _ = window.show();
-                    let _ = window.unminimize();
-                    let _ = window.set_focus();
-                }
+        tauri::RunEvent::Reopen { .. } => {
+            let _ = app_handle.set_activation_policy(tauri::ActivationPolicy::Regular);
+            if let Some(tray_window) = app_handle.get_webview_window("tray-panel") {
+                let _ = tray_window.hide();
+            }
+            if let Some(window) = app_handle.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+            }
+            unsafe {
+                use objc2_app_kit::NSApplication;
+                use objc2::MainThreadMarker;
+                let mtm = MainThreadMarker::new_unchecked();
+                let ns_app = NSApplication::sharedApplication(mtm);
+                ns_app.activate();
             }
         }
         _ => {}

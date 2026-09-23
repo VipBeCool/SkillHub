@@ -45,7 +45,7 @@ export function InstallTargetModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
       {/* 遮罩 */}
       <div
         className="absolute inset-0 modal-backdrop transition-opacity animate-in fade-in duration-200"
@@ -141,7 +141,7 @@ export function InstallTargetModal({
               onChange={e => setRememberDefault(e.target.checked)}
               className="w-3.5 h-3.5 rounded border-gray-300 text-[var(--color-primary)] focus:ring-0 cursor-pointer"
             />
-            <span>下次默认安装到此技能库，不再提示</span>
+            <span>下次默认安装/克隆到此技能库，不再提示（后续可在设置中修改）</span>
           </label>
 
           <div className="flex items-center gap-2 shrink-0">

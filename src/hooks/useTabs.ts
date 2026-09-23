@@ -43,7 +43,11 @@ export function useTabs(initialWorkspaceId?: string): UseTabsReturn {
       const saved = localStorage.getItem('skillhub_tabs');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          // 资源社区深度升级建设中，自动过滤历史残留的资源标签页
+          const validTabs = parsed.filter((t: Tab) => !t.type.startsWith('resource'));
+          if (validTabs.length > 0) return validTabs;
+        }
       }
     } catch { /* 忽略错误 */ }
     return [createDefaultTab(initialWorkspaceId)];

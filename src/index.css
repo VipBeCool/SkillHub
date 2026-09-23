@@ -283,6 +283,30 @@ body > div[style*="overflow: hidden"][style*="position: fixed"] {
   backface-visibility: visible;
 }
 
+/* 搜索弹窗左侧书签按钮“长条无缝弹性伸出”动效（右侧锚点锁定，杜绝缝隙漏底） */
+@keyframes bookmarkTabPopSpring {
+  0% {
+    opacity: 0;
+    transform: scaleX(0.12) scaleY(0.88);
+  }
+  55% {
+    opacity: 1;
+    transform: scaleX(1.16) scaleY(1.03);
+  }
+  78% {
+    transform: scaleX(0.96) scaleY(0.99);
+  }
+  90% {
+    transform: scaleX(1.015) scaleY(1);
+  }
+  100% {
+    opacity: 1;
+    transform: scaleX(1) scaleY(1);
+  }
+}
 
-
-
+.animate-tab-pop-spring {
+  animation: bookmarkTabPopSpring 400ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  transform-origin: 100% 50%; /* 绝对锁死右侧与主弹窗的接缝，右边缘坐标恒定不变 */
+  will-change: transform, opacity;
+}

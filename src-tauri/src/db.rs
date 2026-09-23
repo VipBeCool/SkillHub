@@ -181,6 +181,15 @@ pub fn init_db(db_path: &PathBuf) -> Result<Connection> {
         [],
     )?;
 
+    // 通用偏好设置表
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS app_settings (
+            key   TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        )",
+        [],
+    )?;
+
     // 执行数据库迁移
     run_migrations(&mut conn)?;
 
@@ -819,6 +828,25 @@ pub fn remove_sync_record(db: &Connection, skill_id: &str, agent_id: &str) -> Re
         "DELETE FROM sync_records WHERE skill_id = ?1 AND agent_id = ?2",
         params![skill_id, agent_id],
     ).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub fn get_setting(conn: &Connection, key: &str) -> Result<Option<String>> {
+    let mut stmt = conn.prepare("SELECT value FROM app_settings WHERE key = ?1")?;
+    let mut rows = stmt.query([key])?;
+    if let Some(row) = rows.next()? {
+        Ok(Some(row.get(0)?))
+    } else {
+        Ok(None)
+    }
+}
+
+pub fn set_setting(conn: &Connection, key: &str, value: &str) -> Result<()> {
+    conn.execute(
+        "INSERT INTO app_settings (key, value) VALUES (?1, ?2)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        [key, value],
+    )?;
     Ok(())
 }
 

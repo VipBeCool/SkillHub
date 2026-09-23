@@ -2605,3 +2605,35 @@ pub async fn exit_app(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct GeneralSettings {
+    pub close_action: String,
+    pub keep_dock_icon: bool,
+}
+
+#[tauri::command]
+pub fn get_general_settings(state: tauri::State<'_, crate::AppState>) -> Result<GeneralSettings, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let close_action = crate::db::get_setting(&db, "close_action")
+        .map_err(|e| e.to_string())?
+        .unwrap_or_else(|| "minimize_to_tray".to_string());
+    let keep_dock_icon = crate::db::get_setting(&db, "keep_dock_icon")
+        .map_err(|e| e.to_string())?
+        .map(|v| v == "true")
+        .unwrap_or(true);
+
+    Ok(GeneralSettings {
+        close_action,
+        keep_dock_icon,
+    })
+}
+
+#[tauri::command]
+pub fn update_general_settings(state: tauri::State<'_, crate::AppState>, settings: GeneralSettings) -> Result<(), String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    crate::db::set_setting(&db, "close_action", &settings.close_action).map_err(|e| e.to_string())?;
+    crate::db::set_setting(&db, "keep_dock_icon", if settings.keep_dock_icon { "true" } else { "false" }).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+

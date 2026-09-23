@@ -503,7 +503,7 @@ function TopBar({
   }, []);
 
   return (
-    <div className="h-12 border-b border-[var(--color-border)] bg-white/70 backdrop-blur-xl flex items-center px-4 shrink-0 gap-1.5 select-none relative z-30">
+    <div className="h-12 border-b border-[var(--color-border)] bg-white flex items-center px-4 shrink-0 gap-1.5 select-none relative z-30">
       {/* 父级分类面包屑节点（无左箭头图标） */}
       <button
         onClick={onBack}

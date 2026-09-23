@@ -79,7 +79,7 @@ function CollectionTopBar({
   }, []);
 
   return (
-    <div className="h-12 border-b border-[var(--color-border)] bg-white/70 backdrop-blur-xl flex items-center px-4 shrink-0 gap-1.5 select-none relative z-30">
+    <div className="h-12 border-b border-[var(--color-border)] bg-white flex items-center px-4 shrink-0 gap-1.5 select-none relative z-30">
       {/* 父级「发现」面包屑节点（纯文本按钮，无返回箭头） */}
       <button
         onClick={() => onBackToHome?.()}
@@ -337,7 +337,7 @@ export function ResourceHome({
   return (
     <div className="flex-1 min-h-0 flex flex-col h-full overflow-hidden bg-[var(--color-background)]">
       {/* 顶部栏 */}
-      <div className="h-12 border-b border-[var(--color-border)] bg-white/70 backdrop-blur-xl flex items-center px-5 shrink-0 gap-3">
+      <div className="h-12 border-b border-[var(--color-border)] bg-white flex items-center px-5 shrink-0 gap-3">
         <h1 className="text-[14px] font-semibold text-[var(--foreground)] tracking-tight">{getCategoryTitle()}</h1>
         {!isDiscoverMode && <span className="text-[12px] text-[var(--color-muted)]">{displayResources.length} 项</span>}
         <div className="flex-1" />

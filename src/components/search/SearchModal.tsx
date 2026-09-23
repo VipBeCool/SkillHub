@@ -1,12 +1,23 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { FolderGit2, HardDrive, X, Command, PanelRight, Filter, Type, Globe, Copy, FolderOpen, Trash2, RefreshCw, Clock, ArrowDownAZ, Check, MessageSquareQuote, Star, Tag, FileCode, Compass, ExternalLink, Download, Loader2, Code2, AlertCircle, GitFork } from 'lucide-react';
+import { FolderGit2, HardDrive, X, Command, PanelRight, Filter, Type, Globe, Copy, FolderOpen, Trash2, RefreshCw, Clock, ArrowDownAZ, Check, MessageSquareQuote, Star, Tag, FileCode, Compass, Download, Loader2, Code2, AlertCircle, GitFork, Key, ExternalLink, Sparkles, ShieldCheck } from 'lucide-react';
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { showToast } from "../ui/Toast";
 import { GroupedRepo, Skill, Prompt } from '../../types';
 import { ResourceItem } from '../../types/resource';
 import { Tooltip } from "../ui/Tooltip";
+import { getGitHubToken, setGitHubToken } from '../../utils/githubToken';
+
+// 模块级全局搜索缓存（10分钟有效期，大幅减少重复API调用）
+interface GitHubCacheEntry {
+  items: GitHubRepo[];
+  totalCount: number;
+  timestamp: number;
+}
+const GITHUB_SEARCH_CACHE = new Map<string, GitHubCacheEntry>();
+const GITHUB_CACHE_TTL = 10 * 60 * 1000;
+
 
 // 精美标准 Github SVG 图标
 export const GithubIcon: React.FC<{ className?: string }> = ({ className = "w-4 h-4" }) => (
@@ -161,16 +172,24 @@ export const SearchModal: React.FC<SearchModalProps> = ({
   const [showPreview, setShowPreview] = useState(true);
   const [showFilters, setShowFilters] = useState(true);
   
+const SEARCH_SCOPE_STORAGE_KEY = 'skillhub_last_search_scope';
+
   // 搜索域状态: 'local' (默认我的资源) | 'community' (社区精选) | 'github' (Github)
-  const [searchScope, setSearchScope] = useState<SearchScope>('local');
+  const [searchScope, setSearchScope] = useState<SearchScope>(() => {
+    const saved = localStorage.getItem(SEARCH_SCOPE_STORAGE_KEY);
+    if (saved === 'local' || saved === 'community' || saved === 'github') {
+      return saved;
+    }
+    return 'local';
+  });
   // 鼠标悬停在左侧书签标签上时的预览域（null 表示未悬停）
   const [hoveredScope, setHoveredScope] = useState<SearchScope | null>(null);
   // 点击后强制折叠收起的状态（支持在选中状态下再次点击缩回）
   const [forceCollapsedScope, setForceCollapsedScope] = useState<SearchScope | null>(null);
   
   // Logo 老虎机/赌博机 3D 机械翻轴状态
-  const currentLogoScopeRef = useRef<SearchScope>('local');
-  const [logoDisplayScope, setLogoDisplayScope] = useState<SearchScope>('local');
+  const currentLogoScopeRef = useRef<SearchScope>(searchScope);
+  const [logoDisplayScope, setLogoDisplayScope] = useState<SearchScope>(searchScope);
   const [isFlipping, setIsFlipping] = useState<boolean>(false);
   const [flipAnimKey, setFlipAnimKey] = useState<number>(0);
   const slotSpinTimerRef = useRef<any>(null);
@@ -188,7 +207,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
   const [communityFilterCategory, setCommunityFilterCategory] = useState<string>('all');
   const [communitySortOrder, setCommunitySortOrder] = useState<'best_match' | 'stars_desc'>('best_match');
 
-  // GitHub 在线搜索状态
+  // GitHub 在线搜索状态与 Token 鉴权
   const [githubResults, setGithubResults] = useState<GitHubRepo[]>([]);
   const [githubTotalCount, setGithubTotalCount] = useState<number>(0);
   const [githubLoading, setGithubLoading] = useState<boolean>(false);
@@ -197,8 +216,22 @@ export const SearchModal: React.FC<SearchModalProps> = ({
   const [githubPage, setGithubPage] = useState<number>(1);
   const [githubSort, setGithubSort] = useState<'best_match' | 'stars' | 'updated'>('best_match');
   const [githubLanguage, setGithubLanguage] = useState<string>('all');
+  const [githubToken, setGithubTokenState] = useState<string>(() => getGitHubToken());
+  const [showTokenDialog, setShowTokenDialog] = useState<boolean>(false);
+  const [tempTokenValue, setTempTokenValue] = useState<string>('');
+  const [githubRateLimitResetSec, setGithubRateLimitResetSec] = useState<number | null>(null);
+  const [isRateLimited, setIsRateLimited] = useState<boolean>(false);
   const githubSearchTimerRef = useRef<any>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  // 监听 GitHub Token 全局变更
+  useEffect(() => {
+    const handleTokenChange = () => {
+      setGithubTokenState(getGitHubToken());
+    };
+    window.addEventListener('skillhub_github_token_changed', handleTokenChange);
+    return () => window.removeEventListener('skillhub_github_token_changed', handleTokenChange);
+  }, []);
   
   const inputRef = useRef<HTMLInputElement>(null);
   const listScrollRef = useRef<HTMLDivElement>(null);
@@ -260,6 +293,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
   // 点击书签按钮或快捷键确认切换（在已选中状态下再次点击即可折叠缩回去，支持 Toggle）
   const handleTabClick = useCallback((scope: SearchScope) => {
     setSearchScope(scope);
+    localStorage.setItem(SEARCH_SCOPE_STORAGE_KEY, scope);
     setHoveredItem(null);
     inputRef.current?.focus();
     spinLogoTo(scope);
@@ -317,33 +351,51 @@ export const SearchModal: React.FC<SearchModalProps> = ({
     }
   };
 
-  // Focus input when modal opens
+  // 弹窗打开时的初始聚焦与持久化状态恢复（仅在 isOpen 由 false 变为 true 时触发一次，防止切换 Tab 时重复执行覆盖）
+  const prevIsOpenRef = useRef(false);
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && !prevIsOpenRef.current) {
       const lastSearch = localStorage.getItem('skillhub_last_search') || '';
       setQuery(lastSearch);
       setHoveredItem(null);
       setStuckGroup(null);
       setHoveredScope(null);
       setForceCollapsedScope(null);
-      currentLogoScopeRef.current = searchScope;
-      setLogoDisplayScope(searchScope);
+
+      // 读取并恢复上一次记忆的 Tab
+      const savedScope = (localStorage.getItem(SEARCH_SCOPE_STORAGE_KEY) as SearchScope) || 'local';
+      if (savedScope === 'local' || savedScope === 'community' || savedScope === 'github') {
+        setSearchScope(savedScope);
+        currentLogoScopeRef.current = savedScope;
+        setLogoDisplayScope(savedScope);
+      }
+
       setIsFlipping(false);
       setFlipAnimKey(0);
       setTimeout(() => inputRef.current?.select(), 100);
     }
-  }, [isOpen, searchScope]);
+    prevIsOpenRef.current = isOpen;
+  }, [isOpen]);
 
   useEffect(() => {
     localStorage.setItem('skillhub_last_search', query);
     setStuckGroup(null);
   }, [query]);
 
-  // 全局 ⌘1, ⌘2, ⌘3 快捷键监听
+  // 全局 ⌘K（关闭）、⌘1, ⌘2, ⌘3 快捷键监听
   useEffect(() => {
     if (!isOpen) return;
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey) {
+        if (e.key.toLowerCase() === 'k') {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          e.stopPropagation();
+          onClose();
+          return;
+        }
+        // 输入法打字合成过程中屏蔽快捷键切换
+        if (e.isComposing || e.keyCode === 229) return;
         if (e.key === '1') {
           e.preventDefault();
           handleTabClick('local');
@@ -358,7 +410,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
     };
     window.addEventListener('keydown', handleGlobalKeyDown);
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [isOpen, handleTabClick]);
+  }, [isOpen, handleTabClick, onClose]);
 
   // 本地库匹配计算
   const { matchedRepos, matchedSkills, matchedPrompts } = useMemo(() => {
@@ -497,14 +549,55 @@ export const SearchModal: React.FC<SearchModalProps> = ({
     return list;
   }, [allResources, communityFilterType, communityFilterCategory, query, communitySortOrder]);
 
-  // GitHub 在线搜索方法
-  const fetchGitHubRepos = useCallback(async (searchQuery: string, page = 1, append = false) => {
-    if (!searchQuery.trim()) {
+  // GitHub Rate Limit 频率限制恢复倒计时
+  useEffect(() => {
+    if (githubRateLimitResetSec === null || githubRateLimitResetSec <= 0) return;
+    const interval = setInterval(() => {
+      setGithubRateLimitResetSec(prev => {
+        if (prev === null || prev <= 1) {
+          clearInterval(interval);
+          setIsRateLimited(false);
+          if (query.trim() && searchScope === 'github') {
+            fetchGitHubRepos(query, 1, false, true);
+          }
+          return null;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [githubRateLimitResetSec, query, searchScope]);
+
+  // GitHub 在线搜索方法（集成内存缓存、Token 鉴权、RateLimit 解析）
+  const fetchGitHubRepos = useCallback(async (searchQuery: string, page = 1, append = false, force = false) => {
+    const trimmed = searchQuery.trim();
+    if (!trimmed) {
       setGithubResults([]);
       setGithubTotalCount(0);
       setGithubLoading(false);
       setGithubError(null);
+      setIsRateLimited(false);
       return;
+    }
+
+    let q = trimmed;
+    if (githubLanguage !== 'all') {
+      q += ` language:${githubLanguage}`;
+    }
+
+    // 缓存匹配（仅针对非追加请求、且非强制刷新的请求）
+    const cacheKey = `${q}__${githubSort}__${page}`;
+    if (!force && !append && GITHUB_SEARCH_CACHE.has(cacheKey)) {
+      const cached = GITHUB_SEARCH_CACHE.get(cacheKey)!;
+      if (Date.now() - cached.timestamp < GITHUB_CACHE_TTL) {
+        setGithubResults(cached.items);
+        setGithubTotalCount(cached.totalCount);
+        setGithubLoading(false);
+        setGithubError(null);
+        setIsRateLimited(false);
+        setGithubPage(page);
+        return;
+      }
     }
 
     if (abortControllerRef.current) {
@@ -521,11 +614,6 @@ export const SearchModal: React.FC<SearchModalProps> = ({
     }
 
     try {
-      let q = searchQuery.trim();
-      if (githubLanguage !== 'all') {
-        q += ` language:${githubLanguage}`;
-      }
-
       let url = `https://api.github.com/search/repositories?q=${encodeURIComponent(q)}&page=${page}&per_page=30`;
       if (githubSort === 'stars') {
         url += '&sort=stars&order=desc';
@@ -533,16 +621,30 @@ export const SearchModal: React.FC<SearchModalProps> = ({
         url += '&sort=updated&order=desc';
       }
 
+      const currentToken = getGitHubToken();
+      const headers: Record<string, string> = {
+        'Accept': 'application/vnd.github.v3+json',
+      };
+      if (currentToken) {
+        headers['Authorization'] = `Bearer ${currentToken}`;
+      }
+
       const res = await fetch(url, {
         signal: controller.signal,
-        headers: {
-          'Accept': 'application/vnd.github.v3+json',
-        }
+        headers,
       });
 
       if (!res.ok) {
-        if (res.status === 403) {
-          throw new Error('GitHub API 请求过于频繁（Rate Limit 频率受限），请稍等 1 分钟后再试');
+        if (res.status === 403 || res.status === 429) {
+          setIsRateLimited(true);
+          const resetHeader = res.headers.get('x-ratelimit-reset');
+          let remainingSec = 60;
+          if (resetHeader) {
+            const resetTime = parseInt(resetHeader, 10) * 1000;
+            remainingSec = Math.max(1, Math.ceil((resetTime - Date.now()) / 1000));
+          }
+          setGithubRateLimitResetSec(remainingSec);
+          throw new Error('RATE_LIMITED');
         }
         throw new Error(`GitHub 接口响应异常 (HTTP ${res.status})`);
       }
@@ -555,13 +657,27 @@ export const SearchModal: React.FC<SearchModalProps> = ({
       } else {
         setGithubResults(items);
         setGithubTotalCount(data.total_count || 0);
+        GITHUB_SEARCH_CACHE.set(cacheKey, {
+          items,
+          totalCount: data.total_count || 0,
+          timestamp: Date.now(),
+        });
       }
       setGithubPage(page);
+      setIsRateLimited(false);
+      setGithubRateLimitResetSec(null);
     } catch (err: any) {
       if (err.name === 'AbortError') return;
       console.error('GitHub 搜索异常:', err);
-      const isNetworkFail = err.message?.includes('Failed to fetch') || err.message?.includes('NetworkError');
-      setGithubError(isNetworkFail ? '网络连接失败，请检查网络连接或代理配置' : err.message || '搜索 GitHub 仓库失败');
+      const msg = err.message || '';
+      const isRate = msg === 'RATE_LIMITED' || msg.includes('403') || msg.includes('429') || msg.toLowerCase().includes('rate limit');
+      if (isRate) {
+        setIsRateLimited(true);
+        setGithubError('GitHub API 请求过于频繁（Rate Limit 频率受限）');
+      } else {
+        const isNetworkFail = msg.includes('Failed to fetch') || msg.includes('NetworkError');
+        setGithubError(isNetworkFail ? '网络连接失败，请检查网络连接或代理配置' : msg || '搜索 GitHub 仓库失败');
+      }
       if (!append) {
         setGithubResults([]);
         setGithubTotalCount(0);
@@ -572,7 +688,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
     }
   }, [githubLanguage, githubSort]);
 
-  // 当处于 github 模式下时，防抖 400ms 触发搜索
+  // 当处于 github 模式下时，防抖 600ms 触发搜索（减少频繁输入时的 API 消耗）
   useEffect(() => {
     if (searchScope !== 'github') return;
 
@@ -585,12 +701,13 @@ export const SearchModal: React.FC<SearchModalProps> = ({
       setGithubTotalCount(0);
       setGithubLoading(false);
       setGithubError(null);
+      setIsRateLimited(false);
       return;
     }
 
     githubSearchTimerRef.current = setTimeout(() => {
       fetchGitHubRepos(query, 1, false);
-    }, 400);
+    }, 600);
 
     return () => {
       if (githubSearchTimerRef.current) clearTimeout(githubSearchTimerRef.current);
@@ -665,32 +782,38 @@ export const SearchModal: React.FC<SearchModalProps> = ({
       
       {/* 整体容器 */}
       <div className="w-full max-w-[960px] flex flex-col relative animate-in fade-in zoom-in-95 duration-200">
-        {/* 左侧抽屉式书签导航（隐藏在左边缘，默认漏出Logo，鼠标移入向左丝滑滑出完整卡片） */}
+        {/* 左侧抽屉式书签导航（长条形设计，右边缘紧密贴合防漏底，鼠标悬停平滑展开） */}
         <div 
-          className="absolute right-full mr-[-1px] top-3.5 flex flex-col space-y-2 z-30 select-none"
+          className="absolute right-full mr-[-1px] top-5 flex flex-col space-y-2.5 z-30 select-none"
           onMouseLeave={handleContainerMouseLeave}
         >
-          {BOOKMARK_TABS.map(tab => {
+          {BOOKMARK_TABS.map((tab, idx) => {
             const TabIcon = tab.icon;
             const isActive = searchScope === tab.scope;
             const isExpanded = hoveredScope === tab.scope && forceCollapsedScope !== tab.scope;
             return (
-              <div key={tab.scope} className="flex justify-end group">
+              <div 
+                key={tab.scope} 
+                className="flex justify-end group animate-tab-pop-spring"
+                style={{
+                  animationDelay: `${100 + idx * 70}ms`,
+                }}
+              >
                 <button
                   type="button"
                   onClick={() => handleTabClick(tab.scope)}
                   onMouseEnter={() => handleTabMouseEnter(tab.scope)}
-                  className={`relative h-9 rounded-l-xl border border-r-0 flex items-center px-2 cursor-pointer transition-all duration-250 ease-[cubic-bezier(0.16,1,0.3,1)] ${
-                    isExpanded ? 'w-[92px]' : 'w-[36px]'
+                  className={`relative h-9 rounded-l-2xl border border-r-0 flex items-center px-2.5 cursor-pointer transition-all duration-250 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+                    isExpanded ? 'w-[104px]' : 'w-[48px]'
                   } overflow-hidden ${
                     isActive
-                      ? 'bg-white dark:bg-[#2c2c2e] text-neutral-900 dark:text-white border-black/10 dark:border-white/10 shadow-sm font-semibold z-20'
-                      : 'bg-white/80 dark:bg-[#202023]/85 hover:bg-white dark:hover:bg-[#2c2c2e] text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200 border-black/5 dark:border-white/5 backdrop-blur-md shadow-xs z-10'
+                      ? 'bg-white dark:bg-[#2c2c2e] text-[var(--color-primary)] border-black/10 dark:border-white/10 shadow-sm font-semibold z-20'
+                      : 'bg-white/90 dark:bg-[#202023]/90 hover:bg-white dark:hover:bg-[#2c2c2e] text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200 border-black/5 dark:border-white/5 backdrop-blur-md shadow-xs z-10'
                   }`}
                 >
                   {/* 激活状态指示竖条（紧贴按钮内侧左边缘，绝不会脱节漂移） */}
                   {isActive && (
-                    <span className="absolute left-0.5 top-2.5 bottom-2.5 w-1 rounded-full bg-neutral-900 dark:bg-white pointer-events-none" />
+                    <span className="absolute left-1 top-2.5 bottom-2.5 w-1 rounded-full bg-[var(--color-primary)] pointer-events-none" />
                   )}
 
                   {/* 默认常驻露出的 Logo */}
@@ -699,11 +822,14 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                   </div>
 
                   {/* 悬停向左展开时显示的标题（受控于 isExpanded，点击缩回时立即淡出） */}
-                  <div className={`ml-1.5 flex items-center flex-1 overflow-hidden whitespace-nowrap transition-opacity duration-150 ${
+                  <div className={`ml-2 flex items-center flex-1 overflow-hidden whitespace-nowrap transition-opacity duration-150 ${
                     isExpanded ? 'opacity-100 delay-50' : 'opacity-0 pointer-events-none'
                   }`}>
                     <span className="text-xs font-medium whitespace-nowrap">{tab.label}</span>
                   </div>
+
+                  {/* 右侧无缝延伸舌片：向右穿透 14px 深入主面板，彻底杜绝任何动画位移或边缘微隙漏底 */}
+                  <div className="absolute -top-[1px] -bottom-[1px] -right-[14px] w-[16px] bg-inherit border-y border-inherit pointer-events-none" />
                 </button>
               </div>
             );
@@ -723,14 +849,11 @@ export const SearchModal: React.FC<SearchModalProps> = ({
         >
           {/* 搜索框行 */}
           <div className="flex items-center px-4 py-3 border-b border-black/5 shrink-0 bg-white/70">
-            {/* 左侧动态图标（赌博机/老虎机 3D 机械滚筒大反转，带景深与弹簧咬合） */}
+            {/* 左侧动态图标（赌博机/老虎机 3D 机械滚筒大反转，带景深与弹簧咬合；点击安全聚焦输入框） */}
             <div 
-              className="shrink-0 flex items-center justify-center w-7 h-7 rounded-lg mr-2 select-none relative overflow-hidden cursor-pointer hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
-              title={searchScope !== 'local' ? '点击切回「我的资源」(⌘1)' : undefined}
+              className="shrink-0 flex items-center justify-center w-7 h-7 rounded-lg mr-2 select-none relative overflow-hidden cursor-default"
               onClick={() => {
-                if (searchScope !== 'local') {
-                  handleTabClick('local');
-                }
+                inputRef.current?.focus();
               }}
             >
               {/* 老虎机凹槽立体反光与上下微弧阴影遮罩 */}
@@ -761,9 +884,25 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                 }}
                 onKeyDown={e => {
                   if (e.nativeEvent.isComposing || e.keyCode === 229) return;
-                  if (e.key === 'Escape') onClose();
-                  if (e.key === 'Enter' && hoveredItem) {
-                    handleOpenItem(hoveredItem);
+                  if (e.key === 'Escape') {
+                    e.preventDefault();
+                    onClose();
+                    return;
+                  }
+                  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+                    e.preventDefault();
+                    e.nativeEvent.stopImmediatePropagation();
+                    e.stopPropagation();
+                    onClose();
+                    return;
+                  }
+                  if (e.key === 'Enter') {
+                    if (hoveredItem) {
+                      handleOpenItem(hoveredItem);
+                    } else if (searchScope === 'github' && query.trim()) {
+                      if (githubSearchTimerRef.current) clearTimeout(githubSearchTimerRef.current);
+                      fetchGitHubRepos(query, 1, false, true);
+                    }
                   }
                   if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
                     e.preventDefault();
@@ -1016,7 +1155,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                         key={cat.id}
                         onClick={() => setCommunityFilterCategory(cat.id)}
                         className={`px-2 py-0.5 text-xs rounded transition-colors ${
-                          communityFilterCategory === cat.id ? 'bg-black/10 text-gray-900 font-medium' : 'text-gray-500 hover:bg-black/5'
+                          communityFilterCategory === cat.id ? 'bg-[var(--color-primary)]/10 text-[var(--color-primary)] font-medium' : 'text-gray-500 hover:bg-black/5'
                         }`}
                       >
                         {cat.label}
@@ -1042,7 +1181,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                         key={lang}
                         onClick={() => setGithubLanguage(lang)}
                         className={`px-2 py-0.5 text-xs rounded transition-colors ${
-                          githubLanguage === lang ? 'bg-black/10 text-gray-900 font-medium' : 'text-gray-500 hover:bg-black/5'
+                          githubLanguage === lang ? 'bg-[var(--color-primary)]/10 text-[var(--color-primary)] font-medium' : 'text-gray-500 hover:bg-black/5'
                         }`}
                       >
                         {lang === 'all' ? '全部' : lang}
@@ -1065,6 +1204,24 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                   <div className="flex items-center space-x-2 text-xs text-[var(--color-muted)]">
                     {githubLoading && <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-500 mr-1" />}
                     <span>{githubLoading ? '正在检索 GitHub...' : `共 ${githubTotalCount.toLocaleString()} 个仓库`}</span>
+                    
+                    <Tooltip content={githubToken ? "GitHub Token 已生效（额度 5000次/小时），点击修改" : "配置免费 GitHub Token 可解除 10次/分 的频率限制"}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTempTokenValue(githubToken);
+                          setShowTokenDialog(true);
+                        }}
+                        className={`flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium transition-colors cursor-pointer ${
+                          githubToken
+                            ? 'bg-blue-50 text-blue-600 hover:bg-blue-100'
+                            : 'bg-black/5 text-gray-500 hover:bg-black/10'
+                        }`}
+                      >
+                        <Key className="w-3 h-3" />
+                        <span>{githubToken ? 'Token 有效' : '配置 Token'}</span>
+                      </button>
+                    </Tooltip>
                   </div>
                 </>
               )}
@@ -1333,16 +1490,124 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                 {/* 3. GitHub 在线搜索域列表渲染 */}
                 {searchScope === 'github' && (
                   githubError ? (
-                    <div className="px-6 py-12 text-center text-gray-500 text-sm flex flex-col items-center justify-center h-full">
-                      <AlertCircle className="w-10 h-10 mb-3 text-amber-500" />
-                      <p className="font-medium text-gray-800 mb-1">{githubError}</p>
-                      <p className="text-xs text-gray-400 mb-4">请检查网络或稍后重新搜索</p>
-                      <button
-                        onClick={() => fetchGitHubRepos(query, 1, false)}
-                        className="px-3 py-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-md text-xs font-medium transition-colors cursor-pointer"
-                      >
-                        重新搜索
-                      </button>
+                    <div className="px-6 py-9 text-center text-gray-500 text-sm flex flex-col items-center justify-center h-full max-w-md mx-auto animate-in fade-in duration-200">
+                      <div className="w-12 h-12 rounded-2xl bg-amber-500/10 flex items-center justify-center mb-3 text-amber-500 shadow-xs">
+                        <AlertCircle className="w-6 h-6" />
+                      </div>
+                      <p className="font-semibold text-gray-800 text-base mb-1">
+                        {isRateLimited ? 'GitHub API 请求过于频繁（Rate Limit 频率受限）' : githubError}
+                      </p>
+                      <p className="text-xs text-gray-500 leading-relaxed mb-3">
+                        {isRateLimited ? (
+                          githubToken ? (
+                            '当前 Token 频率配额已用尽，请等待倒计时结束后重试，或更换其他 Token。'
+                          ) : (
+                            'GitHub 官方对未登录的匿名请求限制为每分钟 10 次。配置个人免费 Token 即可解除限制，独享 5,000 次/小时高频额度。'
+                          )
+                        ) : (
+                          '请求未能成功完成，请检查网络连接或稍后重新搜索。'
+                        )}
+                      </p>
+
+                      {/* 倒计时提示 */}
+                      {isRateLimited && githubRateLimitResetSec !== null && githubRateLimitResetSec > 0 && (
+                        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-50 border border-amber-200/60 text-amber-700 text-xs font-medium mb-3">
+                          <Clock className="w-3.5 h-3.5 animate-pulse" />
+                          <span>预计还需等待 {githubRateLimitResetSec} 秒后自动恢复</span>
+                        </div>
+                      )}
+
+                      {/* 专属 Token 配置推荐引导卡片（未配置时常驻展示） */}
+                      {!githubToken && (
+                        <div 
+                          onClick={() => {
+                            setTempTokenValue(githubToken);
+                            setShowTokenDialog(true);
+                          }}
+                          className="w-full bg-blue-50/80 hover:bg-blue-50 border border-blue-200/70 rounded-xl p-3 mb-4 text-left flex items-center justify-between gap-2.5 cursor-pointer transition-all hover:shadow-xs group"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="w-7 h-7 rounded-lg bg-blue-100 text-[var(--color-primary)] flex items-center justify-center shrink-0">
+                              <Key className="w-3.5 h-3.5" />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="text-[12px] font-semibold text-blue-950 flex items-center gap-1.5">
+                                <span>配置免费 GitHub Token</span>
+                                <span className="text-[10px] text-emerald-600 bg-emerald-50 px-1.5 py-0.2 rounded font-normal border border-emerald-200/50">无需任何权限</span>
+                              </div>
+                              <div className="text-[11px] text-blue-700/80 truncate mt-0.5">
+                                解除每分钟 10 次限制，独享 5,000次/小时 独立额度
+                              </div>
+                            </div>
+                          </div>
+                          <span className="text-xs text-[var(--color-primary)] font-semibold group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5 shrink-0">
+                            去配置 →
+                          </span>
+                        </div>
+                      )}
+
+                      {/* 核心操作按钮栏 */}
+                      <div className="flex flex-wrap items-center justify-center gap-2 w-full">
+                        {!githubToken ? (
+                          <>
+                            {/* 未配置 Token 时：原本的“重新搜索”主按钮直接换为【配置 Token（解除限制）】 */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setTempTokenValue(githubToken);
+                                setShowTokenDialog(true);
+                              }}
+                              className="px-4 py-2 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] active:scale-95 text-white rounded-xl text-xs font-medium transition-all shadow-sm shadow-blue-500/20 flex items-center gap-1.5 cursor-pointer"
+                            >
+                              <Key className="w-3.5 h-3.5" />
+                              <span>配置 Token（解除限制）</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => fetchGitHubRepos(query, 1, false, true)}
+                              disabled={isRateLimited && (githubRateLimitResetSec || 0) > 0}
+                              className="px-3.5 py-2 bg-white border border-gray-200 hover:bg-gray-50 disabled:opacity-40 text-gray-700 rounded-xl text-xs font-medium transition-colors cursor-pointer"
+                            >
+                              重新搜索
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => fetchGitHubRepos(query, 1, false, true)}
+                              disabled={isRateLimited && (githubRateLimitResetSec || 0) > 0}
+                              className="px-4 py-2 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] active:scale-95 text-white rounded-xl text-xs font-medium transition-all shadow-sm shadow-blue-500/20 flex items-center gap-1.5 cursor-pointer disabled:opacity-40"
+                            >
+                              <span>重新搜索</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setTempTokenValue(githubToken);
+                                setShowTokenDialog(true);
+                              }}
+                              className="px-3.5 py-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-xl text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer"
+                            >
+                              <Key className="w-3.5 h-3.5" />
+                              <span>更新 Token</span>
+                            </button>
+                          </>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            openUrl(`https://github.com/search?q=${encodeURIComponent(query)}&type=repositories`).catch(console.error);
+                          }}
+                          className="px-3.5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                          <span>在 GitHub 网页查看</span>
+                        </button>
+                      </div>
                     </div>
                   ) : !query.trim() ? (
                     <div className="px-6 py-12 text-center text-gray-400 text-sm flex flex-col items-center justify-center h-full">
@@ -1560,7 +1825,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                             {hoveredItem.repo.source_type === 'github' && (
                               <Tooltip content="在浏览器中打开 GitHub">
                                 <button onClick={(e) => { e.stopPropagation(); openUrl(`https://github.com/${hoveredItem.repo.name}`).catch(console.error); }} className="p-1.5 text-gray-400 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors cursor-pointer">
-                                  <Globe className="w-4 h-4" />
+                                  <GithubIcon className="w-4 h-4" />
                                 </button>
                               </Tooltip>
                             )}
@@ -1943,22 +2208,17 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                                   onClick={() => openUrl(repo.html_url).catch(console.error)}
                                   className="p-1.5 text-gray-400 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
                                 >
-                                  <ExternalLink className="w-4 h-4" />
+                                  <GithubIcon className="w-4 h-4" />
                                 </button>
                               </Tooltip>
                             </div>
 
                             <button
                               type="button"
-                              onClick={() => {
-                                if (onInstallGitHub) {
-                                  onInstallGitHub(repo);
-                                }
-                              }}
-                              className="px-3 py-1.5 bg-gray-900 hover:bg-black active:scale-95 text-white rounded-lg text-xs font-medium shadow-sm flex items-center transition-all cursor-pointer"
+                              onClick={() => handleOpenItem({ type: 'github-repo', repo })}
+                              className="px-2 py-1 bg-gray-50 hover:bg-gray-100 active:bg-gray-200 border border-gray-200 rounded text-[10px] text-gray-600 font-sans shadow-sm flex items-center transition-colors cursor-pointer"
                             >
-                              <Download className="w-3.5 h-3.5 mr-1" />
-                              克隆到技能库
+                              ↵ Enter 克隆到技能库
                             </button>
                           </div>
                         </div>
@@ -1977,6 +2237,144 @@ export const SearchModal: React.FC<SearchModalProps> = ({
           </div>
         </div>
       </div>
+
+      {/* GitHub Token 配置对话框 */}
+      {showTokenDialog && (
+        <div 
+          className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150"
+          onClick={() => setShowTokenDialog(false)}
+        >
+          <div 
+            className="bg-white rounded-2xl shadow-2xl border border-black/10 w-full max-w-md p-6 animate-in zoom-in-95 duration-150 relative"
+            onClick={e => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setShowTokenDialog(false)}
+              className="absolute top-4 right-4 p-1.5 text-gray-400 hover:text-gray-700 hover:bg-black/5 rounded-lg transition-colors cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-blue-50 text-[var(--color-primary)] flex items-center justify-center shrink-0">
+                <Key className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-gray-900 text-sm">配置 GitHub Personal Token</h3>
+                <p className="text-xs text-gray-500">解除 10次/分 限制，独享 5,000次/小时 额度</p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  GitHub Token
+                </label>
+                <input
+                  type="password"
+                  placeholder="ghp_xxxx 或 github_pat_xxxx"
+                  value={tempTokenValue}
+                  onChange={e => setTempTokenValue(e.target.value)}
+                  className="w-full px-3 py-2 text-xs font-mono border border-gray-200 rounded-lg outline-none focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/20 transition-all bg-gray-50/50"
+                  autoFocus
+                />
+              </div>
+
+              <div className="p-3.5 bg-blue-50/70 dark:bg-blue-950/20 rounded-xl border border-blue-200/60 dark:border-blue-800/40 text-xs space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 font-semibold text-blue-900 dark:text-blue-200 text-[12px]">
+                    <Sparkles className="w-3.5 h-3.5 text-[var(--color-primary)] shrink-0" />
+                    <span>快速配置指南</span>
+                  </div>
+                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 rounded border border-emerald-200/60 flex items-center gap-0.5">
+                    <ShieldCheck className="w-3 h-3" /> 本地存储
+                  </span>
+                </div>
+
+                <div className="space-y-2 text-[11px] text-blue-900/90 dark:text-blue-200/90 pl-0.5 leading-relaxed">
+                  <div className="flex items-start gap-2">
+                    <span className="w-4 h-4 rounded-full bg-[var(--color-primary)] text-white text-[10px] flex items-center justify-center shrink-0 mt-0.5 font-bold">1</span>
+                    <span>点击下方链接打开 GitHub 令牌创建页（已自动填好名称 Note）。</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="w-4 h-4 rounded-full bg-[var(--color-primary)] text-white text-[10px] flex items-center justify-center shrink-0 mt-0.5 font-bold">2</span>
+                    <div>
+                      <strong className="text-blue-950 dark:text-white">权限选项（Select scopes）：全部留空，一个都不要勾选！</strong>
+                      <div className="text-[10px] text-blue-700/80 dark:text-blue-300/70 mt-0.5">
+                        检索开源公开库仅需只读身份，全部不勾选最安全，绝不会访问你的私有仓库或个人信息。
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="w-4 h-4 rounded-full bg-[var(--color-primary)] text-white text-[10px] flex items-center justify-center shrink-0 mt-0.5 font-bold">3</span>
+                    <span>
+                      拉到页面最底部点击绿色按钮 <code className="bg-emerald-100/80 dark:bg-emerald-900/50 text-emerald-800 dark:text-emerald-200 px-1 py-0.2 rounded font-mono font-medium">Generate token</code>，复制生成的 <code className="font-mono text-gray-700 dark:text-gray-200">ghp_xxxx</code> 贴到上方输入框即可。
+                    </span>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-blue-200/50 dark:border-blue-800/40 flex items-center justify-end">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      openUrl("https://github.com/settings/tokens/new?description=SkillHub-Search&scopes=").catch(console.error);
+                    }}
+                    className="text-[var(--color-primary)] hover:underline flex items-center gap-1 font-semibold text-xs cursor-pointer"
+                  >
+                    <span>生成Github Personal Token</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between pt-2">
+                {githubToken ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setGitHubToken('');
+                      setTempTokenValue('');
+                      setShowTokenDialog(false);
+                      showToast('已清除 GitHub Token', 'info');
+                      if (query.trim()) fetchGitHubRepos(query, 1, false, true);
+                    }}
+                    className="px-3 py-1.5 text-xs text-red-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                  >
+                    清除 Token
+                  </button>
+                ) : <div />}
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowTokenDialog(false)}
+                    className="px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer"
+                  >
+                    取消
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const trimmed = tempTokenValue.trim();
+                      setGitHubToken(trimmed);
+                      setShowTokenDialog(false);
+                      if (trimmed) {
+                        showToast('GitHub Token 已保存，额度已提升至 5000次/小时', 'success');
+                      }
+                      if (query.trim()) {
+                        fetchGitHubRepos(query, 1, false, true);
+                      }
+                    }}
+                    className="px-4 py-1.5 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white text-xs font-medium rounded-lg shadow-sm transition-colors cursor-pointer"
+                  >
+                    保存并生效
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
