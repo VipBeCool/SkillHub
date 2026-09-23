@@ -225,7 +225,7 @@ function GithubIcon(props: React.SVGProps<SVGSVGElement>) {
 
 type OsType = "mac" | "win" | "linux" | "default";
 
-const FALLBACK_VERSION = "0.2.7";
+const FALLBACK_VERSION = "0.2.8";
 
 const OS_INFO: Record<OsType, { name: string; icon: React.ComponentType<{ className?: string }>; getUrl: (v: string) => string }> = {
   mac: {
