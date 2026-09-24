@@ -405,8 +405,7 @@ pub fn get_repositories_with_skills(db: &Connection) -> Result<Vec<GroupedRepo>,
     let mut result: Vec<GroupedRepo> = repo_map.into_values().collect();
 
     for repo in &mut result {
-        let is_official = repo.skills.iter().any(|s| s.local_path.ends_with("SKILL.md") || s.local_path.ends_with("SKILL.mdx"));
-        repo.category = Some(if is_official { "正式技能".to_string() } else { "其他".to_string() });
+        repo.category = None;
         repo.skills.sort_by(|a, b| a.name.cmp(&b.name));
         
         // 推断 repo_type

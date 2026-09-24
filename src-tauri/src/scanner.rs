@@ -119,11 +119,7 @@ pub fn scan_directory(dir_path: &Path) -> Result<Vec<ScannedSkill>, String> {
                         let category = if let Some(ref cat) = explicit_cat {
                             cat.clone()
                         } else {
-                            if file_name_str == "SKILL.md" {
-                                "正式技能".to_string()
-                            } else {
-                                "其他".to_string()
-                            }
+                            String::new()
                         };
                         // local_path 指向具体文件，保证 SQLite 唯一性
                         let local_path = path.to_string_lossy().to_string();

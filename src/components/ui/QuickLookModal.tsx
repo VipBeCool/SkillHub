@@ -158,7 +158,7 @@ export function QuickLookModal({
                 {previewType === 'skill' && (
                   <>
                     <span className="uppercase tracking-wider font-medium">{skill?.source_type}</span>
-                    {skill?.category && (
+                    {skill?.category && !["正式技能", "其他", "other"].includes(skill.category.toLowerCase().trim()) && (
                       <>
                         <span className="w-1 h-1 rounded-full bg-[var(--color-muted)]/50" />
                         <span>{skill.category}</span>
@@ -257,8 +257,12 @@ export function QuickLookModal({
                   <span className="text-[11px] font-medium text-[var(--color-muted)] uppercase tracking-wider">技能数</span>
                 </div>
                 <div className="bg-black/5 dark:bg-white/5 rounded-xl p-4 flex flex-col items-center">
-                  <span className="text-[13px] font-bold text-[var(--foreground)] mb-1 mt-1 truncate w-full">{repo.category || '未分类'}</span>
-                  <span className="text-[11px] font-medium text-[var(--color-muted)] uppercase tracking-wider mt-1">分类</span>
+                  <span className="text-[13px] font-bold text-[var(--foreground)] mb-1 mt-1 truncate w-full text-center">
+                    {repo.category && !["正式技能", "其他", "other", "未分类"].includes(repo.category.toLowerCase().trim())
+                      ? repo.category
+                      : repo.repo_type === 'collection' ? '技能组合包' : '单技能'}
+                  </span>
+                  <span className="text-[11px] font-medium text-[var(--color-muted)] uppercase tracking-wider mt-1">类型</span>
                 </div>
               </div>
             </div>

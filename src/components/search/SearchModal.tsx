@@ -418,24 +418,48 @@ const SEARCH_SCOPE_STORAGE_KEY = 'skillhub_last_search_scope';
 
     const lowerQuery = query.toLowerCase();
     
+    // 单词边界与短词匹配检查
+    const isWordMatch = (text?: string | null, q?: string) => {
+      if (!text || !q) return false;
+      const lower = text.toLowerCase();
+      if (lower.startsWith(q)) return true;
+      const words = lower.split(/[\s\-_\/\\:.]+/);
+      if (words.some(w => w.startsWith(q))) return true;
+      if (q.length > 2 && lower.includes(q)) return true;
+      return false;
+    };
+
     let matchedRepos = repos.filter(repo => {
       if (filterType === 'skill') return false;
       if (filterSource !== 'all' && repo.source_type !== filterSource) return false;
 
-      const nameMatch = repo.name && repo.name.toLowerCase().includes(lowerQuery);
+      const nameMatch = isWordMatch(repo.name, lowerQuery);
       if (filterNameOnly) return !!nameMatch;
 
       return !!nameMatch;
     });
     
+    // 计算名称与关键词的相关度得分（标题精准 > 标题前缀 > 分词前缀 > 标题包含 > 仅描述命中）
+    const getRelevanceScore = (name: string, q: string, hasDescOrContentMatch: boolean = false) => {
+      const lower = (name || '').toLowerCase();
+      if (lower === q) return 10000;
+      if (lower.startsWith(q)) return 6000;
+      const words = lower.split(/[\s\-_\/\\:.]+/);
+      if (words.some(w => w.startsWith(q))) return 4500;
+      if (q.length > 2) {
+        const idx = lower.indexOf(q);
+        if (idx !== -1) return Math.max(1200, 3000 - idx * 50);
+      }
+      return hasDescOrContentMatch ? 100 : 0;
+    };
+    
     matchedRepos.sort((a, b) => {
       const aName = (a.name || '').toLowerCase();
       const bName = (b.name || '').toLowerCase();
       if (sortOrder === 'best_match') {
-        if (aName === lowerQuery && bName !== lowerQuery) return -1;
-        if (bName === lowerQuery && aName !== lowerQuery) return 1;
-        if (aName.startsWith(lowerQuery) && !bName.startsWith(lowerQuery)) return -1;
-        if (bName.startsWith(lowerQuery) && !aName.startsWith(lowerQuery)) return 1;
+        const scoreA = getRelevanceScore(aName, lowerQuery);
+        const scoreB = getRelevanceScore(bName, lowerQuery);
+        if (scoreA !== scoreB) return scoreB - scoreA;
         return aName.localeCompare(bName);
       } else {
         const timeA = a.updated_at ? new Date(a.updated_at).getTime() : 0;
@@ -453,11 +477,12 @@ const SEARCH_SCOPE_STORAGE_KEY = 'skillhub_last_search_scope';
         if (repo.skills.length <= 1) return;
         
         repo.skills.forEach(skill => {
-          const nameMatch = skill.name && skill.name.toLowerCase().includes(lowerQuery);
+          const nameMatch = isWordMatch(skill.name, lowerQuery);
           if (filterNameOnly) {
             if (nameMatch) matchedSkills.push({ skill, repo });
           } else {
-            if (nameMatch || (skill.description && skill.description.toLowerCase().includes(lowerQuery))) {
+            const descMatch = isWordMatch(skill.description, lowerQuery);
+            if (nameMatch || descMatch) {
               matchedSkills.push({ skill, repo });
             }
           }
@@ -469,10 +494,9 @@ const SEARCH_SCOPE_STORAGE_KEY = 'skillhub_last_search_scope';
       const aName = (a.skill.name || '').toLowerCase();
       const bName = (b.skill.name || '').toLowerCase();
       if (sortOrder === 'best_match') {
-        if (aName === lowerQuery && bName !== lowerQuery) return -1;
-        if (bName === lowerQuery && aName !== lowerQuery) return 1;
-        if (aName.startsWith(lowerQuery) && !bName.startsWith(lowerQuery)) return -1;
-        if (bName.startsWith(lowerQuery) && !aName.startsWith(lowerQuery)) return 1;
+        const scoreA = getRelevanceScore(aName, lowerQuery, true);
+        const scoreB = getRelevanceScore(bName, lowerQuery, true);
+        if (scoreA !== scoreB) return scoreB - scoreA;
         return aName.localeCompare(bName);
       } else {
         const timeA = a.skill.updated_at ? new Date(a.skill.updated_at).getTime() : 0;
@@ -486,21 +510,20 @@ const SEARCH_SCOPE_STORAGE_KEY = 'skillhub_last_search_scope';
     if (filterType !== 'repo' && filterType !== 'skill') {
       matchedPrompts = prompts.filter(p => {
         if (p.deleted_at) return false;
-        const nameMatch = p.title?.toLowerCase().includes(lowerQuery);
+        const nameMatch = isWordMatch(p.title, lowerQuery);
         if (filterNameOnly) return !!nameMatch;
         return !!nameMatch || 
-               (p.content?.toLowerCase().includes(lowerQuery)) ||
-               (p.description?.toLowerCase().includes(lowerQuery));
+               isWordMatch(p.content, lowerQuery) ||
+               isWordMatch(p.description, lowerQuery);
       });
 
       matchedPrompts.sort((a, b) => {
         const aName = (a.title || '').toLowerCase();
         const bName = (b.title || '').toLowerCase();
         if (sortOrder === 'best_match') {
-          if (aName === lowerQuery && bName !== lowerQuery) return -1;
-          if (bName === lowerQuery && aName !== lowerQuery) return 1;
-          if (aName.startsWith(lowerQuery) && !bName.startsWith(lowerQuery)) return -1;
-          if (bName.startsWith(lowerQuery) && !aName.startsWith(lowerQuery)) return 1;
+          const scoreA = getRelevanceScore(aName, lowerQuery, true);
+          const scoreB = getRelevanceScore(bName, lowerQuery, true);
+          if (scoreA !== scoreB) return scoreB - scoreA;
           return aName.localeCompare(bName);
         } else {
           const timeA = a.updated_at ? new Date(a.updated_at).getTime() : 0;

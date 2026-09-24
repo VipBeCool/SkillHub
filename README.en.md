@@ -42,25 +42,46 @@ Whether you use AI for generating presentations, copywriting, spreadsheet analys
 
 > Screenshots are captured on macOS. Windows and Linux versions share the exact same functionality and layout.
 
-### 1. Multi-Tab Workspace & Skill Overview
+### 1. Menu Bar / System Tray Quick Access Assistant (New in v0.2.9)
+
+No need to keep switching back to the main window. A single click on the macOS menu bar or Windows system tray icon summons a lightning-fast floating assistant panel. Perform millisecond fuzzy searches across your local skills and prompts, and copy `@skill-name` invocation commands or prompt texts directly into your AI chat window with a single click. Dismisses automatically when unfocused.
+
+<img src="docs/screenshots/快捷访问面板.png" width="800" alt="System tray quick access assistant" />
+
+### 2. Global Search: Direct GitHub Online Skills Search & Token Config (New in v0.2.9)
+
+Press `Cmd/Ctrl + K` to summon global search, now featuring a dedicated **GitHub Online Search** tab. Explore cutting-edge open-source Skills repos directly from GitHub's global community in real time. Seamlessly navigate results with keyboard arrow keys and clone & install them into your local library with a single click.
+
+<img src="docs/screenshots/GitHub搜索技能.png" width="800" alt="Direct online GitHub skills search" />
+
+Configure your personal GitHub Access Token in settings to boost your search quota to **5,000 requests/hour**, complete with a zero-permission quick setup guide:
+
+<img src="docs/screenshots/GitHub配置Token.png" width="800" alt="GitHub Token configuration with 5,000 requests/hr" />
+
+### 3. Multi-Tab Workspace & Skill Overview
 
 A browser-like tab bar allows you to keep "All Skills", "Prompts", and specific skill documents open at the same time. The app automatically distinguishes between standalone skills and multi-skill collections, supporting both categorized and flat grid views.
 
 <img src="docs/screenshots/多选项卡首页.png" width="800" alt="Multi-tab workspace and skill library overview" />
 
-### 2. Spacebar Quick Look
+### 4. Spacebar Quick Look
 
 No need to open and close detail pages just to check what a skill does. Simply select any card and press the **Spacebar** to pop up a lightweight Markdown preview. Press Spacebar again or Esc to dismiss it instantly.
 
 <img src="docs/screenshots/空格预览页.png" width="800" alt="Spacebar Quick Look modal" />
 
-### 3. Non-Blocking Background Clone
+### 5. Dedicated Prompt Management & Dual-View Switcher (Updated in v0.2.9)
 
-When cloning a GitHub repository, the dialog closes immediately without freezing the UI. A clean progress card stays pinned at the top of your list while the download runs in the background. If you change your mind, hit `✕` anytime to cancel and cleanly wipe out downloaded files.
+Organize high-frequency prompt templates with custom groups, tags, and usage frequency counters. For complex Markdown prompts, switch seamlessly between **Formatted Markdown View** and **Raw Plain Text View** to inspect line breaks and indentations with 100% fidelity.
 
-<img src="docs/screenshots/正在拉取.png" width="800" alt="Non-blocking background clone and progress display" />
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/提示词管理.png" alt="Prompt grouping and tags" /></td>
+    <td width="50%"><img src="docs/screenshots/提示词双视图.png" alt="Prompt dual-view switching" /></td>
+  </tr>
+</table>
 
-### 4. Outline Navigation (TOC) & Translation
+### 6. Outline Navigation (TOC) & Translation
 
 For lengthy, guideline-heavy skills spanning dozens of sections, a floating table-of-contents (TOC) on the right lets you jump directly to any heading. When reading English skills, toggle the translation button for instant bilingual side-by-side reading.
 
@@ -71,34 +92,17 @@ For lengthy, guideline-heavy skills spanning dozens of sections, a floating tabl
   </tr>
 </table>
 
-### 5. One-Click Sync to AI Agents
+### 7. One-Click Sync to AI Agents
 
-Skills are meant to be executed, not just read. From the right-click menu or sidebar, you can mount and sync any skill directly to your local AI Agent directories (such as Antigravity or Codex). Installed skills show an agent badge right on their card.
+Skills are meant to be executed, not just read. From the right-click menu or sidebar, you can mount and sync any skill directly to your local AI Agent directories (such as Antigravity, Claude Code, Cursor, or Codex). Installed skills show an agent badge right on their card.
 
 <img src="docs/screenshots/安装技能到Agent.png" width="800" alt="One-click sync skill to AI Agent" />
 
-### 6. Dedicated Prompt Management & Editing
-
-Organize high-frequency prompt templates with custom groups, tags, and usage frequency counters. The Markdown editor dynamically adjusts its height as you type, and the tag input offers real-time autocomplete from your existing tags.
-
-<table>
-  <tr>
-    <td width="50%"><img src="docs/screenshots/提示词管理.png" alt="Prompt grouping and tags" /></td>
-    <td width="50%"><img src="docs/screenshots/提示词编辑.png" alt="Immersive prompt editor" /></td>
-  </tr>
-</table>
-
-### 7. Smart Reference Prompt Generator
+### 8. Smart Reference Prompt Generator
 
 Select any skill, and SkillHub automatically drafts a comprehensive reference prompt containing its directory structure, execution constraints, and repository context. Copy and paste it directly into your AI chat to ensure your agent follows the exact instructions.
 
 <img src="docs/screenshots/智能引用提示词.png" width="800" alt="Smart reference prompt generator" />
-
-### 8. Global Instant Search
-
-Hit `Cmd/Ctrl + K` from anywhere to summon the spotlight-style search modal. Search across libraries, sub-skills, and prompt templates with sub-millisecond fuzzy matching and an immediate live preview panel.
-
-<img src="docs/screenshots/全局搜索.png" width="800" alt="Global instant search" />
 
 ### 9. Flexible Imports & Batch Sync
 
@@ -134,6 +138,10 @@ All data is stored locally in an embedded SQLite database. In settings, export a
 
 | Category | Feature | Description |
 | :--- | :--- | :--- |
+| **Desktop Assistant** | Menu Bar / Tray Panel `0.2.9` | Always-on lightweight floating panel for millisecond fuzzy search and one-click prompt/skill command copying. |
+| **Online Search** | GitHub Direct Search `0.2.9` | `Cmd/Ctrl + K` searches the global open-source GitHub skills ecosystem with one-click clone. |
+| **High Quota** | GitHub Token Config `0.2.9` | Configure read-only PAT for 5,000 req/hr quota with zero-permission setup. |
+| **Dual View** | Formatted & Plain Text `0.2.9` | Switch between Markdown rendering and lossless raw plain text with full indentation fidelity. |
 | **Multi-Source** | Local / GitHub / Online | Mount local directories, Git repos, and online links side by side; auto-scans sub-skills. |
 | **Workspace** | Multi-Tab Bar | Tabbed browsing allows keeping multiple skill libraries and docs open without getting lost. |
 | **Quick Peek** | Spacebar Quick Look | Press Spacebar on any skill card to preview its Markdown document without entering detail view. |

@@ -12,6 +12,22 @@ import { useState, useEffect, useRef, useSyncExternalStore } from "react";
 // 顶部高光交互展示：精选 7 个核心高频主功能
 const SHOWCASE_TABS = [
   {
+    id: "quick-panel",
+    title: "快捷助手",
+    icon: Zap,
+    tag: "托盘随叫随到",
+    desc: "菜单栏 / 系统托盘随时轻点即出，全局毫秒级模糊检索，一键复制技能引用指令或提示词全文。",
+    image: "./screenshots/快捷访问面板.png",
+  },
+  {
+    id: "github-search",
+    title: "GitHub 搜索",
+    icon: Globe,
+    tag: "海量开源生态",
+    desc: "⌘K 全局搜索直连 GitHub 开源社区，实时检索高质量前沿 Skills，一键异步克隆安装至本地。",
+    image: "./screenshots/GitHub搜索技能.png",
+  },
+  {
     id: "tabs-overview",
     title: "多标签页",
     icon: Layers,
@@ -20,20 +36,12 @@ const SHOWCASE_TABS = [
     image: "./screenshots/tabs-overview.png",
   },
   {
-    id: "category-management",
-    title: "技能分类管理",
-    icon: LayoutGrid,
-    tag: "井然有序",
-    desc: "支持按仓库分类浏览与快速筛选标签，上百技能井井有条，一目了然。",
-    image: "./screenshots/category-management.png",
-  },
-  {
     id: "prompts-list",
     title: "提示词管理",
     icon: FileText,
-    tag: "常用灵感",
-    desc: "高频业务提示词分组与彩色标签收纳，随时查阅、一键复制调用。",
-    image: "./screenshots/prompts-list.png",
+    tag: "双视图自由切换",
+    desc: "高频提示词分组与标签收纳，支持 Markdown 排版渲染与原始纯文本无损双视图自由切换。",
+    image: "./screenshots/提示词双视图.png",
   },
   {
     id: "quick-look",
@@ -59,18 +67,14 @@ const SHOWCASE_TABS = [
     desc: "一键将技能同步安装到你常用的 AI 工具中，卡片状态一目了然，调用自如。",
     image: "./screenshots/sync-agent.png",
   },
-  {
-    id: "global-search",
-    title: "全局秒搜",
-    icon: Search,
-    tag: "Cmd/Ctrl+K",
-    desc: "随时按下快捷键唤起全局搜索，多字段模糊检索所有技能与提示词，即选即览。",
-    image: "./screenshots/global-search.png",
-  },
 ];
 
 // 全站所有截图清单（用于提前预加载，消除切换及滚动加载延迟）
 const ALL_SCREENSHOTS = [
+  "./screenshots/快捷访问面板.png",
+  "./screenshots/GitHub搜索技能.png",
+  "./screenshots/GitHub配置Token.png",
+  "./screenshots/提示词双视图.png",
   "./screenshots/tabs-overview.png",
   "./screenshots/category-management.png",
   "./screenshots/prompts-list.png",
@@ -225,7 +229,7 @@ function GithubIcon(props: React.SVGProps<SVGSVGElement>) {
 
 type OsType = "mac" | "win" | "linux" | "default";
 
-const FALLBACK_VERSION = "0.2.8";
+const FALLBACK_VERSION = "0.2.9";
 
 const OS_INFO: Record<OsType, { name: string; icon: React.ComponentType<{ className?: string }>; getUrl: (v: string) => string }> = {
   mac: {
@@ -384,6 +388,115 @@ export default function Home() {
         {/* 顶部 Showcase 核心主技能交互区 */}
         <section className="max-w-6xl mx-auto px-6 pt-4 sm:pt-6 pb-20">
           <ProductShowcase />
+        </section>
+
+        {/* ================================================================ */}
+        {/* Apple 风格全新 v0.2.8 重磅楼层：随身快捷助手与 GitHub 开源直连 */}
+        {/* ================================================================ */}
+        <section className="max-w-7xl mx-auto px-6 py-24 border-t border-slate-200/60 bg-gradient-to-b from-slate-50/60 via-white to-transparent">
+          <div className="flex flex-col items-center text-center mb-16">
+            <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-orange-50 border border-orange-200/60 text-[#FF5500] text-xs font-bold uppercase tracking-wider mb-4 shadow-2xs">
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>What's New in v0.2.9</span>
+            </div>
+            <h2 className="text-3xl sm:text-5xl font-extrabold text-gray-900 tracking-tight mb-4 max-w-3xl">
+              随叫随到的指令台，海量开源技能直连
+            </h2>
+            <p className="text-gray-500 text-base sm:text-lg max-w-2xl leading-relaxed">
+              无需频繁切换大窗口。菜单栏轻量托盘面板随时就绪；⌘K 全局搜索直达 GitHub 全球开源生态，一键克隆入库。
+            </p>
+          </div>
+
+          {/* 托盘快捷助手展示 */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center mb-16">
+            <div className="lg:col-span-7 rounded-3xl overflow-hidden bg-gradient-to-b from-white to-slate-50 border border-slate-200/80 shadow-xl p-4 sm:p-6 group">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <span className="text-xs font-semibold text-gray-700">系统托盘随身快捷助手（Quick Access）</span>
+                </div>
+                <span className="text-xs font-mono text-gray-400">毫秒级唤起 · 失焦自动收起</span>
+              </div>
+              <img
+                src="./screenshots/快捷访问面板.png"
+                alt="系统托盘快捷访问面板"
+                className="w-full h-auto rounded-2xl shadow-sm group-hover:scale-[1.01] transition-transform duration-300"
+                loading="lazy"
+              />
+            </div>
+
+            <div className="lg:col-span-5 flex flex-col justify-center">
+              <div className="w-12 h-12 rounded-2xl bg-orange-50 text-[#FF5500] flex items-center justify-center mb-5 shadow-xs">
+                <Zap className="w-6 h-6" />
+              </div>
+              <h3 className="text-2xl font-bold text-gray-900 mb-3">常驻菜单栏，招之即来挥之即去</h3>
+              <p className="text-gray-600 text-base leading-relaxed mb-4">
+                与 AI 交流时，你无需被打断并大动干戈切回主应用窗口。轻点 macOS 菜单栏或 Windows 任务栏图标，轻巧面板毫秒级即刻现身。
+              </p>
+              <ul className="flex flex-col gap-2.5 text-sm text-gray-700">
+                <li className="flex items-center gap-2">
+                  <Check className="w-4 h-4 text-emerald-500 shrink-0" />
+                  <span><strong>即搜即用</strong>：毫秒级模糊检索全部本地技能与提示词</span>
+                </li>
+                <li className="flex items-center gap-2">
+                  <Check className="w-4 h-4 text-emerald-500 shrink-0" />
+                  <span><strong>秒级复制</strong>：一键拷贝 @skill 引用或 Prompt 全文直接粘贴</span>
+                </li>
+                <li className="flex items-center gap-2">
+                  <Check className="w-4 h-4 text-emerald-500 shrink-0" />
+                  <span><strong>零干扰待命</strong>：查完点击任意外部区域即可自动静默收起</span>
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          {/* GitHub 搜索与 Token 双拼展示 */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+            <div className="lg:col-span-5 flex flex-col justify-center order-2 lg:order-1">
+              <div className="w-12 h-12 rounded-2xl bg-blue-50 text-[#0055FF] flex items-center justify-center mb-5 shadow-xs">
+                <Globe className="w-6 h-6" />
+              </div>
+              <h3 className="text-2xl font-bold text-gray-900 mb-3">⌘K 直搜 GitHub，海量开源技能随心选</h3>
+              <p className="text-gray-600 text-base leading-relaxed mb-4">
+                寻找新技能不必再往返于浏览器与终端。全局搜索全面打通 GitHub 在线生态，键盘方向键顺滑切换，点击一键在后台异步克隆并收录。
+              </p>
+              <ul className="flex flex-col gap-2.5 text-sm text-gray-700">
+                <li className="flex items-center gap-2">
+                  <Check className="w-4 h-4 text-[#0055FF] shrink-0" />
+                  <span><strong>在线检索</strong>：实时匹配 GitHub 全球开源社区前沿 Skills 仓库</span>
+                </li>
+                <li className="flex items-center gap-2">
+                  <Check className="w-4 h-4 text-[#0055FF] shrink-0" />
+                  <span><strong>Token 高配额</strong>：配置只读 PAT，配额飙升至 5,000 次/小时</span>
+                </li>
+                <li className="flex items-center gap-2">
+                  <Check className="w-4 h-4 text-[#0055FF] shrink-0" />
+                  <span><strong>本地加密保障</strong>：凭据纯本地 SQLite 存储，附带 1 分钟零权限申请向导</span>
+                </li>
+              </ul>
+            </div>
+
+            <div className="lg:col-span-7 flex flex-col gap-4 order-1 lg:order-2">
+              <div className="rounded-3xl overflow-hidden bg-white border border-slate-200/80 shadow-xl p-4 sm:p-6 group">
+                <span className="text-xs font-bold text-gray-500 block mb-2">⌘K 全局搜索直连 GitHub 开源技能库</span>
+                <img
+                  src="./screenshots/GitHub搜索技能.png"
+                  alt="GitHub 搜索技能"
+                  className="w-full h-auto rounded-xl shadow-xs group-hover:scale-[1.01] transition-transform duration-300"
+                  loading="lazy"
+                />
+              </div>
+              <div className="rounded-2xl overflow-hidden bg-white border border-slate-200/80 shadow-sm p-4 group">
+                <span className="text-xs font-bold text-gray-500 block mb-2">配置 GitHub Token 畅享 5,000 次/小时高配额</span>
+                <img
+                  src="./screenshots/GitHub配置Token.png"
+                  alt="GitHub Token 配置"
+                  className="w-full h-auto rounded-xl shadow-2xs group-hover:scale-[1.01] transition-transform duration-300"
+                  loading="lazy"
+                />
+              </div>
+            </div>
+          </div>
         </section>
 
         {/* ================================================================ */}
@@ -569,22 +682,22 @@ export default function Home() {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {/* 卡片 1：自适应编辑 */}
+            {/* 卡片 1：双视图与自适应编辑 */}
             <div className="flex flex-col rounded-3xl bg-white border border-slate-200/80 shadow-lg p-6 sm:p-8 overflow-hidden group">
               <div className="flex items-center justify-between mb-4">
                 <span className="text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1 rounded-full">
-                  沉浸编写
+                  排版 / 纯文本双视图
                 </span>
-                <span className="text-xs text-gray-400 font-mono">自适应文本框</span>
+                <span className="text-xs text-gray-400 font-mono">100% 格式保真</span>
               </div>
-              <h3 className="text-2xl font-bold text-gray-900 mb-2">随内容自适应，标签智能推荐</h3>
+              <h3 className="text-2xl font-bold text-gray-900 mb-2">排版渲染与纯文本，自由无损切换</h3>
               <p className="text-gray-600 text-sm leading-relaxed mb-6">
-                移除繁琐的内框嵌套与固定滚动条，编辑器随内容自适应撑高。键入标签时支持模糊联想推荐已有标签，让高频 Prompt 分门别类。
+                复杂 Markdown 提示词最怕段落空格与换行被合并。一键切换纯文本视图，完美保真原始换行、断句与缩进；配合标签智能推荐与自适应撑高，调校 Prompt 更加严谨得力。
               </p>
               <div className="mt-auto rounded-2xl overflow-hidden border border-slate-100 shadow-inner bg-slate-50 p-2">
                 <img
-                  src="./screenshots/prompt-edit.png"
-                  alt="提示词沉浸式编辑"
+                  src="./screenshots/提示词双视图.png"
+                  alt="提示词排版与纯文本双视图"
                   className="w-full h-auto rounded-xl shadow-xs group-hover:scale-[1.01] transition-transform duration-300"
                   loading="lazy"
                 />

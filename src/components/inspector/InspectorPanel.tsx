@@ -810,7 +810,7 @@ export function InspectorPanel({
           <div>
             <h4 className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider mb-2">信息</h4>
             <div className="space-y-1.5 text-[12px]">
-              {selectedRepo.category && (
+              {selectedRepo.category && !["正式技能", "其他", "other"].includes(selectedRepo.category.toLowerCase().trim()) && (
                 <div className="flex items-center justify-between">
                   <span className="text-[var(--color-muted)]">分类</span>
                   <span className="text-[var(--foreground)] font-medium">{selectedRepo.category}</span>

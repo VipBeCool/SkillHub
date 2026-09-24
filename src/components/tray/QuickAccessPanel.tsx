@@ -11,10 +11,11 @@ import {
   Power,
   FileCode,
   Tag,
-  Star
+  Star,
+  Folder
 } from "lucide-react";
 import logo from "../../assets/logo.png";
-import type { Prompt, GroupedRepo } from "../../types";
+import type { Prompt, GroupedRepo, SourceDirectory } from "../../types";
 
 type TabType = "skills" | "prompts";
 
@@ -30,11 +31,15 @@ interface ListItem {
   useCount: number;
   isSubSkill?: boolean;
   badge?: string;
+  sourceDirLabel?: string;
+  isDuplicate?: boolean;
+  matchedTag?: string;
 }
 
 export function QuickAccessPanel() {
   const [repos, setRepos] = useState<GroupedRepo[]>([]);
   const [prompts, setPrompts] = useState<Prompt[]>([]);
+  const [directories, setDirectories] = useState<SourceDirectory[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState<TabType>("skills");
   // 默认仅显示主技能，勾选后同时显示子技能
@@ -51,15 +56,17 @@ export function QuickAccessPanel() {
   const listRef = useRef<HTMLDivElement>(null);
   const isComposingRef = useRef(false);
 
-  // 加载数据：获取完整的仓库聚合数据（单技能+合辑仓库）与提示词
+  // 加载数据：获取完整的仓库聚合数据（单技能+合辑仓库）与提示词及技能库目录
   const loadData = async () => {
     try {
-      const [reposData, promptsData] = await Promise.all([
+      const [reposData, promptsData, dirsData] = await Promise.all([
         invoke<GroupedRepo[]>("get_repositories_with_skills").catch(() => []),
-        invoke<Prompt[]>("get_prompts", { groupId: null, search: null, isFavorite: null, tag: null }).catch(() => [])
+        invoke<Prompt[]>("get_prompts", { groupId: null, search: null, isFavorite: null, tag: null }).catch(() => []),
+        invoke<SourceDirectory[]>("get_source_directories").catch(() => [])
       ]);
       setRepos(reposData || []);
       setPrompts(promptsData || []);
+      setDirectories(dirsData || []);
     } catch (e) {
       console.error("Failed to load data in QuickAccessPanel", e);
     }
@@ -101,24 +108,51 @@ export function QuickAccessPanel() {
   }, []);
 
   // 1. 主技能视图（单技能 + 组合包仓库，默认展示的主项列表）
+  // 建立技能库目录映射
+  const dirMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const d of directories) {
+      map.set(d.id, d.label);
+    }
+    return map;
+  }, [directories]);
+
+  // 统计主技能/仓库名出现次数（判断是否有跨技能库同名）
+  const repoNameCounts = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const repo of repos) {
+      const primarySkill = repo.skills[0];
+      const isCollection = repo.repo_type === "collection" || repo.skills.length > 1;
+      const title = !isCollection && primarySkill ? (primarySkill.name || repo.name) : repo.name;
+      map.set(title, (map.get(title) || 0) + 1);
+    }
+    return map;
+  }, [repos]);
+
+  // 1. 主技能视图（单技能 + 组合包仓库，默认展示的主项列表）
   const mainSkillItems: ListItem[] = useMemo(() => {
     return repos.map(repo => {
       const isCollection = repo.repo_type === "collection" || repo.skills.length > 1;
       const primarySkill = repo.skills[0];
+      const title = !isCollection && primarySkill ? (primarySkill.name || repo.name) : repo.name;
+      const isDup = (repoNameCounts.get(title) || 0) > 1;
+      const dirLabel = repo.source_dir_id ? dirMap.get(repo.source_dir_id) : undefined;
 
       if (!isCollection && primarySkill) {
         return {
           id: `s-${primarySkill.id}`,
           type: "skill" as const,
-          title: primarySkill.name || repo.name,
+          title,
           description: primarySkill.description || primarySkill.local_path,
           contentToCopy: primarySkill.local_path,
           tags: primarySkill.tags,
-          category: repo.category || primarySkill.category || "单技能",
+          category: undefined,
           isFavorite: primarySkill.is_favorite,
           useCount: primarySkill.use_count || 0,
           isSubSkill: false,
-          badge: "单技能"
+          badge: "单技能",
+          sourceDirLabel: dirLabel,
+          isDuplicate: isDup
         };
       }
 
@@ -138,23 +172,26 @@ export function QuickAccessPanel() {
         description: desc,
         contentToCopy: repo.path,
         tags: undefined,
-        category: `合辑 (${repo.skills.length})`,
+        category: undefined,
         isFavorite: hasFavorite,
         useCount: maxUseCount,
         isSubSkill: false,
-        badge: `合辑 (${repo.skills.length})`
+        badge: `合辑 (${repo.skills.length})`,
+        sourceDirLabel: dirLabel,
+        isDuplicate: isDup
       };
     }).sort((a, b) => {
       if (a.isFavorite !== b.isFavorite) return a.isFavorite ? -1 : 1;
       return b.useCount - a.useCount;
     });
-  }, [repos]);
+  }, [repos, dirMap, repoNameCounts]);
 
   // 2. 全量子技能视图（展平全部子技能）
   const allSubSkillItems: ListItem[] = useMemo(() => {
     const list: ListItem[] = [];
     for (const repo of repos) {
       const isCollection = repo.repo_type === "collection" || repo.skills.length > 1;
+      const dirLabel = repo.source_dir_id ? dirMap.get(repo.source_dir_id) : undefined;
       for (const skill of repo.skills) {
         list.push({
           id: `s-${skill.id}`,
@@ -163,11 +200,12 @@ export function QuickAccessPanel() {
           description: skill.description || skill.local_path,
           contentToCopy: skill.local_path,
           tags: skill.tags,
-          category: isCollection ? repo.name : (skill.category || "Skill"),
+          category: isCollection ? repo.name : undefined,
           isFavorite: skill.is_favorite,
           useCount: skill.use_count || 0,
           isSubSkill: isCollection,
-          badge: isCollection ? "子技能" : "单技能"
+          badge: isCollection ? "子技能" : "单技能",
+          sourceDirLabel: dirLabel
         });
       }
     }
@@ -175,7 +213,7 @@ export function QuickAccessPanel() {
       if (a.isFavorite !== b.isFavorite) return a.isFavorite ? -1 : 1;
       return b.useCount - a.useCount;
     });
-  }, [repos]);
+  }, [repos, dirMap]);
 
   // 提示词列表数据
   const promptItems: ListItem[] = useMemo(() => {
@@ -205,19 +243,141 @@ export function QuickAccessPanel() {
     return showSubSkills ? allSubSkillItems : mainSkillItems;
   }, [activeTab, promptItems, allSubSkillItems, mainSkillItems, showSubSkills]);
 
-  // 搜索过滤
+/**
+ * 单词边界匹配检测：
+ * 检查 text 是否包含以 q 开头的独立分词（支持按空格、横线-、下划线_、斜杠/、点. 分隔）
+ */
+function hasWordPrefix(text: string, q: string): boolean {
+  if (!text || !q) return false;
+  const words = text.toLowerCase().split(/[\s\-_\/\\:.]+/);
+  return words.some(w => w.startsWith(q));
+}
+
+/**
+ * 计算检索项与搜索关键词的相关度得分与匹配标签
+ * 得分越高越靠前，返回 0 表示未命中任何关键词
+ */
+function calculateRelevance(item: ListItem, query: string): { score: number; matchedTag?: string } {
+  const q = query.toLowerCase().trim();
+  if (!q) return { score: 1 };
+
+  const title = (item.title || "").toLowerCase();
+  const desc = (item.description || "").toLowerCase();
+  const tags = (item.tags || "").toLowerCase();
+  const cat = (item.category || "").toLowerCase();
+  const content = item.type === "prompt" ? (item.contentToCopy || "").toLowerCase() : "";
+
+  let score = 0;
+  let matchedTag: string | undefined = undefined;
+
+  // 1. 标题匹配
+  if (title === q) {
+    // 标题完全精准匹配（例如搜 ui，标题就是 ui）
+    score += 10000;
+  } else if (title.startsWith(q)) {
+    // 标题以关键词开头（例如搜 ui，标题是 ui-ux-pro-max-skill）
+    score += 6000;
+  } else if (hasWordPrefix(title, q)) {
+    // 标题中某个单词以关键词开头（例如搜 ui，标题是 modern-web-ui-kit）
+    score += 4500;
+  } else if (title.includes(q)) {
+    // 关键拦截：当搜索词很短（<= 2 个字符，如 u, ui, ai）时，
+    // 如果既不是词首，也不是分词开头，仅仅是某个单词内部的字母组合（如 guizang 里的 ui，slides 里的 u）
+    // 绝对不判定为标题命中！
+    if (q.length > 2) {
+      const idx = title.indexOf(q);
+      score += Math.max(1200, 3000 - idx * 60);
+    }
+  }
+
+  // 2. 标签匹配（非常重要！例如 frontend-slides 的标签是 UI/UX）
+  if (tags) {
+    const rawTagList = (item.tags || "").split(/[,，\s]+/);
+    for (const rawTag of rawTagList) {
+      const t = rawTag.toLowerCase().trim();
+      if (!t) continue;
+      if (t === q) {
+        score += 3500;
+        matchedTag = rawTag;
+        break;
+      } else if (t.startsWith(q) || hasWordPrefix(t, q)) {
+        score += 2500;
+        matchedTag = rawTag;
+        break;
+      } else if (t.includes(q) && q.length > 2) {
+        score += 1200;
+        matchedTag = rawTag;
+        break;
+      }
+    }
+  }
+
+  // 3. 分类/合辑名称匹配
+  if (cat) {
+    if (cat === q) {
+      score += 1500;
+    } else if (cat.startsWith(q) || hasWordPrefix(cat, q)) {
+      score += 800;
+    } else if (cat.includes(q) && q.length > 2) {
+      score += 400;
+    }
+  }
+
+  // 4. 描述匹配（低权重，仅当长词或描述中为独立单词开头时才匹配，绝不让杂乱描述抢跑）
+  if (desc) {
+    if (hasWordPrefix(desc, q)) {
+      score += 250;
+    } else if (q.length > 2 && desc.includes(q)) {
+      const descIdx = desc.indexOf(q);
+      score += Math.max(50, 180 - Math.min(descIdx, 120));
+    }
+  }
+
+  // 5. 提示词正文全文匹配（仅对 prompt 正文，且短词不触发内部乱匹配）
+  if (content) {
+    if (hasWordPrefix(content, q)) {
+      score += 150;
+    } else if (q.length > 2 && content.includes(q)) {
+      score += 80;
+    }
+  }
+
+  // 如果以上字段均未命中任何内容，则过滤掉
+  if (score === 0) return { score: 0 };
+
+  // 6. 辅助微调项：同梯队下收藏优先、常用优先、标题更短聚焦优先
+  if (item.isFavorite) {
+    score += 40;
+  }
+  score += Math.min(item.useCount || 0, 30);
+  score += Math.max(0, 30 - Math.min(title.length, 30));
+
+  return { score, matchedTag };
+}
+
+  // 搜索过滤与相关度动态排序
   const filteredItems = useMemo(() => {
     if (!searchQuery.trim()) {
       return currentTabItems;
     }
 
     const q = searchQuery.toLowerCase().trim();
-    return currentTabItems.filter(item =>
-      item.title.toLowerCase().includes(q) ||
-      (item.description && item.description.toLowerCase().includes(q)) ||
-      (item.tags && item.tags.toLowerCase().includes(q)) ||
-      (item.category && item.category.toLowerCase().includes(q))
-    );
+    const scoredList: { item: ListItem; score: number }[] = [];
+
+    for (const item of currentTabItems) {
+      const { score, matchedTag } = calculateRelevance(item, q);
+      if (score > 0) {
+        scoredList.push({
+          item: matchedTag ? { ...item, matchedTag } : item,
+          score
+        });
+      }
+    }
+
+    // 按相关度得分降序排序，得分高的排在前面
+    scoredList.sort((a, b) => b.score - a.score);
+
+    return scoredList.map(s => s.item);
   }, [currentTabItems, searchQuery]);
 
   // 重置选中下标与渲染限制
@@ -401,8 +561,8 @@ export function QuickAccessPanel() {
 
   return (
     <div className="w-full h-full flex flex-col justify-center items-center select-none overflow-hidden bg-transparent">
-      {/* 悬浮核心卡片：纯净圆角，由系统 WindowServer 投射原生阴影 */}
-      <div className="flex flex-col w-full h-full overflow-hidden bg-white/95 dark:bg-slate-900/95 backdrop-blur-2xl text-slate-800 dark:text-slate-100 border border-black/[0.08] dark:border-white/[0.1] rounded-2xl font-sans">
+      {/* 悬浮核心卡片：纯净圆角，极浅浅色微边框，系统原生阴影 */}
+      <div className="flex flex-col w-full h-full overflow-hidden bg-white/95 dark:bg-slate-900/95 backdrop-blur-2xl text-slate-800 dark:text-slate-100 border border-black/[0.03] dark:border-white/[0.08] rounded-2xl font-sans">
       
       {/* 顶部标题栏区域（带应用 Logo 与快捷键指示） */}
       <div
@@ -598,9 +758,23 @@ export function QuickAccessPanel() {
                           {item.badge}
                         </span>
                       )}
-                      {item.category && (
+                      {item.category && item.category !== item.badge && !["正式技能", "其他", "other", "skill"].includes(item.category.toLowerCase().trim()) && (
                         <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 font-normal flex-shrink-0">
                           {item.category}
+                        </span>
+                      )}
+                      {/* 如果有跨库同名项，直观标出来源技能库 */}
+                      {item.sourceDirLabel && item.isDuplicate && (
+                        <span className="text-[9px] px-1.5 py-[1px] rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 font-normal flex-shrink-0 flex items-center gap-1" title={`所在技能库：${item.sourceDirLabel}`}>
+                          <Folder className="w-2.5 h-2.5 shrink-0" />
+                          <span>{item.sourceDirLabel}</span>
+                        </span>
+                      )}
+                      {/* 如果搜索命中了标签，标出命中的标签（如 UI/UX） */}
+                      {item.matchedTag && (
+                        <span className="text-[9px] px-1.5 py-[1px] rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-normal flex-shrink-0 flex items-center gap-1">
+                          <Tag className="w-2.5 h-2.5 shrink-0" />
+                          <span>{item.matchedTag}</span>
                         </span>
                       )}
                     </div>
