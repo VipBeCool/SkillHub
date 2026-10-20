@@ -21,6 +21,7 @@ import { RepoCard } from "./components/skill/RepoCard";
 import { SkillCard } from "./components/skill/SkillCard";
 import { CategorizedView } from "./components/skill/CategorizedView";
 import { CloningCard } from "./components/skill/CloningCard";
+import { CloneProgressModal } from "./components/skill/CloneProgressModal";
 import { ToastContainer, showToast } from "./components/ui/Toast";
 import { Tooltip } from "./components/ui/Tooltip";
 import { AboutDialog } from "./components/ui/AboutDialog";
@@ -337,6 +338,7 @@ function App() {
   const [syncLogs, setSyncLogs] = useState<{ id: string, label: string, status: 'pending' | 'success' | 'error' | 'skipped', message?: string }[]>([]);
   const [isSyncPopupMinimized, setIsSyncPopupMinimized] = useState(false);
   const [cloningRepos, setCloningRepos] = useState<CloningRepo[]>([]);
+  const [inspectingCloneRepo, setInspectingCloneRepo] = useState<CloningRepo | null>(null);
   const [deleteConfirmRepos, setDeleteConfirmRepos] = useState<GroupedRepo[] | null>(null);
   const [isAppStarting, setIsAppStarting] = useState(true);
   const [isFileDraggingOver, setIsFileDraggingOver] = useState(false);
@@ -577,6 +579,50 @@ function App() {
     });
 
 
+    let unlistenCloneProgress: UnlistenFn | null = null;
+    listen<{
+      target_dir: string;
+      percent?: number;
+      stage: string;
+      message: string;
+      raw_line: string;
+    }>("clone-progress", (event) => {
+      const payload = event.payload;
+      setCloningRepos(prev => prev.map(repo => {
+        if (repo.path === payload.target_dir) {
+          const oldLines = repo.progress?.rawLines || [];
+          const newLines = payload.raw_line ? [...oldLines, payload.raw_line].slice(-200) : oldLines;
+          return {
+            ...repo,
+            progress: {
+              percent: payload.percent ?? repo.progress?.percent,
+              stage: payload.stage,
+              message: payload.message,
+              rawLines: newLines,
+            }
+          };
+        }
+        return repo;
+      }));
+
+      setInspectingCloneRepo(prev => {
+        if (prev && prev.path === payload.target_dir) {
+          const oldLines = prev.progress?.rawLines || [];
+          const newLines = payload.raw_line ? [...oldLines, payload.raw_line].slice(-200) : oldLines;
+          return {
+            ...prev,
+            progress: {
+              percent: payload.percent ?? prev.progress?.percent,
+              stage: payload.stage,
+              message: payload.message,
+              rawLines: newLines,
+            }
+          };
+        }
+        return prev;
+      });
+    }).then(un => unlistenCloneProgress = un);
+
     listen("open-preferences", () => {
       getCurrentWindow().unminimize();
       getCurrentWindow().setFocus();
@@ -587,6 +633,7 @@ function App() {
       clearInterval(interval);
       if (unlisten) unlisten();
       if (unlistenPrefs) unlistenPrefs();
+      if (unlistenCloneProgress) unlistenCloneProgress();
       isDragDropMounted = false;
       // We do NOT call unlistenDragDrop() because in Tauri v2, unlistening the drag-drop event
       // can sometimes globally disable drag-drop for the webview due to a race condition in StrictMode.
@@ -664,7 +711,7 @@ function App() {
     const repoName = resource.name;
     const targetPath = `${targetDir.path}/${repoName}`.replace(/\\/g, '/').replace(/\/{2,}/g, '/');
     setCloningRepos(prev => [...prev, { path: targetPath, name: repoName }]);
-    showToast(`已开始安装「${resource.displayName}」...`);
+    showToast(`正在安装「${resource.displayName}」...`);
     try {
       await invoke('import_github_skills_to_workspace', {
         url: resource.repoUrl,
@@ -672,11 +719,13 @@ function App() {
         sourceDirId: targetDir.id,
       });
       setCloningRepos(prev => prev.filter(r => r.path !== targetPath));
+      setInspectingCloneRepo(prev => prev?.path === targetPath ? null : prev);
       showToast(`「${resource.displayName}」安装成功`, 'success');
       await fetchData();
     } catch (err) {
       setCloningRepos(prev => prev.filter(r => r.path !== targetPath));
-      showToast(`安装失败: ${err}`, 'error');
+      setInspectingCloneRepo(prev => prev?.path === targetPath ? null : prev);
+      showToast(String(err), 'error');
       throw err;
     }
   };
@@ -2402,6 +2451,7 @@ function App() {
                   agents={agents}
                   onUpdateRepo={(e, r) => handleUpdateRepos(e, [r])}
                   onDeleteRepo={(e, r) => handleDeleteRepos(e, [r])}
+                  onInspectClone={setInspectingCloneRepo}
                 />
               ) : (
                 <>
@@ -2413,6 +2463,7 @@ function App() {
                         path={repo.path}
                         repo={repo}
                         onCancel={handleCancelClone}
+                        onInspect={setInspectingCloneRepo}
                       />
                     ))}
                   {filteredGroupedRepos.map((repo) => (
@@ -2740,6 +2791,13 @@ function App() {
           ...groupedRepos.filter(r => selectedWorkspaceId === "all" || r.source_dir_id === selectedWorkspaceId).map(r => r.name),
           ...skills.filter(s => selectedWorkspaceId === "all" || s.source_dir_id === selectedWorkspaceId).map(s => s.name)
         ]}
+      />
+
+      <CloneProgressModal
+        isOpen={Boolean(inspectingCloneRepo)}
+        repo={inspectingCloneRepo}
+        onClose={() => setInspectingCloneRepo(null)}
+        onCancel={handleCancelClone}
       />
 
 

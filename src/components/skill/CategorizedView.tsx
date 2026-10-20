@@ -22,6 +22,7 @@ interface CategorizedViewProps {
   agents: AgentConfig[];
   onUpdateRepo: (e: React.MouseEvent, repo: GroupedRepo) => void;
   onDeleteRepo: (e: React.MouseEvent, repo: GroupedRepo) => void;
+  onInspectClone?: (repo: CloningRepo) => void;
 }
 
 export function CategorizedView({
@@ -40,7 +41,8 @@ export function CategorizedView({
   syncRecords,
   agents,
   onUpdateRepo,
-  onDeleteRepo
+  onDeleteRepo,
+  onInspectClone
 }: CategorizedViewProps) {
   // 1. 立即响应的勾选状态（保证勾选框 0 延迟响应，视觉极其跟手）
   const [showSubSkills, setShowSubSkills] = useState(() => {
@@ -130,7 +132,9 @@ export function CategorizedView({
                 key={repo.path}
                 name={repo.name}
                 path={repo.path}
+                repo={repo}
                 onCancel={(e) => handleCancelClone(e, repo.path)}
+                onInspect={onInspectClone}
               />
             ))}
           </div>

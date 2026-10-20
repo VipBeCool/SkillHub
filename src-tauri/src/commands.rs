@@ -172,6 +172,12 @@ pub fn delete_skill_by_path(state: State<'_, AppState>, path: String) -> Result<
         // 删除数据库中的技能记录
         let _ = db.execute("DELETE FROM skills WHERE id = ?1", rusqlite::params![skill_id]);
     }
+
+    // 清理 repositories 表中对应仓库的记录（无论是仓库根目录本身还是其子路径）
+    let _ = db.execute(
+        "DELETE FROM repositories WHERE local_path = ?1 OR local_path LIKE ?2 OR local_path LIKE ?3",
+        rusqlite::params![path, path_prefix_slash, path_prefix_backslash],
+    );
     
     // 尝试删除可能直接注册为 source_directory 的目录记录
     let _ = db.execute("DELETE FROM source_directories WHERE path = ?1", rusqlite::params![path]);
@@ -453,7 +459,7 @@ pub async fn add_github_repository(app: tauri::AppHandle, state: State<'_, AppSt
     
     let url_clone = url.clone();
     
-    let clone_future = crate::git_engine::clone_repository(&url_clone, &target_path);
+    let clone_future = crate::git_engine::clone_repository(Some(&app), &url_clone, &target_path);
     
     let res = tokio::select! {
         res = clone_future => res,
@@ -502,6 +508,10 @@ pub async fn cancel_github_clone(state: State<'_, AppState>, target_dir: String)
     let target_str = target_dir.replace('\\', "/");
     let _ = db.execute(
         "DELETE FROM skills WHERE local_path = ?1 OR local_path LIKE ?2",
+        rusqlite::params![target_str, format!("{}/%", target_str)],
+    );
+    let _ = db.execute(
+        "DELETE FROM repositories WHERE local_path = ?1 OR local_path LIKE ?2",
         rusqlite::params![target_str, format!("{}/%", target_str)],
     );
     let _ = db.execute(
@@ -572,7 +582,18 @@ pub async fn import_local_skills_to_workspace(
             |_| Ok(true)
         ).unwrap_or(false);
         if existing {
-            return Err("该技能/组合包已在当前技能库中，无需重复导入".to_string());
+            if Path::new(&final_path).exists() {
+                return Err("该技能/组合包已在当前技能库中，无需重复导入".to_string());
+            } else {
+                let _ = db.execute(
+                    "DELETE FROM repositories WHERE source_dir_id = ?1 AND local_path = ?2",
+                    rusqlite::params![source_dir_id, final_path],
+                );
+                let _ = db.execute(
+                    "DELETE FROM skills WHERE source_dir_id = ?1 AND (local_path = ?2 OR local_path LIKE ?3)",
+                    rusqlite::params![source_dir_id, final_path, format!("{}/%", final_path)],
+                );
+            }
         }
     }
 
@@ -604,7 +625,7 @@ pub async fn import_local_skills_to_workspace(
 
 #[tauri::command]
 pub async fn import_github_skills_to_workspace(
-    _app: tauri::AppHandle,
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     url: String,
     target_dir: String,
@@ -619,17 +640,32 @@ pub async fn import_github_skills_to_workspace(
     {
         let db = state.db.lock().unwrap();
         let norm_url = url.trim().trim_end_matches('/').trim_end_matches(".git");
-        let existing_name: Option<String> = db.query_row(
-            "SELECT name FROM repositories WHERE source_dir_id = ?1 AND (
+        let mut stmt = db.prepare(
+            "SELECT id, name, local_path FROM repositories WHERE source_dir_id = ?1 AND (
                 TRIM(RTRIM(RTRIM(github_url, '/'), '.git')) = ?2
                 OR local_path = ?3
-            )",
-            rusqlite::params![source_dir_id, norm_url, target_dir],
-            |row| row.get(0)
-        ).ok();
+            )"
+        ).map_err(|e| e.to_string())?;
 
-        if let Some(name) = existing_name {
-            return Err(format!("当前技能库已导入过该 GitHub 仓库「{}」，无需重复克隆", name));
+        let existing_repos: Vec<(String, String, String)> = stmt.query_map(
+            rusqlite::params![source_dir_id, norm_url, target_dir],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+        ).map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+
+        for (id, name, local_path) in existing_repos {
+            let p = std::path::Path::new(&local_path);
+            if p.exists() {
+                return Err(format!("当前技能库已导入过该 GitHub 仓库「{}」，无需重复克隆", name));
+            } else {
+                // 本地磁盘路径实际已不存在，清理该残留的废弃仓库记录及孤立技能记录
+                let _ = db.execute("DELETE FROM repositories WHERE id = ?1", rusqlite::params![id]);
+                let _ = db.execute(
+                    "DELETE FROM skills WHERE local_path = ?1 OR local_path LIKE ?2",
+                    rusqlite::params![local_path, format!("{}/%", local_path)],
+                );
+            }
         }
     }
 
@@ -641,7 +677,7 @@ pub async fn import_github_skills_to_workspace(
     
     let url_clone = url.clone();
     
-    let clone_future = crate::git_engine::clone_repository(&url_clone, &target_path);
+    let clone_future = crate::git_engine::clone_repository(Some(&app), &url_clone, &target_path);
     
     let res = tokio::select! {
         res = clone_future => res,
@@ -677,6 +713,27 @@ pub async fn import_github_skills_to_workspace(
     for skill in skills {
         crate::db::insert_skill(&tx, &skill, &source_dir_id, &source_type)?;
     }
+
+    // 写入 repositories 表记录，确保仓库实体在界面及数据库中完整存在
+    let repo_id = uuid::Uuid::new_v4().to_string();
+    let repo_name = target_path.file_name().unwrap_or_default().to_string_lossy().to_string();
+    let now = chrono::Utc::now().to_rfc3339();
+
+    let _ = tx.execute(
+        "INSERT INTO repositories (id, name, github_url, local_path, source_dir_id, source_type, added_at, last_checked)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)
+         ON CONFLICT(local_path) DO UPDATE SET github_url=excluded.github_url, name=excluded.name",
+        rusqlite::params![
+            repo_id,
+            repo_name,
+            url,
+            target_dir,
+            source_dir_id,
+            source_type,
+            now
+        ],
+    );
+
     tx.commit().map_err(|e| e.to_string())?;
     
     Ok(())
@@ -713,6 +770,19 @@ fn sync_skills_to_db(db: &mut rusqlite::Connection, path: &Path, source_dir_id: 
                 let _ = crate::db::remove_sync_record(&tx, &id, &record.agent_id);
             }
             let _ = tx.execute("DELETE FROM skills WHERE id = ?1", rusqlite::params![id]);
+        }
+    }
+
+    // 清理 repositories 中物理路径已不存在的幽灵记录
+    if let Ok(mut stmt) = tx.prepare("SELECT id, local_path FROM repositories WHERE source_dir_id = ?1") {
+        if let Ok(rows) = stmt.query_map(rusqlite::params![source_dir_id], |row| Ok((row.get(0)?, row.get(1)?))) {
+            let stale_repo_ids: Vec<String> = rows.filter_map(|r| r.ok())
+                .filter(|(_, p): &(String, String)| !Path::new(p).exists())
+                .map(|(id, _)| id)
+                .collect();
+            for repo_id in stale_repo_ids {
+                let _ = tx.execute("DELETE FROM repositories WHERE id = ?1", rusqlite::params![repo_id]);
+            }
         }
     }
     

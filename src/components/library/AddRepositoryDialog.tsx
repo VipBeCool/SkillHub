@@ -34,6 +34,37 @@ function guessNameFromUrl(url: string): string {
   }
 }
 
+// 规范化清洗用户输入的 Git 仓库链接，支持剥离 git clone 前缀、网页目录等
+export function sanitizeGitUrl(input: string): { url: string; repoName: string } {
+  let clean = (input || "").trim();
+  clean = clean.replace(/^(git\s+clone\s+)+/i, "").trim();
+  clean = clean.replace(/^['"]|['"]$/g, "").trim();
+
+  if (!clean) return { url: "", repoName: "" };
+
+  if (/^github\.com[\/:].+/i.test(clean)) {
+    clean = "https://" + clean.replace(/^github\.com:/, "github.com/");
+  }
+
+  const ghMatch = clean.match(/^(https?:\/\/[^\/]+\/([^\/]+)\/([^\/]+))(\/(tree|blob)\/.*)?$/i);
+  if (ghMatch) {
+    const rawRepo = ghMatch[3].replace(/\.git$/i, "").trim();
+    const standardUrl = `${ghMatch[1].replace(/\.git$/i, "")}.git`;
+    return { url: standardUrl, repoName: rawRepo || "repo" };
+  }
+
+  const sshMatch = clean.match(/^git@[^:]+:([^\/]+)\/([^\/]+?)(\.git)?$/i);
+  if (sshMatch) {
+    const repoName = sshMatch[2].replace(/\.git$/i, "").trim();
+    return { url: clean, repoName: repoName || "repo" };
+  }
+
+  const segments = clean.split("/").filter(Boolean);
+  const last = segments.pop() || "repo";
+  const repoName = last.replace(/\.git$/i, "").trim();
+  return { url: clean, repoName: repoName || "repo" };
+}
+
 export function AddRepositoryDialog({
   isOpen,
   onClose,
@@ -74,7 +105,7 @@ export function AddRepositoryDialog({
     existingRepoNames?.some(n => n.toLowerCase() === localDirName.toLowerCase())
   );
 
-  const githubRepoName = githubUrl ? githubUrl.split("/").filter(Boolean).pop()?.replace(/\.git$/i, "") || "" : "";
+  const { repoName: githubRepoName } = sanitizeGitUrl(githubUrl);
   const isGithubDuplicate = Boolean(
     tab === "github" &&
     githubRepoName &&
@@ -165,15 +196,14 @@ export function AddRepositoryDialog({
         setOnlineUrl(""); setOnlineName(""); setUrlAutoNamed(false);
         setTimeout(() => setStep("select"), 300);
       } else {
-        // GitHub 克隆
-        const repoName = githubUrl.split('/').filter(Boolean).pop()?.replace('.git', '') || 'repo';
+        // GitHub 克隆：使用自动清洗规范化后的 URL 与仓库名
+        const { url: cloneUrl, repoName } = sanitizeGitUrl(githubUrl);
         const finalTargetDir = `${githubTargetDir}/${repoName}`.replace(/\\/g, '/').replace(/\/{2,}/g, '/');
         const targetSourceDirId = defaultSourceDirId || "";
-        const cloneUrl = githubUrl;
 
         // 1. 触发主界面卡片 loading 状态
         onCloningStart?.(finalTargetDir, repoName);
-        showToast(`已开始在后台拉取「${repoName}」...`);
+        showToast(`正在拉取「${repoName}」...`);
 
         // 2. 立即关闭弹窗并重置状态，不阻塞用户操作
         onClose();
@@ -188,11 +218,11 @@ export function AddRepositoryDialog({
           sourceDirId: targetSourceDirId,
         }).then(() => {
           onCloningSuccess?.(finalTargetDir);
-          showToast(`已成功克隆技能库: ${repoName}`, 'success');
+          showToast(`已成功拉取技能库: ${repoName}`, 'success');
           onSuccess();
         }).catch(err => {
           onCloningError?.(finalTargetDir, err);
-          showToast(`克隆「${repoName}」失败: ${err}`, 'error');
+          showToast(String(err), 'error');
         });
         
         return;
@@ -423,9 +453,9 @@ export function AddRepositoryDialog({
                       </svg>
                       <div className="flex-1 min-w-0">
                         <p className="text-[12px] font-medium text-blue-900 mb-0.5">将克隆至：</p>
-                        <Tooltip content={`${githubTargetDir.replace(/\\/g, '/')}/${githubUrl.split('/').filter(Boolean).pop()?.replace('.git', '') || 'repo'}`}>
+                        <Tooltip content={`${githubTargetDir.replace(/\\/g, '/')}/${githubRepoName || 'repo'}`}>
                           <p className="text-[11px] font-mono text-blue-700/90 truncate cursor-default">
-                            {githubTargetDir.replace(/\\/g, '/')}/{githubUrl.split('/').filter(Boolean).pop()?.replace('.git', '') || 'repo'}
+                            {githubTargetDir.replace(/\\/g, '/')}/{githubRepoName || 'repo'}
                           </p>
                         </Tooltip>
                       </div>

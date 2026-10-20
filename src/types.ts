@@ -52,10 +52,18 @@ export interface GroupedRepo {
   author?: string;
 }
 
+export interface CloneProgressInfo {
+  percent?: number;
+  stage?: string;
+  message?: string;
+  rawLines?: string[];
+}
+
 export interface CloningRepo {
   path: string;
   name: string;
   category?: 'collection' | 'single';
+  progress?: CloneProgressInfo;
 }
 
 // ===== Prompt 管理相关类型 =====
