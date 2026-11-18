@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { save, open } from "@tauri-apps/plugin-dialog";
-import { X, Save, Upload, ShieldCheck, Database, Globe, Sliders, FolderGit2, Monitor, Power, Check, Key, ExternalLink, Sparkles, ChevronDown } from "lucide-react";
+import { X, Save, Upload, ShieldCheck, Database, Globe, Sliders, FolderGit2, Monitor, Power, Check, Key, ExternalLink, Sparkles, ChevronDown, Rocket, EyeOff, AppWindow } from "lucide-react";
 import { AgentSettingsDialog } from "../agent/AgentSettingsDialog";
 import { showToast } from "./Toast";
 import type { SourceDirectory } from "../../types";
@@ -18,10 +18,73 @@ interface GlobalSettingsModalProps {
   defaultTab?: "general" | "agent" | "backup" | "store";
 }
 
+interface SettingSwitchProps {
+  checked: boolean;
+  disabled?: boolean;
+  onChange: () => void;
+  ariaLabel: string;
+}
+
+function SettingSwitch({ checked, disabled = false, onChange, ariaLabel }: SettingSwitchProps) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-label={ariaLabel}
+      aria-checked={checked}
+      disabled={disabled}
+      onClick={onChange}
+      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed ${
+        checked ? 'bg-[var(--color-primary)]' : 'bg-black/20 dark:bg-white/20'
+      }`}
+    >
+      <span
+        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+          checked ? 'translate-x-5' : 'translate-x-0'
+        }`}
+      />
+    </button>
+  );
+}
+
+interface SettingRowProps {
+  icon: ReactNode;
+  iconClassName?: string;
+  title: string;
+  badge?: ReactNode;
+  description: string;
+  right: ReactNode;
+}
+
+function SettingRow({ icon, iconClassName = "bg-black/5 dark:bg-white/10 text-[var(--color-muted)]", title, badge, description, right }: SettingRowProps) {
+  return (
+    <div className="flex items-center justify-between gap-4 p-4">
+      <div className="flex items-start gap-3 flex-1 min-w-0">
+        <div className={`p-2 rounded-lg shrink-0 mt-0.5 ${iconClassName}`}>
+          {icon}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h4 className="text-[13.5px] font-semibold text-[var(--foreground)]">{title}</h4>
+            {badge}
+          </div>
+          <p className="text-[12px] text-[var(--color-muted)] mt-1 leading-relaxed">
+            {description}
+          </p>
+        </div>
+      </div>
+      <div className="shrink-0">
+        {right}
+      </div>
+    </div>
+  );
+}
+
 export function GlobalSettingsModal({ isOpen, onClose, defaultTab = "general" }: GlobalSettingsModalProps) {
   const [activeTab, setActiveTab] = useState<"general" | "agent" | "backup" | "store">(defaultTab);
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [isSavingGeneral, setIsSavingGeneral] = useState(false);
   const [directories, setDirectories] = useState<SourceDirectory[]>([]);
   const [defaultInstallDirId, setLocalDefaultInstallDirId] = useState<string>(() => getDefaultInstallDirId() || "");
   const [generalSettings, setGeneralSettings] = useState<GeneralSettings>(DEFAULT_GENERAL_SETTINGS);
@@ -40,13 +103,20 @@ export function GlobalSettingsModal({ isOpen, onClose, defaultTab = "general" }:
   }, [isOpen, defaultTab]);
 
   const handleUpdateGeneralSettings = async (updates: Partial<GeneralSettings>) => {
+    if (isSavingGeneral) return;
+    const prevSettings = generalSettings;
     const updated = { ...generalSettings, ...updates };
     setGeneralSettings(updated);
+    setIsSavingGeneral(true);
     try {
       await saveGeneralSettings(updated);
       showToast("偏好设置已更新并生效", "success");
     } catch (err) {
+      // 后端写入系统登录项或配置失败时回滚界面开关状态
+      setGeneralSettings(prevSettings);
       showToast(`保存偏好设置失败: ${err}`, "error");
+    } finally {
+      setIsSavingGeneral(false);
     }
   };
 
@@ -100,7 +170,7 @@ export function GlobalSettingsModal({ isOpen, onClose, defaultTab = "general" }:
       console.error("Import failed:", e);
       showToast(`导入失败: ${e}`, "error");
     } finally {
-      setIsExporting(false);
+      setIsImporting(false);
     }
   };
 
@@ -171,134 +241,200 @@ export function GlobalSettingsModal({ isOpen, onClose, defaultTab = "general" }:
           </button>
 
         {/* Content Scroll Area */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto hover-scroll">
           {activeTab === "general" && (
-            <div className="p-8 max-w-3xl mx-auto h-full space-y-6">
+            <div className="px-8 py-6 max-w-3xl mx-auto space-y-6 pb-8">
               <div>
-                <h3 className="text-2xl font-bold text-[var(--foreground)]">通用偏好</h3>
-                <p className="text-[var(--color-muted)] mt-1 text-sm">
-                  定制 SkillHub 桌面客户端的运行形态、常驻后台及窗口交互方式。
+                <h3 className="text-xl font-bold text-[var(--foreground)]">通用偏好</h3>
+                <p className="text-[var(--color-muted)] mt-0.5 text-xs">
+                  定制 SkillHub 的开机启动方式、后台常驻行为及窗口关闭策略。
                 </p>
               </div>
 
-              {/* 选项组 1：关闭主窗口时的行为 */}
-              <div className="space-y-3">
-                <label className="text-sm font-semibold text-[var(--foreground)] block">
-                  关闭主窗口时
-                </label>
+              {/* 选项组 1：开机启动与静默驻留 */}
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-[var(--color-muted)] uppercase tracking-wider">
+                    启动与登录
+                  </span>
+                </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {/* 选项 A: 常驻后台 */}
-                  <div
-                    onClick={() => handleUpdateGeneralSettings({ close_action: 'tray' })}
-                    className={`relative p-4 rounded-xl border-2 transition-all cursor-pointer select-none flex flex-col justify-between ${
-                      generalSettings.close_action === 'tray'
-                        ? 'border-[var(--color-primary)] bg-[var(--color-primary)]/5 dark:bg-[var(--color-primary)]/10 shadow-sm'
-                        : 'border-black/10 dark:border-white/10 hover:border-black/20 dark:hover:border-white/20 bg-black/[0.01] dark:bg-white/[0.01]'
-                    }`}
-                  >
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          <div className={`p-1.5 rounded-lg ${generalSettings.close_action === 'tray' ? 'bg-[var(--color-primary)] text-white' : 'bg-black/5 dark:bg-white/10 text-[var(--color-muted)]'}`}>
-                            <Monitor className="w-4 h-4" />
-                          </div>
-                          <span className="text-[14px] font-semibold text-[var(--foreground)]">保持后台常驻</span>
-                        </div>
-                        <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
-                          推荐
+                <div className="rounded-xl border border-black/[0.08] dark:border-white/[0.1] bg-black/[0.015] dark:bg-white/[0.02] divide-y divide-black/[0.06] dark:divide-white/[0.06] overflow-hidden">
+                  <SettingRow
+                    icon={<Rocket className="w-4 h-4" />}
+                    iconClassName={
+                      generalSettings.autostart
+                        ? "bg-blue-500/12 text-blue-600 dark:text-blue-400"
+                        : "bg-black/5 dark:bg-white/10 text-[var(--color-muted)]"
+                    }
+                    title="随系统开机启动"
+                    badge={
+                      generalSettings.autostart ? (
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200/80 dark:border-emerald-800/60">
+                          已开启
                         </span>
-                      </div>
-                      <p className="text-xs text-[var(--color-muted)] leading-relaxed">
-                        {isMac
-                          ? "关闭窗口后退至后台与菜单栏。点击托盘随时弹出随身快捷助手，点击应用图标秒级恢复主界面。"
-                          : "关闭窗口后退至后台系统托盘。点击托盘随时弹出随身快捷助手，点击应用图标秒级恢复主界面。"}
-                      </p>
-                    </div>
+                      ) : (
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-black/[0.04] dark:bg-white/[0.06] text-[var(--color-muted)]">
+                          未开启
+                        </span>
+                      )
+                    }
+                    description="登录系统时自动启动 SkillHub，后台常驻随时响应，随身快捷助手开机即可调用。"
+                    right={
+                      <SettingSwitch
+                        ariaLabel="随系统开机启动"
+                        checked={generalSettings.autostart}
+                        disabled={isSavingGeneral}
+                        onChange={() => handleUpdateGeneralSettings({ autostart: !generalSettings.autostart })}
+                      />
+                    }
+                  />
 
-                    <div className="mt-4 flex items-center justify-end">
-                      <div className={`w-4 h-4 rounded-full border flex items-center justify-center transition-colors ${
-                        generalSettings.close_action === 'tray'
-                          ? 'border-[var(--color-primary)] bg-[var(--color-primary)] text-white'
-                          : 'border-black/20 dark:border-white/20'
-                      }`}>
-                        {generalSettings.close_action === 'tray' && <Check className="w-3 h-3 stroke-[3]" />}
-                      </div>
+                  {generalSettings.autostart && (
+                    <div className="animate-in fade-in slide-in-from-top-1 duration-150 bg-white/50 dark:bg-white/[0.01]">
+                      <SettingRow
+                        icon={<EyeOff className="w-4 h-4" />}
+                        iconClassName={
+                          generalSettings.autostart_silent
+                            ? "bg-cyan-500/12 text-cyan-600 dark:text-cyan-400"
+                            : "bg-black/5 dark:bg-white/10 text-[var(--color-muted)]"
+                        }
+                        title="开机时静默隐藏主窗口"
+                        badge={
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200/80 dark:border-emerald-800/60">
+                            推荐
+                          </span>
+                        }
+                        description="开机自启时不主动弹出主界面，静默隐藏至后台与系统托盘，避免打断当前工作。"
+                        right={
+                          <SettingSwitch
+                            ariaLabel="开机时静默隐藏主窗口"
+                            checked={generalSettings.autostart_silent}
+                            disabled={isSavingGeneral}
+                            onChange={() => handleUpdateGeneralSettings({ autostart_silent: !generalSettings.autostart_silent })}
+                          />
+                        }
+                      />
                     </div>
-                  </div>
-
-                  {/* 选项 B: 直接退出 */}
-                  <div
-                    onClick={() => handleUpdateGeneralSettings({ close_action: 'quit' })}
-                    className={`relative p-4 rounded-xl border-2 transition-all cursor-pointer select-none flex flex-col justify-between ${
-                      generalSettings.close_action === 'quit'
-                        ? 'border-[var(--color-primary)] bg-[var(--color-primary)]/5 dark:bg-[var(--color-primary)]/10 shadow-sm'
-                        : 'border-black/10 dark:border-white/10 hover:border-black/20 dark:hover:border-white/20 bg-black/[0.01] dark:bg-white/[0.01]'
-                    }`}
-                  >
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          <div className={`p-1.5 rounded-lg ${generalSettings.close_action === 'quit' ? 'bg-[var(--color-primary)] text-white' : 'bg-black/5 dark:bg-white/10 text-[var(--color-muted)]'}`}>
-                            <Power className="w-4 h-4" />
-                          </div>
-                          <span className="text-[14px] font-semibold text-[var(--foreground)]">直接退出应用</span>
-                        </div>
-                      </div>
-                      <p className="text-xs text-[var(--color-muted)] leading-relaxed">
-                        点击关闭按钮 (X) 时彻底退出程序，释放系统资源。随身快捷助手与后台任务将同步结束。
-                      </p>
-                    </div>
-
-                    <div className="mt-4 flex items-center justify-end">
-                      <div className={`w-4 h-4 rounded-full border flex items-center justify-center transition-colors ${
-                        generalSettings.close_action === 'quit'
-                          ? 'border-[var(--color-primary)] bg-[var(--color-primary)] text-white'
-                          : 'border-black/20 dark:border-white/20'
-                      }`}>
-                        {generalSettings.close_action === 'quit' && <Check className="w-3 h-3 stroke-[3]" />}
-                      </div>
-                    </div>
-                  </div>
+                  )}
                 </div>
               </div>
 
-              {/* 选项组 2：常驻时的程序坞/任务栏交互 (当 close_action === 'tray' 时提供) */}
-              {generalSettings.close_action === 'tray' && (
-                <div className="bg-white dark:bg-[#1A1A1A] border border-black/10 dark:border-white/10 rounded-xl p-5 space-y-4">
-                  <div className="flex items-center justify-between gap-4">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <h4 className="text-[14px] font-semibold text-[var(--foreground)]">
-                          {isMac ? "常驻时保留程序坞图标" : "常驻时保留任务栏图标"}
-                        </h4>
-                      </div>
-                      <p className="text-[13px] text-[var(--color-muted)] mt-1.5 leading-relaxed">
-                        {isMac
-                          ? "开启后，关闭窗口仅隐藏界面，程序坞图标持续保留，点击可随时秒级唤起主窗口；关闭后，隐藏窗口时将同步移除程序坞图标，仅保留顶部菜单栏快捷助手。"
-                          : "开启后，关闭窗口仅隐藏界面，任务栏中持续保留应用图标，点击可随时秒级唤起主窗口；关闭后，隐藏窗口时将仅在系统托盘中常驻，点击托盘图标可唤出随身快捷助手。"}
-                      </p>
-                    </div>
+              {/* 选项组 2：窗口关闭与图标交互 */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-[var(--color-muted)] uppercase tracking-wider">
+                    窗口与托盘
+                  </span>
+                </div>
 
-                    {/* Switch 开关 */}
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={generalSettings.keep_dock_icon}
-                      onClick={() => handleUpdateGeneralSettings({ keep_dock_icon: !generalSettings.keep_dock_icon })}
-                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                        generalSettings.keep_dock_icon ? 'bg-[var(--color-primary)]' : 'bg-black/20 dark:bg-white/20'
+                <div className="space-y-2">
+                  <label className="text-[13px] font-medium text-[var(--foreground)] block">
+                    关闭主窗口时
+                  </label>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {/* 选项 A: 常驻后台 */}
+                    <div
+                      onClick={() => handleUpdateGeneralSettings({ close_action: 'tray' })}
+                      className={`relative p-4 rounded-xl border-2 transition-all cursor-pointer select-none flex flex-col justify-between ${
+                        generalSettings.close_action === 'tray'
+                          ? 'border-[var(--color-primary)] bg-[var(--color-primary)]/[0.04] dark:bg-[var(--color-primary)]/10 shadow-xs'
+                          : 'border-black/10 dark:border-white/10 hover:border-black/20 dark:hover:border-white/20 bg-black/[0.01] dark:bg-white/[0.01]'
                       }`}
                     >
-                      <span
-                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                          generalSettings.keep_dock_icon ? 'translate-x-5' : 'translate-x-0'
-                        }`}
-                      />
-                    </button>
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <div className={`p-1.5 rounded-lg ${generalSettings.close_action === 'tray' ? 'bg-[var(--color-primary)] text-white' : 'bg-black/5 dark:bg-white/10 text-[var(--color-muted)]'}`}>
+                              <Monitor className="w-4 h-4" />
+                            </div>
+                            <span className="text-[13.5px] font-semibold text-[var(--foreground)]">保持后台常驻</span>
+                          </div>
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200/80 dark:border-emerald-800/60">
+                            推荐
+                          </span>
+                        </div>
+                        <p className="text-[12px] text-[var(--color-muted)] leading-relaxed">
+                          隐藏到后台与系统托盘，点击托盘图标可随时打开快捷面板，点击应用图标立即恢复窗口。
+                        </p>
+                      </div>
+
+                      <div className="mt-3.5 flex items-center justify-end">
+                        <div className={`w-4 h-4 rounded-full border flex items-center justify-center transition-colors ${
+                          generalSettings.close_action === 'tray'
+                            ? 'border-[var(--color-primary)] bg-[var(--color-primary)] text-white'
+                            : 'border-black/20 dark:border-white/20'
+                        }`}>
+                          {generalSettings.close_action === 'tray' && <Check className="w-3 h-3 stroke-[3]" />}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 选项 B: 直接退出 */}
+                    <div
+                      onClick={() => handleUpdateGeneralSettings({ close_action: 'quit' })}
+                      className={`relative p-4 rounded-xl border-2 transition-all cursor-pointer select-none flex flex-col justify-between ${
+                        generalSettings.close_action === 'quit'
+                          ? 'border-[var(--color-primary)] bg-[var(--color-primary)]/[0.04] dark:bg-[var(--color-primary)]/10 shadow-xs'
+                          : 'border-black/10 dark:border-white/10 hover:border-black/20 dark:hover:border-white/20 bg-black/[0.01] dark:bg-white/[0.01]'
+                      }`}
+                    >
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <div className={`p-1.5 rounded-lg ${generalSettings.close_action === 'quit' ? 'bg-[var(--color-primary)] text-white' : 'bg-black/5 dark:bg-white/10 text-[var(--color-muted)]'}`}>
+                              <Power className="w-4 h-4" />
+                            </div>
+                            <span className="text-[13.5px] font-semibold text-[var(--foreground)]">直接退出应用</span>
+                          </div>
+                        </div>
+                        <p className="text-[12px] text-[var(--color-muted)] leading-relaxed">
+                          关闭窗口时直接结束进程并释放资源，随身快捷助手也会同步关闭。
+                        </p>
+                      </div>
+
+                      <div className="mt-3.5 flex items-center justify-end">
+                        <div className={`w-4 h-4 rounded-full border flex items-center justify-center transition-colors ${
+                          generalSettings.close_action === 'quit'
+                            ? 'border-[var(--color-primary)] bg-[var(--color-primary)] text-white'
+                            : 'border-black/20 dark:border-white/20'
+                        }`}>
+                          {generalSettings.close_action === 'quit' && <Check className="w-3 h-3 stroke-[3]" />}
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
-              )}
+
+                {/* 常驻时的程序坞/任务栏图标 */}
+                {generalSettings.close_action === 'tray' && (
+                  <div className="rounded-xl border border-black/[0.08] dark:border-white/[0.1] bg-black/[0.015] dark:bg-white/[0.02] overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150">
+                    <SettingRow
+                      icon={<AppWindow className="w-4 h-4" />}
+                      iconClassName={
+                        generalSettings.keep_dock_icon
+                          ? "bg-blue-500/12 text-blue-600 dark:text-blue-400"
+                          : "bg-black/5 dark:bg-white/10 text-[var(--color-muted)]"
+                      }
+                      title={isMac ? "常驻时保留程序坞图标" : "常驻时保留任务栏图标"}
+                      description={
+                        isMac
+                          ? "关闭时继续在 Dock 保留图标以便一键切回；关闭此项则仅留顶部菜单栏图标。"
+                          : "关闭时继续在任务栏保留图标；关闭此项则隐藏窗口后仅留系统托盘图标。"
+                      }
+                      right={
+                        <SettingSwitch
+                          ariaLabel={isMac ? "常驻时保留程序坞图标" : "常驻时保留任务栏图标"}
+                          checked={generalSettings.keep_dock_icon}
+                          disabled={isSavingGeneral}
+                          onChange={() => handleUpdateGeneralSettings({ keep_dock_icon: !generalSettings.keep_dock_icon })}
+                        />
+                      }
+                    />
+                  </div>
+                )}
+              </div>
             </div>
           )}
 

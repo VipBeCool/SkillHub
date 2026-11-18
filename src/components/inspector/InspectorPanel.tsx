@@ -4,14 +4,27 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { open } from '@tauri-apps/plugin-dialog';
 import { 
-  FolderGit2, HardDrive, Folder, Copy, Link as LinkIcon, Unlink, Globe,
-  FileText, FileCode, ChevronRight, Loader2, PanelRightClose, Plus,
-  Database, RefreshCw, Trash2, Download, FileArchive, Sparkles, X, Search, ExternalLink
+  Folder, Copy, Link as LinkIcon, Unlink, Globe,
+  FileText, FileCode, Package, ChevronRight, Loader2, PanelRightClose, Plus,
+  Layers, RefreshCw, Trash2, Download, FileArchive, Sparkles, X, ExternalLink,
+  Tag, SlidersHorizontal, Star
 } from 'lucide-react';
 import { Tooltip } from '../ui/Tooltip';
 import { DynamicIcon } from "../ui/DynamicIcon";
 import { parseIconConfig } from "../../lib/iconTypes";
 import { ConfirmDialog } from '../ui/ConfirmDialog';
+import { TagSelectorPopover } from '../ui/TagSelectorPopover';
+import { isRepoItemStarred } from '../../utils/favoriteStore';
+import {
+  parseTags,
+  serializeTags,
+  recordRecentTag,
+  computeTagStats,
+  getRepoEffectiveTags,
+  setRepoTags,
+  collectSkillModuleTagItems,
+  isCollectionRepo,
+} from '../../utils/tagStore';
 import { showToast } from '../ui/Toast';
 import { formatTokens } from "../../utils";
 import { Skill, GroupedRepo, AgentConfig, SyncRecord, SourceDirectory } from '../../types';
@@ -37,8 +50,18 @@ interface InspectorPanelProps {
   onDeleteRepos?: (e: React.MouseEvent, repos: GroupedRepo[]) => void;
   onGeneratePrompt: (skill: Skill) => void;
   onViewInStore?: (resource: ResourceItem) => void;
+  onSelectTagFilter?: (tag: string) => void;
+  onOpenTagManager?: () => void;
+  openTagPopoverSignal?: number;
+  /** 切换仓库（技能包/独立单技能）星标状态 */
+  onToggleRepoFavorite?: (repo: GroupedRepo) => void;
+  /** 切换单技能（含包内子技能）星标状态 */
+  onToggleSkillFavorite?: (skillId: string) => void;
+  /** 技能包星标版本戳，驱动父级状态变更时刷新面板 */
+  repoFavoriteVersion?: number;
   isOpen: boolean;
   onToggle: () => void;
+  isDetailView?: boolean;
 }
 
 type SkillCapacity = {
@@ -69,45 +92,88 @@ export function InspectorPanel({
   onDeleteRepos,
   onGeneratePrompt,
   onViewInStore,
+  onSelectTagFilter,
+  onOpenTagManager,
+  openTagPopoverSignal,
+  onToggleRepoFavorite,
+  onToggleSkillFavorite,
   isOpen,
   onToggle,
+  isDetailView = false,
 }: InspectorPanelProps) {
   const [syncing, setSyncing] = useState<Record<string, boolean>>({});
   const [skillSyncRecords, setSkillSyncRecords] = useState<SyncRecord[]>([]);
   const [isSkillsExpanded, setIsSkillsExpanded] = useState(false);
 
-  // 标签编辑状态
-  const [tags, setTags] = useState("");
-  const [tagInput, setTagInput] = useState("");
-  const [isTagDropdownOpen, setIsTagDropdownOpen] = useState(false);
-  const tagInputRef = useRef<HTMLInputElement>(null);
-  const tagDropdownRef = useRef<HTMLDivElement>(null);
+  // 标签选择器状态（支持单技能、技能包、多选批量）
+  const [isTagPopoverOpen, setIsTagPopoverOpen] = useState(false);
+  const [optimisticTags, setOptimisticTags] = useState<Record<string, string>>({});
+  const [tagMetaVersion, setTagMetaVersion] = useState(0);
+  const [, setLocalRepoFavoriteVersion] = useState(0);
+  const tagAnchorRef = useRef<HTMLButtonElement>(null);
 
-  // 点击外部收起标签下拉面板
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (tagDropdownRef.current && !tagDropdownRef.current.contains(e.target as Node)) {
-        setIsTagDropdownOpen(false);
+    setOptimisticTags({});
+  }, [allRepos]);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (!detail || detail.module === 'skills') {
+        setTagMetaVersion(v => v + 1);
       }
     };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    window.addEventListener('skillhub:tag-meta-changed', handler);
+    return () => window.removeEventListener('skillhub:tag-meta-changed', handler);
   }, []);
 
-  const allTags = useMemo(() => {
-    const tagSet = new Set<string>();
-    allRepos.forEach(repo => {
-      repo.skills.forEach(skill => {
-        if (skill.tags) {
-          skill.tags.split(',').forEach(t => {
-            const tag = t.trim();
-            if (tag) tagSet.add(tag);
-          });
-        }
-      });
-    });
-    return Array.from(tagSet).sort();
-  }, [allRepos]);
+  useEffect(() => {
+    const handleFavoriteChanged = () => setLocalRepoFavoriteVersion(v => v + 1);
+    window.addEventListener('skillhub:repo-favorites-changed', handleFavoriteChanged);
+    return () => window.removeEventListener('skillhub:repo-favorites-changed', handleFavoriteChanged);
+  }, []);
+
+  useEffect(() => {
+    if (openTagPopoverSignal && openTagPopoverSignal > 0) {
+      const timer = setTimeout(() => setIsTagPopoverOpen(true), 50);
+      return () => clearTimeout(timer);
+    }
+  }, [openTagPopoverSignal]);
+
+  // 选中对象切换时自动收起浮层
+  useEffect(() => {
+    setIsTagPopoverOpen(false);
+  }, [selectedItemType, selectedRepos, selectedSkills]);
+
+  const effectiveRepos = useMemo(() => {
+    return allRepos.map(repo => ({
+      ...repo,
+      skills: repo.skills.map(s =>
+        optimisticTags[s.id] !== undefined ? { ...s, tags: optimisticTags[s.id] } : s
+      ),
+    }));
+  }, [allRepos, optimisticTags]);
+
+  // 当前选定资源库下的仓库集合（用于库概览统计与热门标签，避免混入其他资源库数据）
+  const overviewRepos = useMemo(() => {
+    return effectiveRepos.filter(
+      repo => repo.skills.length > 0 && (!currentLibrary || repo.source_dir_id === currentLibrary.id)
+    );
+  }, [effectiveRepos, currentLibrary]);
+
+  const allTagPoolItems = useMemo(() => {
+    return collectSkillModuleTagItems(effectiveRepos);
+  }, [effectiveRepos, tagMetaVersion]);
+
+  const overviewTagItems = useMemo(() => {
+    return collectSkillModuleTagItems(overviewRepos);
+  }, [overviewRepos, tagMetaVersion]);
+
+  const topOverviewTags = useMemo(() => {
+    return computeTagStats('skills', overviewTagItems, 'count')
+      .filter(t => t.count > 0)
+      .slice(0, 10);
+  }, [overviewTagItems, tagMetaVersion]);
 
   useEffect(() => {
     setIsSkillsExpanded(false);
@@ -116,47 +182,145 @@ export function InspectorPanel({
   // 技能容量统计状态
   const [skillCapacity, setSkillCapacity] = useState<SkillCapacity | null>(null);
 
-  // 当选中唯一技能时，加载该技能的同步记录、标签和容量统计
-  useEffect(() => {
+  // 提取当前选中的单技能实体（无论是直接选中的 skill，还是首页选中的独立单技能 repo）
+  const activeSingleSkill = useMemo(() => {
     if (selectedItemType === 'skill' && selectedSkills.length === 1) {
-      setTags(selectedSkills[0].tags || "");
-      invoke<SyncRecord[]>('get_sync_records_for_skill', { skillId: selectedSkills[0].id })
-        .then(setSkillSyncRecords)
-        .catch(console.error);
-      invoke<SkillCapacity>('get_skill_token_count', { skillId: selectedSkills[0].id })
-        .then(setSkillCapacity)
-        .catch(() => setSkillCapacity(null));
+      return selectedSkills[0];
+    }
+    if (
+      selectedItemType === 'repo' &&
+      selectedRepos.length === 1 &&
+      selectedRepos[0].repo_type !== 'collection' &&
+      selectedRepos[0].skills.length === 1
+    ) {
+      return selectedRepos[0].skills[0];
+    }
+    return null;
+  }, [selectedItemType, selectedSkills, selectedRepos]);
+
+  // 当选中唯一技能时，加载该技能的同步记录与容量统计
+  useEffect(() => {
+    if (activeSingleSkill) {
+      if (activeSingleSkill.source_type === 'online') {
+        setSkillSyncRecords([]);
+        setSkillCapacity(null);
+      } else {
+        invoke<SyncRecord[]>('get_sync_records_for_skill', { skillId: activeSingleSkill.id })
+          .then(setSkillSyncRecords)
+          .catch(console.error);
+        invoke<SkillCapacity>('get_skill_token_count', { skillId: activeSingleSkill.id })
+          .then(setSkillCapacity)
+          .catch(() => setSkillCapacity(null));
+      }
     } else {
       setSkillSyncRecords([]);
-      setTags("");
       setSkillCapacity(null);
     }
-  }, [selectedItemType, selectedSkills.length === 1 ? selectedSkills[0].id : null]);
+  }, [activeSingleSkill?.id]);
 
-  const addTag = async (newTag: string, skill: Skill) => {
-    if (!newTag || tags.split(',').map(t => t.trim()).includes(newTag)) return;
-    const newTagsList = [...tags.split(','), newTag].filter(t => t.trim() !== "");
-    const newTagsStr = newTagsList.join(',');
-    setTags(newTagsStr);
+  // 为单个或批量技能添加 / 移除标签（技能包层级同样复用）
+  const handleBatchToggleTag = async (targetSkills: Skill[], tag: string, shouldAdd: boolean) => {
+    const clean = tag.trim().replace(/[,，]/g, '');
+    if (!clean || targetSkills.length === 0) return;
+
+    const updates: { skill: Skill; nextStr: string }[] = [];
+    const nextOptimistic: Record<string, string> = {};
+
+    for (const skill of targetSkills) {
+      const currentRaw = optimisticTags[skill.id] !== undefined ? optimisticTags[skill.id] : skill.tags;
+      const currentList = parseTags(currentRaw);
+      const exists = currentList.includes(clean);
+      if (shouldAdd && exists) continue;
+      if (!shouldAdd && !exists) continue;
+
+      const nextList = shouldAdd
+        ? [...currentList, clean]
+        : currentList.filter(t => t !== clean);
+      const nextStr = serializeTags(nextList);
+      updates.push({ skill, nextStr });
+      nextOptimistic[skill.id] = nextStr;
+    }
+
+    if (updates.length === 0) return;
+
+    setOptimisticTags(prev => ({ ...prev, ...nextOptimistic }));
+    if (shouldAdd) {
+      recordRecentTag('skills', clean);
+    }
+
     try {
-      await invoke("update_skill_tags", { id: skill.id, tags: newTagsStr || null });
-      skill.tags = newTagsStr;
-      onRefreshData(); // 触发上层数据刷新
+      await Promise.all(
+        updates.map(u =>
+          invoke('update_skill_tags', { id: u.skill.id, tags: u.nextStr || null })
+        )
+      );
+      if (updates.length > 1) {
+        showToast(`已为 ${updates.length} 个技能${shouldAdd ? '添加' : '移除'}标签 #${clean}`, 'success');
+      }
+      onRefreshData();
     } catch (e) {
-      showToast("更新标签失败", "error");
+      showToast(`更新标签失败: ${e}`, 'error');
+      onRefreshData();
     }
   };
 
-  const removeTag = async (tagToRemove: string, skill: Skill) => {
-    const newTagsList = tags.split(',').map(t => t.trim()).filter(t => t !== tagToRemove && t !== "");
-    const newTagsStr = newTagsList.join(',');
-    setTags(newTagsStr);
+  // 为一级卡片（技能包或独立单技能，支持混合多选）添加 / 移除标签：技能包仅打在包自身，单技能打在技能实体
+  const handleBatchToggleRepoItemsTags = async (targetRepos: GroupedRepo[], tag: string, shouldAdd: boolean) => {
+    const clean = tag.trim().replace(/[,，]/g, '');
+    if (!clean || targetRepos.length === 0) return;
+
+    const singleSkillUpdates: { skill: Skill; nextStr: string }[] = [];
+    const nextOptimistic: Record<string, string> = {};
+    let changedCount = 0;
+
+    for (const repo of targetRepos) {
+      const isCol = isCollectionRepo(repo);
+      const currentRaw = isCol
+        ? getRepoEffectiveTags(repo)
+        : (repo.skills[0] && optimisticTags[repo.skills[0].id] !== undefined
+          ? optimisticTags[repo.skills[0].id]
+          : getRepoEffectiveTags(repo));
+      const currentList = parseTags(currentRaw);
+      const exists = currentList.includes(clean);
+      if (shouldAdd && exists) continue;
+      if (!shouldAdd && !exists) continue;
+
+      const nextList = shouldAdd ? [...currentList, clean] : currentList.filter(t => t !== clean);
+      const nextStr = serializeTags(nextList);
+      changedCount++;
+
+      if (isCol) {
+        setRepoTags(repo.id, nextStr);
+      } else if (repo.skills[0]) {
+        const s = repo.skills[0];
+        singleSkillUpdates.push({ skill: s, nextStr });
+        nextOptimistic[s.id] = nextStr;
+      }
+    }
+
+    if (changedCount === 0) return;
+    if (Object.keys(nextOptimistic).length > 0) {
+      setOptimisticTags(prev => ({ ...prev, ...nextOptimistic }));
+    }
+    if (shouldAdd) {
+      recordRecentTag('skills', clean);
+    }
+
     try {
-      await invoke("update_skill_tags", { id: skill.id, tags: newTagsStr || null });
-      skill.tags = newTagsStr;
-      onRefreshData(); // 触发上层数据刷新
+      if (singleSkillUpdates.length > 0) {
+        await Promise.all(
+          singleSkillUpdates.map(u =>
+            invoke('update_skill_tags', { id: u.skill.id, tags: u.nextStr || null })
+          )
+        );
+        onRefreshData();
+      }
+      if (changedCount > 1) {
+        showToast(`已为 ${changedCount} 项${shouldAdd ? '添加' : '移除'}标签 #${clean}`, 'success');
+      }
     } catch (e) {
-      showToast("更新标签失败", "error");
+      showToast(`更新标签失败: ${e}`, 'error');
+      onRefreshData();
     }
   };
 
@@ -359,12 +523,234 @@ export function InspectorPanel({
     return null;
   }
 
+  // 共用标签编辑 UI（同时支撑子技能与技能包两套作用域）
+  const renderTagEditorBlock = (opts: {
+    title: string;
+    total: number;
+    unitLabel: string;
+    tagCountMap: Map<string, number>;
+    onToggleTag: (tag: string, shouldAdd: boolean) => Promise<void>;
+    extraFooter?: React.ReactNode;
+  }) => {
+    const { title, total, unitLabel, tagCountMap, onToggleTag, extraFooter } = opts;
+    const fullTags: string[] = [];
+    const partialTags: { name: string; count: number }[] = [];
+    for (const [name, count] of tagCountMap.entries()) {
+      if (count >= total) {
+        fullTags.push(name);
+      } else {
+        partialTags.push({ name, count });
+      }
+    }
+    fullTags.sort((a, b) => a.localeCompare(b, 'zh-CN'));
+    partialTags.sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'zh-CN'));
+    const hasAnyTags = fullTags.length > 0 || partialTags.length > 0;
+
+    return (
+      <div className="mb-4">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-1.5">
+            <h4 className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider">{title}</h4>
+            {total > 1 && (
+              <span className="text-[10px] text-[var(--color-muted)]/80">({total} {unitLabel})</span>
+            )}
+          </div>
+          {onOpenTagManager && (
+            <Tooltip content="管理标签" side="left">
+              <button
+                type="button"
+                onClick={onOpenTagManager}
+                className="p-0.5 rounded text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-colors"
+              >
+                <SlidersHorizontal className="w-3 h-3" />
+              </button>
+            </Tooltip>
+          )}
+        </div>
+
+        {!hasAnyTags ? (
+          <button
+            ref={tagAnchorRef}
+            type="button"
+            onClick={() => setIsTagPopoverOpen(prev => !prev)}
+            className={`w-full py-1.5 px-3 rounded-md border text-[12px] flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+              isTagPopoverOpen
+                ? 'bg-[var(--color-primary)]/5 border-[var(--color-primary)]/40 text-[var(--color-primary)] font-medium'
+                : 'bg-black/5 hover:bg-black/10 border-transparent text-[var(--color-muted)] hover:text-[var(--foreground)]'
+            }`}
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>添加标签</span>
+          </button>
+        ) : (
+          <div className="flex flex-wrap gap-1.5 items-center">
+            {fullTags.map(tag => (
+              <span
+                key={tag}
+                className="group/tag h-6 inline-flex items-center text-[11.5px] px-2 rounded-md bg-[var(--color-primary)]/10 text-[var(--color-primary)] font-medium border border-transparent box-border transition-all duration-150"
+              >
+                <span className="opacity-60 mr-0.5 select-none">#</span>
+                <span className="truncate max-w-[120px]">{tag}</span>
+                <Tooltip content={total > 1 ? `从全部 ${total} ${unitLabel}移除 #${tag}` : `删除标签 #${tag}`}>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onToggleTag(tag, false);
+                    }}
+                    className="w-0 opacity-0 group-hover/tag:w-3.5 group-hover/tag:opacity-100 group-hover/tag:ml-1 overflow-hidden inline-flex items-center justify-center text-[var(--color-primary)] hover:text-red-500 transition-all duration-150"
+                  >
+                    <X className="w-3 h-3 shrink-0" />
+                  </button>
+                </Tooltip>
+              </span>
+            ))}
+
+            {partialTags.map(({ name: tag, count }) => (
+              <Tooltip
+                key={tag}
+                content={`部分包含 (${count}/${total})，点击 + 面板可统一设为全部拥有，或点击 × 移除`}
+              >
+                <span className="group/tag h-6 inline-flex items-center text-[11.5px] px-2 rounded-md bg-amber-500/10 text-amber-700 font-medium border border-dashed border-amber-500/35 box-border transition-all duration-150">
+                  <span className="opacity-60 mr-0.5 select-none">#</span>
+                  <span className="truncate max-w-[96px]">{tag}</span>
+                  <span className="text-[9.5px] opacity-70 ml-1 shrink-0">{count}/{total}</span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onToggleTag(tag, false);
+                    }}
+                    className="w-0 opacity-0 group-hover/tag:w-3.5 group-hover/tag:opacity-100 group-hover/tag:ml-1 overflow-hidden inline-flex items-center justify-center text-amber-700 hover:text-red-500 transition-all duration-150"
+                  >
+                    <X className="w-3 h-3 shrink-0" />
+                  </button>
+                </span>
+              </Tooltip>
+            ))}
+
+            <Tooltip content="添加或批量设置标签">
+              <button
+                ref={tagAnchorRef}
+                type="button"
+                onClick={() => setIsTagPopoverOpen(prev => !prev)}
+                className={`h-6 w-6 inline-flex items-center justify-center rounded-md border border-dashed box-border shrink-0 transition-all cursor-pointer ${
+                  isTagPopoverOpen
+                    ? 'border-[var(--color-primary)] text-[var(--color-primary)] bg-[var(--color-primary)]/10 font-medium'
+                    : 'border-[var(--color-border)] text-[var(--color-muted)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] hover:bg-[var(--color-primary)]/5'
+                }`}
+              >
+                <Plus className="w-3.5 h-3.5" />
+              </button>
+            </Tooltip>
+          </div>
+        )}
+
+        {extraFooter}
+
+        <TagSelectorPopover
+          isOpen={isTagPopoverOpen}
+          anchorEl={tagAnchorRef.current}
+          module="skills"
+          allItems={allTagPoolItems}
+          selectedTags={fullTags}
+          indeterminateTags={partialTags.map(p => p.name)}
+          onToggleTag={onToggleTag}
+          onClose={() => setIsTagPopoverOpen(false)}
+          onOpenManager={onOpenTagManager}
+        />
+      </div>
+    );
+  };
+
+  // 渲染单个或多个具体技能的标签区
+  const renderTagSection = (targetSkills: Skill[], title: string = '标签') => {
+    const tagCountMap = new Map<string, number>();
+    for (const s of targetSkills) {
+      const raw = optimisticTags[s.id] !== undefined ? optimisticTags[s.id] : s.tags;
+      for (const t of parseTags(raw)) {
+        tagCountMap.set(t, (tagCountMap.get(t) || 0) + 1);
+      }
+    }
+    return renderTagEditorBlock({
+      title,
+      total: targetSkills.length,
+      unitLabel: '个技能',
+      tagCountMap,
+      onToggleTag: (tag, shouldAdd) => handleBatchToggleTag(targetSkills, tag, shouldAdd),
+    });
+  };
+
+  // 渲染一级卡片（技能包或独立单技能）的标签区：技能包打在包自身，并在包详情检查器下方附带只读子技能标签汇总
+  const renderRepoTagSection = (targetRepos: GroupedRepo[], title: string = '标签') => {
+    const tagCountMap = new Map<string, number>();
+    for (const repo of targetRepos) {
+      const isCol = isCollectionRepo(repo);
+      const raw = isCol
+        ? getRepoEffectiveTags(repo)
+        : (repo.skills[0] && optimisticTags[repo.skills[0].id] !== undefined
+          ? optimisticTags[repo.skills[0].id]
+          : getRepoEffectiveTags(repo));
+      for (const t of parseTags(raw)) {
+        tagCountMap.set(t, (tagCountMap.get(t) || 0) + 1);
+      }
+    }
+
+    let extraFooter: React.ReactNode = null;
+    if (targetRepos.length === 1 && isCollectionRepo(targetRepos[0])) {
+      const subMap = new Map<string, number>();
+      for (const s of targetRepos[0].skills) {
+        const raw = optimisticTags[s.id] !== undefined ? optimisticTags[s.id] : s.tags;
+        for (const t of parseTags(raw)) {
+          subMap.set(t, (subMap.get(t) || 0) + 1);
+        }
+      }
+      const subTags = Array.from(subMap.entries())
+        .map(([name, count]) => ({ name, count }))
+        .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'zh-CN'));
+      if (subTags.length > 0) {
+        extraFooter = (
+          <div className="mt-2.5 pt-2 border-t border-black/[0.05]">
+            <div className="text-[10.5px] font-medium text-[var(--color-muted)] mb-1.5">
+              包内子技能标签（只读汇总）
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {subTags.map(t => (
+                <button
+                  key={t.name}
+                  type="button"
+                  onClick={() => onSelectTagFilter?.(t.name)}
+                  title={`包内 ${t.count} 个子技能带有此标签，点击筛选`}
+                  className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-black/[0.04] hover:bg-[var(--color-primary)]/10 hover:text-[var(--color-primary)] text-[10.5px] text-[var(--color-muted)] transition-colors cursor-pointer"
+                >
+                  <span>#{t.name}</span>
+                  <span className="opacity-65 text-[9.5px]">({t.count})</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+      }
+    }
+
+    return renderTagEditorBlock({
+      title,
+      total: targetRepos.length,
+      unitLabel: '项',
+      tagCountMap,
+      onToggleTag: (tag, shouldAdd) => handleBatchToggleRepoItemsTags(targetRepos, tag, shouldAdd),
+      extraFooter,
+    });
+  };
+
   // ========== 库概览模式 ==========
   if (!selectedItemType) {
-    const totalSkills = allRepos.reduce((sum, r) => sum + r.skills.length, 0);
-    const githubCount = allRepos.filter(r => r.source_type === 'github').length;
-    const localCount = allRepos.filter(r => r.source_type === 'local').length;
-    const onlineCount = allRepos.filter(r => r.source_type === 'online').length;
+    const collectionCount = overviewRepos.filter(isCollectionRepo).length;
+    const totalTopLevelCount = overviewRepos.length;
+    const taggedItemCount = overviewTagItems.filter(item => parseTags(item.tags).length > 0).length;
+    const githubCount = overviewRepos.filter(r => r.source_type === 'github').length;
+    const localCount = overviewRepos.filter(r => r.source_type === 'local').length;
+    const onlineCount = overviewRepos.filter(r => r.source_type === 'online').length;
 
     return (
       <div 
@@ -383,22 +769,22 @@ export function InspectorPanel({
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 inspector-scroll-area">
-          {/* 库名称 */}
+          {/* 库名称（默认图标与左侧 SkillLibrarySelector 保持一致） */}
           <div className="mb-5">
             <div className="flex items-center space-x-2 mb-1">
               {currentLibrary?.icon ? (
                 <div 
-                  className="w-5 h-5 rounded-md flex items-center justify-center bg-gray-100 shrink-0"
+                  className="w-6 h-6 rounded-md flex items-center justify-center bg-gray-100 shrink-0"
                   style={(() => {
                     const config = parseIconConfig(currentLibrary.icon);
                     return config?.type === 'icon' && config.color ? { backgroundColor: `${config.color}26` } : {};
                   })()}
                 >
-                  <DynamicIcon config={parseIconConfig(currentLibrary.icon)} size={14} />
+                  <DynamicIcon config={parseIconConfig(currentLibrary.icon)} size={16} />
                 </div>
               ) : (
-                <div className="w-5 h-5 rounded-md flex items-center justify-center bg-blue-500 shrink-0">
-                  <Database className="w-3 h-3 text-white fill-white/20" />
+                <div className="w-6 h-6 rounded-md flex items-center justify-center bg-blue-500 shrink-0">
+                  <Layers className="w-3.5 h-3.5 text-white fill-white/20" />
                 </div>
               )}
               <span className="text-[14px] font-semibold text-[var(--foreground)] truncate">
@@ -408,7 +794,7 @@ export function InspectorPanel({
             {currentLibrary?.path && (
               <Tooltip content={currentLibrary.path} side="bottom">
                 <p 
-                  className="text-[11px] text-[var(--color-muted)] truncate ml-6 cursor-default select-none"
+                  className="text-[11px] text-[var(--color-muted)] truncate ml-8 cursor-default select-none"
                   onDoubleClick={() => { navigator.clipboard.writeText(currentLibrary.path); showToast('路径已复制'); }}
                 >
                   {currentLibrary.path.replace(/[/\\][^/\\]+$/, '')}
@@ -417,15 +803,15 @@ export function InspectorPanel({
             )}
           </div>
 
-          {/* 统计卡片 */}
+          {/* 统计卡片（按一级条目统计，不展开子技能） */}
           <div className="grid grid-cols-2 gap-2 mb-5">
             <div className="bg-black/[0.03] rounded-lg p-3 text-center">
-              <div className="text-[20px] font-bold text-[var(--foreground)]">{allRepos.length}</div>
-              <div className="text-[11px] text-[var(--color-muted)]">仓库</div>
+              <div className="text-[20px] font-bold text-[var(--foreground)]">{totalTopLevelCount}</div>
+              <div className="text-[11px] text-[var(--color-muted)]">技能</div>
             </div>
             <div className="bg-black/[0.03] rounded-lg p-3 text-center">
-              <div className="text-[20px] font-bold text-[var(--foreground)]">{totalSkills}</div>
-              <div className="text-[11px] text-[var(--color-muted)]">技能</div>
+              <div className="text-[20px] font-bold text-[var(--foreground)]">{collectionCount}</div>
+              <div className="text-[11px] text-[var(--color-muted)]">技能包</div>
             </div>
           </div>
 
@@ -460,8 +846,53 @@ export function InspectorPanel({
                   <span className="text-[var(--color-muted)] font-medium">{onlineCount}</span>
                 </div>
               )}
+              <div className="flex items-center justify-between text-[12px]">
+                <div className="flex items-center space-x-1.5">
+                  <span className="w-2 h-2 rounded-full bg-amber-500" />
+                  <span className="text-[var(--foreground)]">已标签</span>
+                </div>
+                <span className="text-[var(--color-muted)] font-medium">{taggedItemCount}</span>
+              </div>
             </div>
           </div>
+
+          {/* 热门标签（与提示词模块统一） */}
+          {(topOverviewTags.length > 0 || onOpenTagManager) && (
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider">热门标签</h4>
+                {onOpenTagManager && (
+                  <Tooltip content="管理标签" side="left">
+                    <button
+                      type="button"
+                      onClick={onOpenTagManager}
+                      className="p-0.5 rounded text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-colors"
+                    >
+                      <SlidersHorizontal className="w-3 h-3" />
+                    </button>
+                  </Tooltip>
+                )}
+              </div>
+              {topOverviewTags.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {topOverviewTags.map(t => (
+                    <button
+                      key={t.name}
+                      type="button"
+                      onClick={() => onSelectTagFilter?.(t.name)}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-black/[0.04] hover:bg-[var(--color-primary)]/10 hover:text-[var(--color-primary)] text-[11px] text-[var(--foreground)] transition-colors cursor-pointer"
+                    >
+                      <Tag className="w-2.5 h-2.5 opacity-60 shrink-0" />
+                      <span className="truncate max-w-[110px]">{t.name}</span>
+                      <span className="text-[var(--color-muted)] text-[10px]">({t.count})</span>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-[11px] text-[var(--color-muted)]/70">暂无热门标签，点击右上角可管理预设标签</p>
+              )}
+            </div>
+          )}
 
         </div>
       </div>
@@ -471,7 +902,7 @@ export function InspectorPanel({
   // ========== 多选模式 (仓库) ==========
   if (selectedItemType === 'repo' && selectedRepos.length > 1) {
     return (
-      <div className="w-64 border-l border-[var(--color-border)] bg-transparent flex flex-col shrink-0 h-full overflow-hidden">
+      <div className="w-64 border-l border-[var(--color-border)] bg-transparent flex flex-col shrink-0 h-full overflow-hidden inspector-container">
         <div 
           data-tauri-drag-region
           onPointerDown={(e) => { if (e.target === e.currentTarget) getCurrentWindow().startDragging(); }}
@@ -482,14 +913,18 @@ export function InspectorPanel({
           <span className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider"></span>
           {toggleButton}
         </div>
-        <div className="flex-1 flex flex-col items-center justify-center p-4">
-          <div className="w-16 h-16 bg-[var(--color-primary)]/10 rounded-full flex items-center justify-center mb-4">
-             <span className="text-2xl font-bold text-[var(--color-primary)]">{selectedRepos.length}</span>
+        <div className="flex-1 overflow-y-auto p-4 inspector-scroll-area flex flex-col">
+          <div className="flex flex-col items-center pt-4 pb-5">
+            <div className="w-16 h-16 bg-[var(--color-primary)]/10 rounded-full flex items-center justify-center mb-4">
+              <span className="text-2xl font-bold text-[var(--color-primary)]">{selectedRepos.length}</span>
+            </div>
+            <h3 className="text-[15px] font-semibold text-[var(--foreground)] mb-1">已选 {selectedRepos.length} 项</h3>
+            <p className="text-[12px] text-[var(--color-muted)] text-center">你可以对选中内容进行批量打标或操作</p>
           </div>
-          <h3 className="text-[15px] font-semibold text-[var(--foreground)] mb-1">已选 {selectedRepos.length} 个技能</h3>
-          <p className="text-[12px] text-[var(--color-muted)] text-center mb-6">你可以对选中的技能进行批量操作</p>
-          
-          <div className="flex flex-col space-y-2 w-full px-2">
+
+          {renderRepoTagSection(selectedRepos, '批量标签')}
+
+          <div className="flex flex-col space-y-2 w-full mt-auto pt-2">
             <div className="relative w-full">
               <button
                 onClick={() => !isBatchExporting && setShowExportMenu(!showExportMenu)}
@@ -529,14 +964,19 @@ export function InspectorPanel({
               )}
             </div>
             <button
-              onClick={async () => {
+              onClick={async (e) => {
+                if (onUpdateRepos) {
+                  onUpdateRepos(e, selectedRepos);
+                  return;
+                }
                 try {
                   for (const repo of selectedRepos) {
-                    await invoke('rescan_directory', { dirId: repo.source_dir_id || repo.id });
+                    await invoke('rescan_directory', { path: repo.source_dir_id || repo.path });
                   }
+                  onRefreshData();
                   showToast(`已批量下发更新指令 (${selectedRepos.length} 个)`);
-                } catch (e) {
-                  console.error(e);
+                } catch (err) {
+                  console.error(err);
                   showToast('批量更新失败', 'error');
                 }
               }}
@@ -561,13 +1001,430 @@ export function InspectorPanel({
     );
   }
 
-  // ========== 仓库详情模式 ==========
+  // 渲染通用上下文占用统计模块
+  const renderCapacitySection = () => {
+    if (!skillCapacity) return null;
+    return (
+      <div className="mb-4">
+        <div className="flex justify-between items-center mb-1.5">
+          <h4 className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider">上下文占用</h4>
+        </div>
+        <Tooltip
+          content={
+            <div className="flex flex-col gap-1.5 min-w-[210px]">
+              <div className="font-medium pb-1 border-b border-white/20 flex justify-between items-center">
+                <span>上下文与规模</span>
+                <span className="text-[10px] opacity-80">{skillCapacity.file_count} 个文件 · {skillCapacity.line_count.toLocaleString()} 行</span>
+              </div>
+              <div className="flex justify-between items-center text-[11px]">
+                <span>主文档 ({skillCapacity.main_doc_file_count} 个):</span>
+                <span>约 {formatTokens(skillCapacity.main_doc_token_count)} Tokens</span>
+              </div>
+              {skillCapacity.knowledge_file_count > 0 && (
+                <div className="flex justify-between items-center text-[11px]">
+                  <span>知识库 ({skillCapacity.knowledge_file_count} 个):</span>
+                  <span>约 {formatTokens(skillCapacity.knowledge_token_count)} Tokens</span>
+                </div>
+              )}
+              {skillCapacity.script_file_count > 0 && (
+                <div className="flex justify-between items-center text-[11px]">
+                  <span>配套脚本 ({skillCapacity.script_file_count} 个):</span>
+                  <span>约 {formatTokens(skillCapacity.script_token_count)} Tokens</span>
+                </div>
+              )}
+              <div className="flex justify-between items-center text-[11px] font-medium pt-1 border-t border-white/10 mt-1">
+                <span>总基础占用:</span>
+                <span>~{formatTokens(skillCapacity.token_count)} Tokens</span>
+              </div>
+              <div className="text-[10px] opacity-70 mt-1 italic leading-relaxed">
+                * 仅统计当前目录及子目录下的文本实体<br />
+                * 无关依赖已自动过滤 (如 node_modules 等)
+              </div>
+            </div>
+          }
+        >
+          <div className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-black/[0.03] border border-black/[0.04] text-[11px] text-[var(--color-muted)] cursor-default select-none hover:bg-black/[0.05] transition-colors">
+            <span className="flex items-center gap-0.5">
+              <span className="font-medium text-[var(--foreground)]">{skillCapacity.file_count}</span>
+              <span>文件</span>
+            </span>
+            <span className="text-[10px] text-[var(--color-muted)]/40">•</span>
+            <span className="flex items-center gap-0.5">
+              <span className="font-medium text-[var(--foreground)]">
+                {skillCapacity.line_count >= 10000 
+                  ? `${(skillCapacity.line_count / 10000).toFixed(1)}w` 
+                  : skillCapacity.line_count.toLocaleString()}
+              </span>
+              <span>行</span>
+            </span>
+            <span className="text-[10px] text-[var(--color-muted)]/40">•</span>
+            <span className="flex items-center gap-0.5 shrink-0">
+              <span>约</span>
+              <span className="font-medium text-[var(--foreground)]">{formatTokens(skillCapacity.token_count)}</span>
+              <span>Tokens</span>
+            </span>
+          </div>
+        </Tooltip>
+      </div>
+    );
+  };
+
+  // ========== 仓库 / 独立单技能详情模式 ==========
   if (selectedItemType === 'repo' && selectedRepos.length === 1) {
     const selectedRepo = selectedRepos[0];
     const isGithub = selectedRepo.source_type === 'github';
     const isOnline = selectedRepo.source_type === 'online';
-    // online 就只有一个技能，取其 online_url
+    const isSingleSkillRepo = selectedRepo.repo_type !== 'collection' && selectedRepo.skills.length === 1;
+    const singleSkill = isSingleSkillRepo ? selectedRepo.skills[0] : null;
     const onlineUrl = isOnline ? (selectedRepo.skills[0]?.online_url || selectedRepo.path) : null;
+
+    if (isSingleSkillRepo && singleSkill) {
+      return (
+        <div 
+          className="w-64 border-l border-[var(--color-border)] bg-transparent flex flex-col shrink-0 h-full overflow-hidden inspector-container"
+        >
+          {/* 头部 */}
+          <div 
+            data-tauri-drag-region
+            onPointerDown={(e) => { if (e.target === e.currentTarget) getCurrentWindow().startDragging(); }}
+            onDoubleClick={(e) => { if (e.target === e.currentTarget) getCurrentWindow().toggleMaximize(); }}
+            className="px-4 h-10 flex items-center justify-between shrink-0"
+            style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+          >
+            <span className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider"></span>
+            {toggleButton}
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-4 inspector-scroll-area">
+            {/* 技能标题、来源与更新按钮 */}
+            <div className="mb-4">
+              <div className="flex items-center space-x-2.5 mb-2">
+                <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
+                  isOnline ? 'bg-emerald-500/10 text-emerald-600' :
+                  isGithub ? 'bg-[#0066FF]/10 text-[#0066FF]' : 'bg-[#86868B]/10 text-[#86868B]'
+                }`}>
+                  {isOnline ? <Globe size={16} /> : <FileCode className="w-4.5 h-4.5" />}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-[14px] font-semibold text-[var(--foreground)] line-clamp-2 leading-snug">{singleSkill.name}</h3>
+                  <span className={`text-[10px] font-medium uppercase tracking-wider ${
+                    isOnline ? 'text-emerald-600' : isGithub ? 'text-[#0066FF]' : 'text-[#86868B]'
+                  }`}>
+                    {isOnline ? '线上收藏' : isGithub ? 'GITHUB' : '本地技能'}
+                    {selectedRepo.author && (
+                      <span className="ml-1 text-[var(--color-muted)]">@{selectedRepo.author}</span>
+                    )}
+                  </span>
+                </div>
+                {onToggleRepoFavorite && (
+                  <Tooltip content={singleSkill.is_favorite ? "取消星标" : "星标"}>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onToggleRepoFavorite(selectedRepo);
+                      }}
+                      className={`p-1.5 rounded-lg transition-all active:scale-90 shrink-0 border cursor-pointer ${
+                        singleSkill.is_favorite
+                          ? 'text-amber-500 bg-amber-50 border-amber-200/80 hover:bg-amber-100/80'
+                          : 'text-[var(--color-muted)] hover:text-amber-500 hover:bg-amber-50/70 border-black/5'
+                      }`}
+                    >
+                      <Star className={`w-4 h-4 ${singleSkill.is_favorite ? 'fill-amber-500 text-amber-500' : ''}`} />
+                    </button>
+                  </Tooltip>
+                )}
+                {!isOnline && (
+                  <Tooltip content={isGithub ? "拉取更新" : "重新扫描目录"}>
+                    <button
+                      onClick={(e) => {
+                        if (onUpdateRepos) {
+                          onUpdateRepos(e, [selectedRepo]);
+                        } else {
+                          invoke('rescan_directory', { path: selectedRepo.source_dir_id || selectedRepo.path })
+                            .then(() => {
+                              onRefreshData();
+                              showToast('已刷新技能信息');
+                            })
+                            .catch(console.error);
+                        }
+                      }}
+                      className="p-1.5 rounded-lg text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-colors shrink-0 border border-black/5"
+                    >
+                      <RefreshCw className="w-4 h-4" />
+                    </button>
+                  </Tooltip>
+                )}
+                {isOnline && onlineUrl && (
+                  <Tooltip content="在浏览器中打开">
+                    <button
+                      onClick={() => openUrl(onlineUrl).catch(console.error)}
+                      className="p-1.5 rounded-lg text-[var(--color-muted)] hover:text-emerald-600 hover:bg-emerald-500/10 transition-colors shrink-0 border border-black/5"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                    </button>
+                  </Tooltip>
+                )}
+              </div>
+
+              {singleSkill.description && (
+                <p 
+                  className="text-[12px] text-[var(--color-muted)] leading-relaxed max-h-[64px] overflow-hidden"
+                  style={{
+                    WebkitMaskImage: 'linear-gradient(to bottom, black calc(100% - 20px), transparent 100%)',
+                    maskImage: 'linear-gradient(to bottom, black calc(100% - 20px), transparent 100%)'
+                  }}
+                >
+                  {singleSkill.description}
+                </p>
+              )}
+            </div>
+
+            {/* 操作按钮区 */}
+            <div className={`grid gap-2 mb-4 ${isDetailView && !isOnline ? 'grid-cols-1' : 'grid-cols-2'}`}>
+              {isOnline && onlineUrl ? (
+                <button
+                  onClick={() => openUrl(onlineUrl).catch(console.error)}
+                  className="flex items-center justify-center space-x-1.5 px-3 py-2 bg-black/[0.04] hover:bg-black/[0.07] rounded-lg text-[12px] font-medium text-[var(--foreground)] transition-colors"
+                >
+                  <Globe className="w-3.5 h-3.5" />
+                  <span>打开网页</span>
+                </button>
+              ) : !isDetailView ? (
+                <button
+                  onClick={() => onOpenDrawer(singleSkill)}
+                  className="flex items-center justify-center space-x-1.5 px-3 py-2 bg-black/[0.04] hover:bg-black/[0.07] rounded-lg text-[12px] font-medium text-[var(--foreground)] transition-colors"
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  <span>查看文档</span>
+                </button>
+              ) : null}
+              <button
+                onClick={() => onGeneratePrompt(singleSkill)}
+                className="flex items-center justify-center space-x-1.5 px-3 py-2 bg-[var(--color-primary)]/10 hover:bg-[var(--color-primary)]/20 text-[var(--color-primary)] rounded-lg text-[12px] font-medium transition-colors"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>引用提示词</span>
+              </button>
+            </div>
+
+            {/* 路径 / 线上地址 */}
+            <div className="mb-4">
+              <div className="flex justify-between items-center mb-1.5">
+                <h4 className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider">
+                  {isOnline ? '技能地址' : '路径'}
+                </h4>
+                <div className="flex items-center space-x-0.5">
+                  <Tooltip content={isOnline ? "复制链接" : "复制路径"}>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(isOnline && onlineUrl ? onlineUrl : singleSkill.local_path);
+                        showToast(isOnline ? '链接已复制' : '路径已复制');
+                        invoke('increment_skill_use_count', { id: singleSkill.id }).catch(() => {});
+                      }}
+                      className="p-1 rounded hover:bg-black/5 text-[var(--color-muted)] hover:text-[var(--foreground)] transition-colors shrink-0"
+                    >
+                      <Copy size={12} />
+                    </button>
+                  </Tooltip>
+                  {!isOnline && (
+                    <Tooltip content="在文件夹中显示">
+                      <button
+                        onClick={async () => {
+                          try { await invoke('reveal_in_finder', { path: singleSkill.local_path }); } catch (e) { console.error(e); }
+                        }}
+                        className="p-1 rounded hover:bg-black/5 text-[var(--color-muted)] hover:text-[var(--foreground)] transition-colors shrink-0"
+                      >
+                        <Folder size={12} />
+                      </button>
+                    </Tooltip>
+                  )}
+                  {isGithub && (
+                    <Tooltip content="在 GitHub 中查看">
+                      <button
+                        onClick={async () => {
+                          try {
+                            const url = await invoke<string>('get_git_remote_url', { path: selectedRepo.path });
+                            if (url) {
+                              await openUrl(url);
+                            } else {
+                              showToast('未找到远程仓库地址', 'error');
+                            }
+                          } catch (e) {
+                            showToast(`获取仓库地址失败: ${e}`, 'error');
+                          }
+                        }}
+                        className="p-1 rounded hover:bg-black/5 text-[var(--color-muted)] hover:text-[#0066FF] transition-colors shrink-0"
+                      >
+                        <ExternalLink size={12} />
+                      </button>
+                    </Tooltip>
+                  )}
+                  {(() => {
+                    const storeRes = findStoreResourceForRepo(selectedRepo, registryData.resources as ResourceItem[]);
+                    if (!storeRes) return null;
+                    return (
+                      <Tooltip content="在资源社区中查看">
+                        <button
+                          onClick={() => onViewInStore?.(storeRes)}
+                          className="p-1 rounded hover:bg-black/5 text-[var(--color-muted)] hover:text-[#0066FF] transition-colors shrink-0"
+                        >
+                          <Globe size={12} />
+                        </button>
+                      </Tooltip>
+                    );
+                  })()}
+                </div>
+              </div>
+              {isOnline && onlineUrl ? (
+                <button
+                  type="button"
+                  onClick={() => openUrl(onlineUrl).catch(console.error)}
+                  className="block w-full text-left text-[11px] text-[var(--color-primary)] hover:underline break-all bg-[var(--color-primary)]/5 px-2 py-1.5 rounded border border-[var(--color-primary)]/10 transition-colors"
+                >
+                  {onlineUrl}
+                </button>
+              ) : (
+                <Tooltip content={singleSkill.local_path} side="bottom">
+                  <p 
+                    onDoubleClick={() => {
+                      navigator.clipboard.writeText(singleSkill.local_path);
+                      showToast('路径已复制');
+                      invoke('increment_skill_use_count', { id: singleSkill.id }).catch(() => {});
+                    }}
+                    className="text-[11px] text-[var(--color-muted)] truncate w-full bg-black/[0.03] border border-black/[0.04] px-2 py-1.5 rounded cursor-default select-none"
+                  >
+                    {singleSkill.local_path}
+                  </p>
+                </Tooltip>
+              )}
+            </div>
+
+            {/* 上下文占用（非线上技能展示） */}
+            {!isOnline && renderCapacitySection()}
+
+            {/* 同步至 AI Agent（非线上技能展示） */}
+            {!isOnline && agents.length > 0 && (
+              <div className="mb-4">
+                <h4 className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider mb-2">同步至 AI Agent</h4>
+                <div className="space-y-1.5">
+                  {agents.map(agent => {
+                    const isSynced = skillSyncRecords.some(r => r.agent_id === agent.id);
+                    const isBusy = syncing[agent.id];
+                    return (
+                      <button
+                        key={agent.id}
+                        disabled={isBusy}
+                        onClick={() => handleToggleSync(agent.id, singleSkill.id, isSynced)}
+                        className={`w-full flex items-center px-2.5 py-2 rounded-lg border text-[12px] font-medium transition-all ${
+                          isSynced
+                            ? 'bg-green-50 border-green-200 text-green-700 hover:bg-green-100'
+                            : 'bg-transparent border-[var(--color-border)] text-[var(--color-muted)] hover:bg-black/5'
+                        } disabled:opacity-50`}
+                      >
+                        {isBusy ? (
+                          <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />
+                        ) : isSynced ? (
+                          <LinkIcon className="w-3.5 h-3.5 mr-2" />
+                        ) : (
+                          <Unlink className="w-3.5 h-3.5 mr-2" />
+                        )}
+                        <span>{agent.display_name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* 标签 */}
+            {renderTagSection([singleSkill])}
+
+            {/* 信息 */}
+            <div>
+              <h4 className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider mb-2">信息</h4>
+              <div className="space-y-1.5 text-[12px]">
+                <div className="flex items-center justify-between">
+                  <span className="text-[var(--color-muted)]">来源</span>
+                  <span className="text-[var(--foreground)] font-medium uppercase text-[11px]">
+                    {isOnline ? '线上收藏' : isGithub ? 'GITHUB' : '本地'}
+                    {selectedRepo.author && (
+                      <span className="ml-1 text-[var(--color-muted)]">@{selectedRepo.author}</span>
+                    )}
+                  </span>
+                </div>
+                {singleSkill.updated_at && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-[var(--color-muted)]">更新时间</span>
+                    <span className="text-[var(--foreground)] font-medium">
+                      {new Date(singleSkill.updated_at).toLocaleString('zh-CN', { hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).replace(/\//g, '-')}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* 底部固定操作区 */}
+          <div className="p-4 border-t border-[var(--color-border)]/60 bg-white/30 shrink-0">
+            <div className="flex items-center space-x-2">
+              {!isOnline && (
+                <div className="relative flex-1">
+                  <button
+                    onClick={() => !isExporting && setShowExportMenu(!showExportMenu)}
+                    disabled={isExporting}
+                    className="w-full flex items-center justify-center space-x-1.5 py-1.5 bg-[var(--color-primary)]/10 hover:bg-[var(--color-primary)]/20 text-[var(--color-primary)] rounded-lg transition-colors text-[12px] font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isExporting ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
+                    <span>{isExporting ? exportProgress : '导出'}</span>
+                  </button>
+                  
+                  {showExportMenu && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setShowExportMenu(false)} />
+                      <div className="absolute bottom-full left-0 mb-2 w-full bg-white rounded-lg shadow-lg border border-[var(--color-border)]/60 p-1 z-50">
+                        <button
+                          onClick={() => {
+                            setShowExportMenu(false);
+                            handleExport(selectedRepo, false);
+                          }}
+                          className="w-full flex items-center space-x-2 px-2 py-1.5 rounded hover:bg-black/5 text-[12px] text-[var(--foreground)] text-left"
+                        >
+                          <Folder size={12} />
+                          <span>导出文件</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            setShowExportMenu(false);
+                            handleExport(selectedRepo, true);
+                          }}
+                          className="w-full flex items-center space-x-2 px-2 py-1.5 rounded hover:bg-black/5 text-[12px] text-[var(--foreground)] text-left"
+                        >
+                          <FileArchive size={12} />
+                          <span>压缩并导出</span>
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
+              <button
+                onClick={(e) => {
+                  if (onDeleteRepos) onDeleteRepos(e, [selectedRepo]);
+                }}
+                className="flex-1 flex items-center justify-center space-x-1.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg transition-colors text-[12px] font-medium"
+              >
+                <Trash2 size={12} />
+                <span>{isOnline ? '删除收藏' : '删除技能'}</span>
+              </button>
+            </div>
+          </div>
+          {confirmData && <ConfirmDialog {...confirmData} />}
+        </div>
+      );
+    }
+
     return (
       <div 
         className="w-64 border-l border-[var(--color-border)] bg-transparent flex flex-col shrink-0 h-full overflow-hidden inspector-container"
@@ -591,7 +1448,7 @@ export function InspectorPanel({
               isOnline ? 'bg-emerald-500/10 text-emerald-600' :
               isGithub ? 'bg-[#0066FF]/10 text-[#0066FF]' : 'bg-[#86868B]/10 text-[#86868B]'
             }`}>
-              {isOnline ? <Globe size={16} /> : <FolderGit2 className="w-4.5 h-4.5" />}
+              {isOnline ? <Globe size={16} /> : <Package className="w-4.5 h-4.5" />}
             </div>
             <div className="min-w-0 flex-1">
               <h3 className="text-[14px] font-semibold text-[var(--foreground)] truncate">{selectedRepo.name}</h3>
@@ -604,6 +1461,27 @@ export function InspectorPanel({
                 )}
               </span>
             </div>
+            {onToggleRepoFavorite && (() => {
+              const isCollectionStarred = isRepoItemStarred(selectedRepo);
+              return (
+                <Tooltip content={isCollectionStarred ? "取消星标" : "星标"}>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onToggleRepoFavorite(selectedRepo);
+                    }}
+                    className={`p-1.5 rounded-lg transition-all active:scale-90 shrink-0 border cursor-pointer ${
+                      isCollectionStarred
+                        ? 'text-amber-500 bg-amber-50 border-amber-200/80 hover:bg-amber-100/80'
+                        : 'text-[var(--color-muted)] hover:text-amber-500 hover:bg-amber-50/70 border-black/5'
+                    }`}
+                  >
+                    <Star className={`w-4 h-4 ${isCollectionStarred ? 'fill-amber-500 text-amber-500' : ''}`} />
+                  </button>
+                </Tooltip>
+              );
+            })()}
             {!isOnline && (
               <Tooltip content="更新当前仓库">
                 <button
@@ -611,8 +1489,11 @@ export function InspectorPanel({
                     if (onUpdateRepos) {
                       onUpdateRepos(e, [selectedRepo]);
                     } else {
-                      invoke('rescan_directory', { dirId: selectedRepo.source_dir_id || selectedRepo.id })
-                        .then(() => showToast('已下发更新指令，请稍候查看'))
+                      invoke('rescan_directory', { path: selectedRepo.source_dir_id || selectedRepo.path })
+                        .then(() => {
+                          onRefreshData();
+                          showToast('已下发更新指令，请稍候查看');
+                        })
                         .catch(console.error);
                     }
                   }}
@@ -768,11 +1649,11 @@ export function InspectorPanel({
             </div>
           )}
 
-          {/* 子技能列表 */}
+          {/* 包含技能列表 */}
           <div className="mb-4">
             <div className="flex justify-between items-center mb-2">
               <h4 className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider">
-                子技能 ({selectedRepo.skills.length})
+                包含技能 ({selectedRepo.skills.length})
               </h4>
               {selectedRepo.skills.length > 5 && isSkillsExpanded && (
                 <button
@@ -805,6 +1686,9 @@ export function InspectorPanel({
               )}
             </div>
           </div>
+
+          {/* 技能包独立标签及包内子技能标签汇总 */}
+          {renderRepoTagSection([selectedRepo], '标签')}
 
           {/* 信息 */}
           <div>
@@ -876,7 +1760,7 @@ export function InspectorPanel({
               className="flex-1 flex items-center justify-center space-x-1.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg transition-colors text-[12px] font-medium"
             >
               <Trash2 size={12} />
-              <span>删除仓库</span>
+              <span>删除技能包</span>
             </button>
           </div>
         </div>
@@ -901,12 +1785,16 @@ export function InspectorPanel({
           <span className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider"></span>
           {toggleButton}
         </div>
-        <div className="flex-1 flex flex-col items-center justify-center p-4">
-          <div className="w-16 h-16 bg-[var(--color-primary)]/10 rounded-full flex items-center justify-center mb-4">
-             <span className="text-2xl font-bold text-[var(--color-primary)]">{selectedSkills.length}</span>
+        <div className="flex-1 overflow-y-auto p-4 inspector-scroll-area flex flex-col">
+          <div className="flex flex-col items-center pt-6 pb-6">
+            <div className="w-16 h-16 bg-[var(--color-primary)]/10 rounded-full flex items-center justify-center mb-4">
+              <span className="text-2xl font-bold text-[var(--color-primary)]">{selectedSkills.length}</span>
+            </div>
+            <h3 className="text-[15px] font-semibold text-[var(--foreground)] mb-1">已选 {selectedSkills.length} 个技能</h3>
+            <p className="text-[12px] text-[var(--color-muted)] text-center">你可以对选中的技能进行批量标签管理</p>
           </div>
-          <h3 className="text-[15px] font-semibold text-[var(--foreground)] mb-1">已选 {selectedSkills.length} 个技能文件</h3>
-          <p className="text-[12px] text-[var(--color-muted)] text-center mb-6">你可以对选中的技能进行批量操作</p>
+
+          {renderTagSection(selectedSkills, '批量标签')}
         </div>
       </div>
     );
@@ -916,6 +1804,10 @@ export function InspectorPanel({
   if (selectedItemType === 'skill' && selectedSkills.length === 1) {
     const selectedSkill = selectedSkills[0];
     const parentRepo = allRepos.find(r => r.skills.some(s => s.id === selectedSkill.id));
+    const isOnline = selectedSkill.source_type === 'online';
+    const isGithub = selectedSkill.source_type === 'github';
+    const onlineUrl = isOnline ? (selectedSkill.online_url || selectedSkill.local_path) : null;
+    const isFromCollection = parentRepo && (parentRepo.repo_type === 'collection' || parentRepo.skills.length > 1);
     return (
       <div 
         className="w-64 border-l border-[var(--color-border)] bg-transparent flex flex-col shrink-0 h-full overflow-hidden inspector-container"
@@ -936,10 +1828,31 @@ export function InspectorPanel({
           {/* 技能名 */}
           <div className="mb-4">
             <div className="flex items-center space-x-2.5 mb-2">
-              <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0 bg-[var(--color-muted-bg)] text-[var(--color-muted)]">
-                <HardDrive className="w-4.5 h-4.5" />
+              <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
+                isOnline ? 'bg-emerald-500/10 text-emerald-600' :
+                isGithub ? 'bg-[#0066FF]/10 text-[#0066FF]' : 'bg-[#86868B]/10 text-[#86868B]'
+              }`}>
+                {isOnline ? <Globe className="w-4.5 h-4.5" /> : <FileCode className="w-4.5 h-4.5" />}
               </div>
-              <h3 className="text-[14px] font-semibold text-[var(--foreground)] line-clamp-2">{selectedSkill.name}</h3>
+              <h3 className="text-[14px] font-semibold text-[var(--foreground)] line-clamp-2 flex-1 min-w-0">{selectedSkill.name}</h3>
+              {onToggleSkillFavorite && (
+                <Tooltip content={selectedSkill.is_favorite ? "取消星标" : "星标"}>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onToggleSkillFavorite(selectedSkill.id);
+                    }}
+                    className={`p-1.5 rounded-lg transition-all active:scale-90 shrink-0 border cursor-pointer ${
+                      selectedSkill.is_favorite
+                        ? 'text-amber-500 bg-amber-50 border-amber-200/80 hover:bg-amber-100/80'
+                        : 'text-[var(--color-muted)] hover:text-amber-500 hover:bg-amber-50/70 border-black/5'
+                    }`}
+                  >
+                    <Star className={`w-4 h-4 ${selectedSkill.is_favorite ? 'fill-amber-500 text-amber-500' : ''}`} />
+                  </button>
+                </Tooltip>
+              )}
             </div>
             {selectedSkill.description && (
               <p 
@@ -955,14 +1868,24 @@ export function InspectorPanel({
           </div>
 
           {/* 操作按钮区 */}
-          <div className="grid grid-cols-2 gap-2 mb-4">
-            <button
-              onClick={() => onOpenDrawer(selectedSkill)}
-              className="flex items-center justify-center space-x-1.5 px-3 py-2 bg-black/[0.04] hover:bg-black/[0.07] rounded-lg text-[12px] font-medium text-[var(--foreground)] transition-colors"
-            >
-              <FileText className="w-3.5 h-3.5" />
-              <span>查看文档</span>
-            </button>
+          <div className={`grid gap-2 mb-4 ${isDetailView && !isOnline ? 'grid-cols-1' : 'grid-cols-2'}`}>
+            {isOnline && onlineUrl ? (
+              <button
+                onClick={() => openUrl(onlineUrl).catch(console.error)}
+                className="flex items-center justify-center space-x-1.5 px-3 py-2 bg-black/[0.04] hover:bg-black/[0.07] rounded-lg text-[12px] font-medium text-[var(--foreground)] transition-colors"
+              >
+                <Globe className="w-3.5 h-3.5" />
+                <span>打开网页</span>
+              </button>
+            ) : !isDetailView ? (
+              <button
+                onClick={() => onOpenDrawer(selectedSkill)}
+                className="flex items-center justify-center space-x-1.5 px-3 py-2 bg-black/[0.04] hover:bg-black/[0.07] rounded-lg text-[12px] font-medium text-[var(--foreground)] transition-colors"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>查看文档</span>
+              </button>
+            ) : null}
             <button
               onClick={() => onGeneratePrompt(selectedSkill)}
               className="flex items-center justify-center space-x-1.5 px-3 py-2 bg-[var(--color-primary)]/10 hover:bg-[var(--color-primary)]/20 text-[var(--color-primary)] rounded-lg text-[12px] font-medium transition-colors"
@@ -972,33 +1895,58 @@ export function InspectorPanel({
             </button>
           </div>
 
-          {/* 路径 */}
+          {/* 路径 / 地址 */}
           <div className="mb-4">
             <div className="flex justify-between items-center mb-1.5">
-              <h4 className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider">路径</h4>
+              <h4 className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider">
+                {isOnline ? '技能地址' : '路径'}
+              </h4>
               <div className="flex items-center space-x-0.5">
-                <Tooltip content="复制路径">
+                <Tooltip content={isOnline ? "复制链接" : "复制路径"}>
                   <button
                     onClick={() => { 
-                      navigator.clipboard.writeText(selectedSkill.local_path); 
-                      showToast('路径已复制'); 
-                      invoke('increment_skill_use_count', { id: selectedSkill.id });
+                      navigator.clipboard.writeText(isOnline && onlineUrl ? onlineUrl : selectedSkill.local_path); 
+                      showToast(isOnline ? '链接已复制' : '路径已复制'); 
+                      invoke('increment_skill_use_count', { id: selectedSkill.id }).catch(() => {});
                     }}
                     className="p-1 rounded hover:bg-black/5 text-[var(--color-muted)] hover:text-[var(--foreground)] transition-colors shrink-0"
                   >
                     <Copy size={12} />
                   </button>
                 </Tooltip>
-                <Tooltip content="在 Finder 中打开">
-                  <button
-                    onClick={async () => {
-                      try { await invoke('reveal_in_finder', { path: selectedSkill.local_path }); } catch (e) { console.error(e); }
-                    }}
-                    className="p-1 rounded hover:bg-black/5 text-[var(--color-muted)] hover:text-[var(--foreground)] transition-colors shrink-0"
-                  >
-                    <Folder size={12} />
-                  </button>
-                </Tooltip>
+                {!isOnline && (
+                  <Tooltip content="在文件夹中显示">
+                    <button
+                      onClick={async () => {
+                        try { await invoke('reveal_in_finder', { path: selectedSkill.local_path }); } catch (e) { console.error(e); }
+                      }}
+                      className="p-1 rounded hover:bg-black/5 text-[var(--color-muted)] hover:text-[var(--foreground)] transition-colors shrink-0"
+                    >
+                      <Folder size={12} />
+                    </button>
+                  </Tooltip>
+                )}
+                {isGithub && parentRepo && (
+                  <Tooltip content="在 GitHub 中查看">
+                    <button
+                      onClick={async () => {
+                        try {
+                          const url = await invoke<string>('get_git_remote_url', { path: parentRepo.path });
+                          if (url) {
+                            await openUrl(url);
+                          } else {
+                            showToast('未找到远程仓库地址', 'error');
+                          }
+                        } catch (e) {
+                          showToast(`获取仓库地址失败: ${e}`, 'error');
+                        }
+                      }}
+                      className="p-1 rounded hover:bg-black/5 text-[var(--color-muted)] hover:text-[#0066FF] transition-colors shrink-0"
+                    >
+                      <ExternalLink size={12} />
+                    </button>
+                  </Tooltip>
+                )}
                 {(() => {
                   const storeRes = findStoreResourceForSkill(selectedSkill, registryData.resources as ResourceItem[], allRepos);
                   if (!storeRes) return null;
@@ -1015,87 +1963,35 @@ export function InspectorPanel({
                 })()}
               </div>
             </div>
-            <Tooltip content={selectedSkill.local_path} side="bottom">
-              <p 
-                onDoubleClick={() => { 
-                  navigator.clipboard.writeText(selectedSkill.local_path); 
-                  showToast('路径已复制'); 
-                  invoke('increment_skill_use_count', { id: selectedSkill.id });
-                }}
-                className="text-[11px] text-[var(--color-muted)] truncate w-full bg-black/[0.03] border border-black/[0.04] px-2 py-1.5 rounded cursor-default select-none"
+            {isOnline && onlineUrl ? (
+              <button
+                type="button"
+                onClick={() => openUrl(onlineUrl).catch(console.error)}
+                className="block w-full text-left text-[11px] text-[var(--color-primary)] hover:underline break-all bg-[var(--color-primary)]/5 px-2 py-1.5 rounded border border-[var(--color-primary)]/10 transition-colors"
               >
-                {selectedSkill.local_path}
-              </p>
-            </Tooltip>
+                {onlineUrl}
+              </button>
+            ) : (
+              <Tooltip content={selectedSkill.local_path} side="bottom">
+                <p 
+                  onDoubleClick={() => { 
+                    navigator.clipboard.writeText(selectedSkill.local_path); 
+                    showToast('路径已复制'); 
+                    invoke('increment_skill_use_count', { id: selectedSkill.id }).catch(() => {});
+                  }}
+                  className="text-[11px] text-[var(--color-muted)] truncate w-full bg-black/[0.03] border border-black/[0.04] px-2 py-1.5 rounded cursor-default select-none"
+                >
+                  {selectedSkill.local_path}
+                </p>
+              </Tooltip>
+            )}
           </div>
 
           {/* 上下文占用 / 规模 */}
-          {skillCapacity && (
-            <div className="mb-4">
-              <div className="flex justify-between items-center mb-1.5">
-                <h4 className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider">上下文占用</h4>
-              </div>
-              <Tooltip
-                content={
-                  <div className="flex flex-col gap-1.5 min-w-[210px]">
-                    <div className="font-medium pb-1 border-b border-white/20 flex justify-between items-center">
-                      <span>上下文与规模</span>
-                      <span className="text-[10px] opacity-80">{skillCapacity.file_count} 个文件 · {skillCapacity.line_count.toLocaleString()} 行</span>
-                    </div>
-                    <div className="flex justify-between items-center text-[11px]">
-                      <span>主文档 ({skillCapacity.main_doc_file_count} 个):</span>
-                      <span>约 {formatTokens(skillCapacity.main_doc_token_count)} Tokens</span>
-                    </div>
-                    {skillCapacity.knowledge_file_count > 0 && (
-                      <div className="flex justify-between items-center text-[11px]">
-                        <span>知识库 ({skillCapacity.knowledge_file_count} 个):</span>
-                        <span>约 {formatTokens(skillCapacity.knowledge_token_count)} Tokens</span>
-                      </div>
-                    )}
-                    {skillCapacity.script_file_count > 0 && (
-                      <div className="flex justify-between items-center text-[11px]">
-                        <span>配套脚本 ({skillCapacity.script_file_count} 个):</span>
-                        <span>约 {formatTokens(skillCapacity.script_token_count)} Tokens</span>
-                      </div>
-                    )}
-                    <div className="flex justify-between items-center text-[11px] font-medium pt-1 border-t border-white/10 mt-1">
-                      <span>总基础占用:</span>
-                      <span>~{formatTokens(skillCapacity.token_count)} Tokens</span>
-                    </div>
-                    <div className="text-[10px] opacity-70 mt-1 italic leading-relaxed">
-                      * 仅统计当前目录及子目录下的文本实体<br />
-                      * 无关依赖已自动过滤 (如 node_modules 等)
-                    </div>
-                  </div>
-                }
-              >
-                <div className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-black/[0.03] border border-black/[0.04] text-[11px] text-[var(--color-muted)] cursor-default select-none hover:bg-black/[0.05] transition-colors">
-                  <span className="flex items-center gap-0.5">
-                    <span className="font-medium text-[var(--foreground)]">{skillCapacity.file_count}</span>
-                    <span>文件</span>
-                  </span>
-                  <span className="text-[10px] text-[var(--color-muted)]/40">•</span>
-                  <span className="flex items-center gap-0.5">
-                    <span className="font-medium text-[var(--foreground)]">
-                      {skillCapacity.line_count >= 10000 
-                        ? `${(skillCapacity.line_count / 10000).toFixed(1)}w` 
-                        : skillCapacity.line_count.toLocaleString()}
-                    </span>
-                    <span>行</span>
-                  </span>
-                  <span className="text-[10px] text-[var(--color-muted)]/40">•</span>
-                  <span className="flex items-center gap-0.5 shrink-0">
-                    <span>约</span>
-                    <span className="font-medium text-[var(--foreground)]">{formatTokens(skillCapacity.token_count)}</span>
-                    <span>Tokens</span>
-                  </span>
-                </div>
-              </Tooltip>
-            </div>
-          )}
+          {!isOnline && renderCapacitySection()}
 
           {/* 同步至 AI Agent */}
-          {agents.length > 0 && (
+          {!isOnline && agents.length > 0 && (
             <div className="mb-4">
               <h4 className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider mb-2">同步至 AI Agent</h4>
               <div className="space-y-1.5">
@@ -1129,164 +2025,22 @@ export function InspectorPanel({
           )}
 
           {/* 标签 */}
-          <div className="mb-4">
-            <h4 className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider mb-2">标签</h4>
-            <div className="relative" ref={tagDropdownRef}>
-              {tags.split(',').map(t => t.trim()).filter(Boolean).length === 0 ? (
-                /* 无标签时：展示全宽按钮 */
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsTagDropdownOpen(prev => {
-                      const next = !prev;
-                      if (next) {
-                        setTimeout(() => tagInputRef.current?.focus(), 50);
-                      }
-                      return next;
-                    });
-                  }}
-                  className={`w-full py-1.5 px-3 rounded-md border text-[12px] flex items-center justify-center gap-1.5 transition-all ${
-                    isTagDropdownOpen
-                      ? 'bg-[var(--color-primary)]/5 border-[var(--color-primary)]/40 text-[var(--color-primary)] font-medium'
-                      : 'bg-black/5 hover:bg-black/10 border-transparent text-[var(--color-muted)] hover:text-[var(--foreground)]'
-                  }`}
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>添加标签</span>
-                </button>
-              ) : (
-                /* 拥有1个及以上标签时：展示标签胶囊并在末尾追加小按钮 */
-                <div className="flex flex-wrap gap-1.5 items-center">
-                  {tags.split(',').map(t => t.trim()).filter(Boolean).map(tag => (
-                    <span 
-                      key={tag} 
-                      className="group/tag h-6 inline-flex items-center text-[11.5px] px-2 rounded-md bg-[var(--color-primary)]/10 text-[var(--color-primary)] font-medium border border-transparent box-border transition-all duration-150"
-                    >
-                      <span className="opacity-60 mr-0.5 select-none">#</span>
-                      <span className="truncate max-w-[120px]">{tag}</span>
-                      <Tooltip content={`删除标签 #${tag}`}>
-                        <button 
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); removeTag(tag, selectedSkill); }}
-                          className="w-0 opacity-0 group-hover/tag:w-3.5 group-hover/tag:opacity-100 group-hover/tag:ml-1 overflow-hidden inline-flex items-center justify-center text-[var(--color-primary)] hover:text-red-500 transition-all duration-150"
-                        >
-                          <X className="w-3 h-3 shrink-0" />
-                        </button>
-                      </Tooltip>
-                    </span>
-                  ))}
-
-                  {/* 紧随最后一个标签的添加按钮：极简 + 号图标按钮，极致省空间避免换行 */}
-                  <Tooltip content="添加标签">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsTagDropdownOpen(prev => {
-                          const next = !prev;
-                          if (next) {
-                            setTimeout(() => tagInputRef.current?.focus(), 50);
-                          }
-                          return next;
-                        });
-                      }}
-                      className={`h-6 w-6 inline-flex items-center justify-center rounded-md border border-dashed box-border shrink-0 transition-all ${
-                        isTagDropdownOpen 
-                          ? 'border-[var(--color-primary)] text-[var(--color-primary)] bg-[var(--color-primary)]/10 font-medium' 
-                          : 'border-[var(--color-border)] text-[var(--color-muted)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] hover:bg-[var(--color-primary)]/5'
-                      }`}
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                    </button>
-                  </Tooltip>
-                </div>
-              )}
-              
-              {/* 浮动的搜索与选择面板 */}
-              {isTagDropdownOpen && (
-                <div className="absolute top-full mt-1.5 left-0 right-0 w-full bg-white/95 backdrop-blur-xl border border-[var(--color-border)] rounded-xl shadow-2xl p-2 z-[100] animate-in fade-in zoom-in-95 duration-150">
-                  <div className="relative mb-1.5">
-                    <Search className="absolute left-2.5 top-2 w-3.5 h-3.5 text-[var(--color-muted)] pointer-events-none" />
-                    <input
-                      ref={tagInputRef}
-                      type="text"
-                      value={tagInput}
-                      onChange={e => setTagInput(e.target.value)}
-                      onKeyDown={e => {
-                        if (e.key === 'Escape') {
-                          setIsTagDropdownOpen(false);
-                          return;
-                        }
-                        if (e.key === 'Enter' || e.key === ',' || e.key === '，') {
-                          e.preventDefault();
-                          const newTag = tagInput.trim().replace(/[,，]/g, '');
-                          if (newTag) {
-                            addTag(newTag, selectedSkill);
-                            setTagInput("");
-                            setIsTagDropdownOpen(false);
-                          }
-                        }
-                      }}
-                      placeholder="搜索或创建标签..."
-                      className="w-full text-[12px] pl-8 pr-2.5 py-1.5 rounded-lg border border-[var(--color-border)] bg-gray-50/80 focus:bg-white focus:outline-none focus:border-[var(--color-primary)]/50 focus:ring-2 focus:ring-[var(--color-primary)]/10 transition-all placeholder:text-[var(--color-muted)]/70"
-                    />
-                  </div>
-
-                  <div className="max-h-44 overflow-y-auto custom-scrollbar flex flex-col gap-0.5">
-                    {allTags.filter(t => !tags.split(',').map(x => x.trim()).filter(Boolean).includes(t) && t.toLowerCase().includes(tagInput.toLowerCase())).length > 0 ? (
-                      allTags
-                        .filter(t => !tags.split(',').map(x => x.trim()).filter(Boolean).includes(t) && t.toLowerCase().includes(tagInput.toLowerCase()))
-                        .map(tag => (
-                          <button
-                            key={tag}
-                            type="button"
-                            onMouseDown={(e) => {
-                              e.preventDefault();
-                              addTag(tag, selectedSkill);
-                              setTagInput("");
-                              setIsTagDropdownOpen(false);
-                            }}
-                            className="w-full px-2.5 py-1.5 text-[12px] text-left rounded-md hover:bg-black/5 text-[var(--foreground)] transition-colors flex items-center justify-between group"
-                          >
-                            <span>#{tag}</span>
-                            <Plus className="w-3 h-3 text-[var(--color-muted)] opacity-0 group-hover:opacity-100 transition-opacity" />
-                          </button>
-                        ))
-                    ) : tagInput.trim() ? (
-                      <button
-                        type="button"
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                          const newTag = tagInput.trim().replace(/[,，]/g, '');
-                          if (newTag) {
-                            addTag(newTag, selectedSkill);
-                            setTagInput("");
-                            setIsTagDropdownOpen(false);
-                          }
-                        }}
-                        className="w-full px-2.5 py-1.5 text-[12px] text-left rounded-md hover:bg-[var(--color-primary)]/10 text-[var(--color-primary)] transition-colors flex items-center gap-1.5 font-medium"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>按回车创建 "{tagInput.trim()}"</span>
-                      </button>
-                    ) : (
-                      <div className="px-2 py-3 text-[11px] text-[var(--color-muted)] text-center">
-                        输入文字搜索或按回车创建
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
+          {renderTagSection([selectedSkill])}
 
           {/* 信息 */}
           <div>
             <h4 className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider mb-2">信息</h4>
             <div className="space-y-1.5 text-[12px]">
+              {isFromCollection && parentRepo && (
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[var(--color-muted)] shrink-0">所属技能包</span>
+                  <span className="text-[var(--foreground)] font-medium truncate">{parentRepo.name}</span>
+                </div>
+              )}
               <div className="flex items-center justify-between">
                 <span className="text-[var(--color-muted)]">来源</span>
                 <span className="text-[var(--foreground)] font-medium uppercase text-[11px]">
-                  {selectedSkill.source_type}
+                  {isOnline ? '线上收藏' : isGithub ? 'GITHUB' : '本地'}
                   {parentRepo?.author && (
                     <span className="ml-1 text-[var(--color-muted)]">@{parentRepo.author}</span>
                   )}

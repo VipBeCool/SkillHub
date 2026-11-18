@@ -49,6 +49,10 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec!["--autostart"]),
+        ))
         .setup(|app| {
             let app_data_dir = app.path().app_data_dir().expect("Failed to get app data dir");
             std::fs::create_dir_all(&app_data_dir).expect("Failed to create app data dir");
@@ -206,6 +210,40 @@ pub fn run() {
             if let Some(tray_window) = app.get_webview_window("tray-panel") {
                 let _ = tray_window.set_shadow(true);
             }
+
+            // 若通过开机自启参数唤醒且开启了静默启动，自动隐藏主窗口仅在菜单栏/托盘待命
+            let launched_by_autostart = std::env::args().any(|arg| arg == "--autostart");
+            if launched_by_autostart {
+                let (autostart_silent, keep_dock_icon) = {
+                    let state = app.state::<AppState>();
+                    let db_lock = state.db.lock();
+                    if let Ok(db) = db_lock {
+                        let silent = crate::db::get_setting(&db, "autostart_silent")
+                            .ok()
+                            .flatten()
+                            .map(|v| v == "true")
+                            .unwrap_or(true);
+                        let dock = crate::db::get_setting(&db, "keep_dock_icon")
+                            .ok()
+                            .flatten()
+                            .map(|v| v == "true")
+                            .unwrap_or(true);
+                        (silent, dock)
+                    } else {
+                        (true, true)
+                    }
+                };
+
+                if autostart_silent {
+                    if let Some(main_window) = app.get_webview_window("main") {
+                        let _ = main_window.hide();
+                    }
+                    #[cfg(target_os = "macos")]
+                    if !keep_dock_icon {
+                        let _ = app.handle().set_activation_policy(tauri::ActivationPolicy::Accessory);
+                    }
+                }
+            }
             
             Ok(())
         })
@@ -295,7 +333,8 @@ pub fn run() {
             commands::get_general_settings,
             commands::update_general_settings,
             commands::export_database,
-            commands::import_database
+            commands::import_database,
+            commands::search_github_repositories
         ])
         .on_window_event(|window, event| match event {
             tauri::WindowEvent::CloseRequested { api, .. } => {

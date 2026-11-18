@@ -34,10 +34,17 @@ export function PromptCard({ prompt, selected, onSelect, onClick, onDoubleClick,
 
   const handleFavorite = async (e: React.MouseEvent) => {
     e.stopPropagation();
+    const prevVal = prompt.is_favorite;
+    const nextVal = !prevVal;
+    // 立即乐观更新星星点亮/熄灭状态
+    onFavoriteToggle(prompt.id, nextVal);
     try {
-      const newVal = await invoke<boolean>("toggle_prompt_favorite", { id: prompt.id });
-      onFavoriteToggle(prompt.id, newVal);
+      const actualVal = await invoke<boolean>("toggle_prompt_favorite", { id: prompt.id });
+      if (actualVal !== nextVal) {
+        onFavoriteToggle(prompt.id, actualVal);
+      }
     } catch (err) {
+      onFavoriteToggle(prompt.id, prevVal);
       showToast("操作失败", "error");
     }
   };
@@ -67,7 +74,7 @@ export function PromptCard({ prompt, selected, onSelect, onClick, onDoubleClick,
           : "border-black/5 hover:border-black/10 hover:shadow-sm"
         }`}
     >
-      {/* 收藏色条 */}
+      {/* 星标色条 */}
       {prompt.is_favorite && (
         <div className="absolute top-0 left-0 w-full h-0.5 bg-gradient-to-r from-amber-400 to-orange-400" />
       )}
@@ -81,31 +88,59 @@ export function PromptCard({ prompt, selected, onSelect, onClick, onDoubleClick,
             </h3>
           </Tooltip>
           {isTrashMode ? (
-            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+            <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
               <span className="text-[10px] px-1.5 py-0.5 mr-1 rounded-md bg-red-50 text-red-500 font-medium border border-red-100">
                 {remainingDays}天后清除
               </span>
               <Tooltip content="恢复">
-                <button onClick={(e) => { e.stopPropagation(); onRestore?.(prompt); }} className="p-1 rounded-md text-[var(--color-muted)] hover:text-green-600 hover:bg-green-50 transition-colors">
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onDoubleClick={(e) => e.stopPropagation()}
+                  onClick={(e) => { e.stopPropagation(); onRestore?.(prompt); }}
+                  className="w-7 h-7 -my-1 flex items-center justify-center rounded-lg text-[var(--color-muted)] hover:text-green-600 hover:bg-green-50 transition-colors cursor-pointer"
+                >
                   <RotateCcw className="w-3.5 h-3.5" />
                 </button>
               </Tooltip>
               <Tooltip content="彻底删除">
-                <button onClick={(e) => { e.stopPropagation(); onHardDelete?.(prompt); }} className="p-1 rounded-md text-[var(--color-muted)] hover:text-red-500 hover:bg-red-50 transition-colors">
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onDoubleClick={(e) => e.stopPropagation()}
+                  onClick={(e) => { e.stopPropagation(); onHardDelete?.(prompt); }}
+                  className="w-7 h-7 -my-1 -mr-1.5 flex items-center justify-center rounded-lg text-[var(--color-muted)] hover:text-red-500 hover:bg-red-50 transition-colors cursor-pointer"
+                >
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
               </Tooltip>
             </div>
           ) : (
-            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-              <Tooltip content={prompt.is_favorite ? "取消收藏" : "收藏"}>
-                <button onClick={handleFavorite} className={`p-1 rounded-md transition-colors ${prompt.is_favorite ? "text-amber-500" : "text-[var(--color-muted)] hover:text-amber-500 hover:bg-amber-50"}`}>
-                  <Star className={`w-3.5 h-3.5 ${prompt.is_favorite ? "fill-amber-500" : ""}`} />
+            <div className="flex items-center gap-0.5 shrink-0">
+              <Tooltip content="复制内容">
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onDoubleClick={(e) => e.stopPropagation()}
+                  onClick={handleCopy}
+                  className={`w-7 h-7 -my-1 flex items-center justify-center rounded-lg transition-[opacity,transform,background-color] duration-150 active:scale-90 cursor-pointer opacity-0 group-hover:opacity-100 ${copied ? "text-green-500 opacity-100" : "text-[var(--color-muted)] hover:text-[var(--color-primary)] hover:bg-[var(--color-primary)]/10"}`}
+                >
+                  {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                 </button>
               </Tooltip>
-              <Tooltip content="复制内容">
-                <button onClick={handleCopy} className={`p-1 rounded-md transition-colors ${copied ? "text-green-500" : "text-[var(--color-muted)] hover:text-[var(--color-primary)] hover:bg-[var(--color-primary)]/10"}`}>
-                  {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+              <Tooltip content={prompt.is_favorite ? "取消星标" : "星标"}>
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onDoubleClick={(e) => e.stopPropagation()}
+                  onClick={handleFavorite}
+                  className={`w-7 h-7 -my-1 -mr-1.5 flex items-center justify-center rounded-lg transition-[opacity,transform,background-color] duration-150 active:scale-90 cursor-pointer ${
+                    prompt.is_favorite
+                      ? "opacity-100 text-amber-500 hover:bg-amber-50/90"
+                      : "opacity-0 group-hover:opacity-100 text-[var(--color-muted)] hover:text-amber-500 hover:bg-amber-50/90"
+                  }`}
+                >
+                  <Star className={`w-4 h-4 ${prompt.is_favorite ? "fill-amber-500 text-amber-500" : ""}`} />
                 </button>
               </Tooltip>
             </div>

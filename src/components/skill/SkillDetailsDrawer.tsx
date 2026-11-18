@@ -34,6 +34,7 @@ export function SkillDetailsDrawer({ skill, isOpen, onClose, onGeneratePrompt }:
 
   const [files, setFiles] = useState<SkillFile[]>([]);
   const [activeFile, setActiveFile] = useState<string>("");
+  const [isFavorite, setIsFavorite] = useState(false);
   // 标签编辑状态
   const [tags, setTags] = useState("");
   const [tagInput, setTagInput] = useState("");
@@ -42,6 +43,7 @@ export function SkillDetailsDrawer({ skill, isOpen, onClose, onGeneratePrompt }:
   useEffect(() => {
     if (skill) {
       setTags(skill.tags || "");
+      setIsFavorite(skill.is_favorite);
     }
   }, [skill]);
 
@@ -170,7 +172,7 @@ export function SkillDetailsDrawer({ skill, isOpen, onClose, onGeneratePrompt }:
       setIsEditing(false);
       setFiles([]);
     }
-  }, [isOpen, skill]);
+  }, [isOpen, skill?.id, skill?.local_path, skill?.source_type, skill?.online_url]);
 
   const handleTabChange = (filename: string) => {
     setActiveFile(filename);
@@ -220,20 +222,30 @@ export function SkillDetailsDrawer({ skill, isOpen, onClose, onGeneratePrompt }:
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 mb-1.5">
                 <h2 className="text-xl font-medium text-[var(--foreground)] leading-none truncate">{skill?.name}</h2>
-                <button
-                  onClick={async () => {
-                    if (!skill) return;
-                    try {
-                      await invoke("toggle_skill_favorite", { id: skill.id });
-                      skill.is_favorite = !skill.is_favorite;
-                    } catch (e) {
-                      showToast(`操作失败: ${e}`, "error");
-                    }
-                  }}
-                  className={`p-1 rounded-md transition-colors ${skill?.is_favorite ? 'text-yellow-500' : 'text-[var(--color-muted)] hover:text-yellow-500 hover:bg-yellow-50'}`}
-                >
-                  <Star className={`w-4 h-4 ${skill?.is_favorite ? 'fill-current' : ''}`} />
-                </button>
+                <Tooltip content={isFavorite ? "取消星标" : "星标"}>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!skill) return;
+                      const prevVal = isFavorite;
+                      const nextVal = !prevVal;
+                      setIsFavorite(nextVal);
+                      try {
+                        await invoke("toggle_skill_favorite", { id: skill.id });
+                      } catch (e) {
+                        setIsFavorite(prevVal);
+                        showToast(`操作失败: ${e}`, "error");
+                      }
+                    }}
+                    className={`w-7 h-7 flex items-center justify-center rounded-lg shrink-0 transition-[transform,background-color] duration-150 active:scale-90 cursor-pointer ${
+                      isFavorite
+                        ? 'text-amber-500 hover:bg-amber-50'
+                        : 'text-[var(--color-muted)] hover:text-amber-500 hover:bg-amber-50'
+                    }`}
+                  >
+                    <Star className={`w-4 h-4 ${isFavorite ? 'fill-amber-500 text-amber-500' : ''}`} />
+                  </button>
+                </Tooltip>
               </div>
               <div className="flex items-center space-x-1.5 mb-1.5">
                 <Tooltip content={skill?.local_path || ""} side="bottom">

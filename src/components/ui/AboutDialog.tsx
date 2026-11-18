@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { X, RefreshCw, User, GitFork, Coffee, MessageSquare, Mail } from "lucide-react";
+import { X, RefreshCw, User, GitFork, Coffee, MessageSquare, Mail, Download, Maximize2, FileText, ArrowRight } from "lucide-react";
 import { getVersion } from "@tauri-apps/api/app";
 import { check, Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
@@ -7,6 +7,12 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { invoke } from "@tauri-apps/api/core";
 import { Tooltip } from "./Tooltip";
 import logo from "../../assets/logo.png";
+import {
+  ReleaseNotesView,
+  UpdateChangelogModal,
+  formatBytes,
+  useResolvedReleaseNotes,
+} from "./UpdateChangelogModal";
 
 interface AboutDialogProps {
   isOpen: boolean;
@@ -61,20 +67,30 @@ export function AboutDialog({ isOpen, onClose, onOpenCommunity }: AboutDialogPro
   const [appVersion, setAppVersion] = useState<string>("...");
   const [isChecking, setIsChecking] = useState(false);
   const [update, setUpdate] = useState<Update | null>(null);
+  const [isChangelogModalOpen, setIsChangelogModalOpen] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [downloadedBytes, setDownloadedBytes] = useState(0);
+  const [totalBytes, setTotalBytes] = useState(0);
   const [statusMessage, setStatusMessage] = useState<string>("");
+  const [downloadError, setDownloadError] = useState<string | null>(null);
   const [showFallbackDownload, setShowFallbackDownload] = useState(false);
   const [feedbackMenuOpen, setFeedbackMenuOpen] = useState(false);
   const feedbackMenuRef = useRef<HTMLDivElement>(null);
+
+  const { notes, releaseDate, releaseUrl, isLoadingNotes } = useResolvedReleaseNotes(update);
 
   useEffect(() => {
     if (isOpen) {
       getVersion().then((version) => setAppVersion(version)).catch(console.error);
       setUpdate(null);
+      setIsChangelogModalOpen(false);
       setIsDownloading(false);
       setProgress(0);
+      setDownloadedBytes(0);
+      setTotalBytes(0);
       setStatusMessage("");
+      setDownloadError(null);
       setShowFallbackDownload(false);
       setFeedbackMenuOpen(false);
     }
@@ -170,17 +186,23 @@ export function AboutDialog({ isOpen, onClose, onOpenCommunity }: AboutDialogPro
     if (!update || isDownloading) return;
     
     setIsDownloading(true);
+    setDownloadError(null);
     setShowFallbackDownload(false);
+    setProgress(0);
+    setDownloadedBytes(0);
+    setTotalBytes(0);
     try {
-      let totalBytes = 0;
-      let downloadedBytes = 0;
+      let total = 0;
+      let downloaded = 0;
       await update.downloadAndInstall((event) => {
         if (event.event === 'Started' && event.data.contentLength) {
-          totalBytes = event.data.contentLength;
+          total = event.data.contentLength;
+          setTotalBytes(total);
         } else if (event.event === 'Progress') {
-          downloadedBytes += event.data.chunkLength;
-          if (totalBytes > 0) {
-            setProgress(Math.round((downloadedBytes / totalBytes) * 100));
+          downloaded += event.data.chunkLength;
+          setDownloadedBytes(downloaded);
+          if (total > 0) {
+            setProgress(Math.round((downloaded / total) * 100));
           }
         } else if (event.event === 'Finished') {
           setStatusMessage("更新完成，正在重启...");
@@ -190,6 +212,7 @@ export function AboutDialog({ isOpen, onClose, onOpenCommunity }: AboutDialogPro
     } catch (e) {
       console.error('更新失败:', e);
       setStatusMessage("更新下载失败");
+      setDownloadError("安装包下载或校验失败，可重试或前往网页下载");
       setShowFallbackDownload(true);
       setIsDownloading(false);
       setTimeout(() => {
@@ -201,14 +224,15 @@ export function AboutDialog({ isOpen, onClose, onOpenCommunity }: AboutDialogPro
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[99999] flex items-center justify-center">
+    <>
+      <div className="fixed inset-0 z-[99999] flex items-center justify-center">
         <div 
           className="absolute inset-0 modal-backdrop transition-opacity"
           onClick={onClose}
         />
         
         <div 
-          className="relative modal-glass rounded-xl w-[460px] flex flex-col items-center pt-8 pb-6 px-8 animate-in zoom-in-95 duration-200 text-[var(--foreground)]"
+          className="relative modal-glass rounded-xl w-[460px] max-w-[92vw] max-h-[90vh] overflow-y-auto hover-scroll flex flex-col items-center pt-8 pb-6 px-8 animate-in zoom-in-95 duration-200 text-[var(--foreground)]"
           onClick={(e) => e.stopPropagation()}
         >
           <button 
@@ -224,10 +248,10 @@ export function AboutDialog({ isOpen, onClose, onOpenCommunity }: AboutDialogPro
           
           <h2 className="text-[24px] font-bold mb-1 tracking-tight">SkillHub</h2>
           <p className="text-[13px] text-[var(--color-muted)] mb-2.5 font-normal">
-            AI Skills 搜集与管理必备工具
+            跨平台 AI 技能与提示词桌面管理工具
           </p>
 
-          <div className="flex items-center gap-2 mb-6">
+          <div className={`flex items-center gap-2 ${update ? 'mb-3.5' : 'mb-6'}`}>
             <span className="text-[11px] text-black/45 dark:text-white/45 font-mono tracking-wide px-2 py-0.5 rounded-full bg-black/[0.04] dark:bg-white/[0.06]">
               v{appVersion}
             </span>
@@ -235,16 +259,17 @@ export function AboutDialog({ isOpen, onClose, onOpenCommunity }: AboutDialogPro
             {isDownloading ? (
               <div className="flex items-center gap-1.5 text-[12px] text-blue-500 font-medium">
                 <RefreshCw className="w-3 h-3 animate-spin" />
-                <span>正在下载... {progress}%</span>
+                <span>
+                  {totalBytes > 0
+                    ? `正在下载... ${formatBytes(downloadedBytes)} / ${formatBytes(totalBytes)} (${progress}%)`
+                    : `正在下载... ${progress}%`}
+                </span>
               </div>
             ) : update ? (
-              <div className="flex items-center gap-2">
-                <button 
-                  onClick={handleDownload}
-                  className="text-[12px] text-blue-500 hover:text-blue-600 font-semibold transition-colors flex items-center gap-1 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30 px-2.5 py-0.5 rounded-full cursor-pointer"
-                >
-                  {statusMessage || `下载更新 (v${update.version})`}
-                </button>
+              <div className="flex items-center gap-1.5">
+                <span className="inline-flex items-center gap-1 text-[11.5px] text-blue-600 dark:text-blue-400 font-semibold bg-blue-500/10 px-2.5 py-0.5 rounded-full">
+                  <span>{statusMessage || `发现新版本 v${update.version}`}</span>
+                </span>
                 {showFallbackDownload && (
                   <Tooltip content="若应用内下载受限，可前往网页手动下载最新安装包">
                     <button
@@ -284,6 +309,79 @@ export function AboutDialog({ isOpen, onClose, onOpenCommunity }: AboutDialogPro
               </div>
             )}
           </div>
+
+          {/* 检测到新版本时展示内嵌 Changelog 卡片与一键更新区 */}
+          {update && (
+            <div className="w-full mb-5 rounded-xl bg-black/[0.025] dark:bg-white/[0.03] border border-blue-500/20 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+              <div className="flex items-center justify-between px-3.5 py-2 border-b border-black/[0.05] dark:border-white/[0.06] bg-blue-500/[0.04]">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <FileText className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                  <span className="text-[11.5px] font-semibold text-[var(--foreground)]">
+                    更新内容
+                  </span>
+                  <span className="inline-flex items-center gap-1 text-[10.5px] font-mono text-[var(--color-muted)]">
+                    <ArrowRight className="w-2.5 h-2.5 opacity-60" />
+                    <span>v{update.version.replace(/^v/i, '')}</span>
+                  </span>
+                  {releaseDate && (
+                    <span className="text-[10.5px] text-[var(--color-muted)] hidden sm:inline">
+                      · {releaseDate}
+                    </span>
+                  )}
+                </div>
+                <Tooltip content="放大查看完整更新日志">
+                  <button
+                    type="button"
+                    onClick={() => setIsChangelogModalOpen(true)}
+                    className="inline-flex items-center gap-1 text-[11px] font-medium text-blue-600 dark:text-blue-400 hover:underline cursor-pointer shrink-0"
+                  >
+                    <span>完整日志</span>
+                    <Maximize2 className="w-3 h-3" />
+                  </button>
+                </Tooltip>
+              </div>
+
+              <div className="px-3.5 py-2.5 max-h-[140px] overflow-y-auto hover-scroll text-left">
+                <ReleaseNotesView
+                  notes={notes}
+                  isLoading={isLoadingNotes}
+                  compact
+                  releaseUrl={releaseUrl}
+                />
+              </div>
+
+              <div className="px-3.5 py-2.5 border-t border-black/[0.05] dark:border-white/[0.06] bg-black/[0.015] dark:bg-white/[0.02] flex items-center justify-between gap-2">
+                {isDownloading ? (
+                  <div className="w-full space-y-1.5">
+                    <div className="w-full bg-black/[0.06] dark:bg-white/[0.1] rounded-full h-1.5 overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-blue-500 to-cyan-500 rounded-full transition-all duration-300"
+                        style={{ width: `${progress}%` }}
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => openUrl(releaseUrl).catch(console.error)}
+                      className="text-[11px] text-[var(--color-muted)] hover:text-[var(--foreground)] transition-colors cursor-pointer"
+                    >
+                      前往 GitHub 查看
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDownload}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-[11.5px] font-medium text-white bg-blue-500 hover:bg-blue-600 active:bg-blue-700 transition-colors shadow-xs cursor-pointer"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span>{downloadError ? '重试更新' : '立即更新并重启'}</span>
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-3 gap-2.5 w-full mb-5">
             <AboutCard
@@ -396,5 +494,25 @@ export function AboutDialog({ isOpen, onClose, onOpenCommunity }: AboutDialogPro
           </div>
         </div>
       </div>
+
+      {update && (
+        <UpdateChangelogModal
+          isOpen={isChangelogModalOpen}
+          onClose={() => setIsChangelogModalOpen(false)}
+          currentVersion={appVersion}
+          targetVersion={update.version}
+          releaseDate={releaseDate}
+          releaseUrl={releaseUrl}
+          notes={notes}
+          isLoadingNotes={isLoadingNotes}
+          isDownloading={isDownloading}
+          progress={progress}
+          downloadedBytes={downloadedBytes}
+          totalBytes={totalBytes}
+          errorMessage={downloadError}
+          onStartUpdate={handleDownload}
+        />
+      )}
+    </>
   );
 }

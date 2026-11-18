@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { FolderGit2, HardDrive, X, Command, PanelRight, Filter, Type, Globe, Copy, FolderOpen, Trash2, RefreshCw, Clock, ArrowDownAZ, Check, MessageSquareQuote, Star, Tag, FileCode, Compass, Download, Loader2, Code2, AlertCircle, GitFork, Key, ExternalLink, Sparkles, ShieldCheck } from 'lucide-react';
+import { FolderGit2, Package, HardDrive, X, Command, PanelRight, Filter, Type, Globe, Copy, FolderOpen, Trash2, RefreshCw, Clock, ArrowDownAZ, Check, MessageSquareQuote, Star, Tag, FileCode, Compass, Download, Loader2, Code2, AlertCircle, GitFork, Key, ExternalLink, Sparkles, ShieldCheck } from 'lucide-react';
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { showToast } from "../ui/Toast";
@@ -8,6 +8,8 @@ import { GroupedRepo, Skill, Prompt } from '../../types';
 import { ResourceItem } from '../../types/resource';
 import { Tooltip } from "../ui/Tooltip";
 import { getGitHubToken, setGitHubToken } from '../../utils/githubToken';
+import { isCollectionRepo, getRepoTags, parseTags } from '../../utils/tagStore';
+import { isRepoStarred } from '../../utils/favoriteStore';
 
 // 模块级全局搜索缓存（10分钟有效期，大幅减少重复API调用）
 interface GitHubCacheEntry {
@@ -197,8 +199,8 @@ const SEARCH_SCOPE_STORAGE_KEY = 'skillhub_last_search_scope';
 
   // 本地库 Filters state
   const [filterNameOnly, setFilterNameOnly] = useState(false);
-  const [filterType, setFilterType] = useState<'all' | 'repo' | 'skill' | 'prompt'>('all');
-  const [filterSource, setFilterSource] = useState<'all' | 'github' | 'local'>('all');
+  const [filterType, setFilterType] = useState<'all' | 'collection' | 'skill' | 'prompt'>('all');
+  const [filterSource, setFilterSource] = useState<'all' | 'github' | 'local' | 'online'>('all');
   const [sortOrder, setSortOrder] = useState<'best_match' | 'updated_desc' | 'updated_asc'>('best_match');
   const [showSortDropdown, setShowSortDropdown] = useState(false);
 
@@ -223,6 +225,23 @@ const SEARCH_SCOPE_STORAGE_KEY = 'skillhub_last_search_scope';
   const [isRateLimited, setIsRateLimited] = useState<boolean>(false);
   const githubSearchTimerRef = useRef<any>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const [, setRepoFavoriteVersion] = useState(0);
+
+  // 监听技能包星标状态变更，保证全局搜索卡片及时刷新
+  useEffect(() => {
+    const handleFavChanged = () => setRepoFavoriteVersion(v => v + 1);
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === 'skillhub_repo_favorites_set') {
+        setRepoFavoriteVersion(v => v + 1);
+      }
+    };
+    window.addEventListener('skillhub:repo-favorites-changed', handleFavChanged);
+    window.addEventListener('storage', handleStorage);
+    return () => {
+      window.removeEventListener('skillhub:repo-favorites-changed', handleFavChanged);
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, []);
 
   // 监听 GitHub Token 全局变更
   useEffect(() => {
@@ -235,7 +254,7 @@ const SEARCH_SCOPE_STORAGE_KEY = 'skillhub_last_search_scope';
   
   const inputRef = useRef<HTMLInputElement>(null);
   const listScrollRef = useRef<HTMLDivElement>(null);
-  const reposHeaderRef = useRef<HTMLHeadingElement>(null);
+  const collectionsHeaderRef = useRef<HTMLHeadingElement>(null);
   const skillsHeaderRef = useRef<HTMLHeadingElement>(null);
   const promptsHeaderRef = useRef<HTMLHeadingElement>(null);
   const [stuckGroup, setStuckGroup] = useState<string | null>(null);
@@ -331,7 +350,7 @@ const SEARCH_SCOPE_STORAGE_KEY = 'skillhub_last_search_scope';
 
     const containerTop = container.getBoundingClientRect().top;
     const groups: { id: string; el: HTMLHeadingElement | null }[] = [
-      { id: 'repos', el: reposHeaderRef.current },
+      { id: 'collections', el: collectionsHeaderRef.current },
       { id: 'skills', el: skillsHeaderRef.current },
       { id: 'prompts', el: promptsHeaderRef.current },
     ];
@@ -412,53 +431,66 @@ const SEARCH_SCOPE_STORAGE_KEY = 'skillhub_last_search_scope';
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
   }, [isOpen, handleTabClick, onClose]);
 
-  // 本地库匹配计算
-  const { matchedRepos, matchedSkills, matchedPrompts } = useMemo(() => {
-    if (!query.trim()) return { matchedRepos: [], matchedSkills: [], matchedPrompts: [] };
+  // 本地库匹配计算（按主界面口径统一划分：技能包 & 技能 & 提示词）
+  const { matchedCollections, matchedSkills, matchedPrompts } = useMemo(() => {
+    if (!query.trim()) return { matchedCollections: [], matchedSkills: [], matchedPrompts: [] };
 
-    const lowerQuery = query.toLowerCase();
-    
+    const lowerQuery = query.toLowerCase().trim();
+
+    // 支持分隔符及 CamelCase 驼峰分词的词元拆解
+    const splitSearchWords = (text: string): string[] => {
+      const normalized = text
+        .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+        .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2');
+      return normalized.toLowerCase().split(/[\s\-_\/\\:.]+/).filter(Boolean);
+    };
+
     // 单词边界与短词匹配检查
     const isWordMatch = (text?: string | null, q?: string) => {
       if (!text || !q) return false;
       const lower = text.toLowerCase();
       if (lower.startsWith(q)) return true;
-      const words = lower.split(/[\s\-_\/\\:.]+/);
+      const words = splitSearchWords(text);
       if (words.some(w => w.startsWith(q))) return true;
       if (q.length > 2 && lower.includes(q)) return true;
       return false;
     };
 
-    let matchedRepos = repos.filter(repo => {
-      if (filterType === 'skill') return false;
-      if (filterSource !== 'all' && repo.source_type !== filterSource) return false;
-
-      const nameMatch = isWordMatch(repo.name, lowerQuery);
-      if (filterNameOnly) return !!nameMatch;
-
-      return !!nameMatch;
-    });
-    
-    // 计算名称与关键词的相关度得分（标题精准 > 标题前缀 > 分词前缀 > 标题包含 > 仅描述命中）
-    const getRelevanceScore = (name: string, q: string, hasDescOrContentMatch: boolean = false) => {
+    // 计算名称与关键词的相关度得分（标题精准 > 标题前缀 > 分词前缀 > 标题包含 > 仅描述/标签命中）
+    const getRelevanceScore = (name: string, q: string, hasSecondaryMatch: boolean = false) => {
       const lower = (name || '').toLowerCase();
       if (lower === q) return 10000;
       if (lower.startsWith(q)) return 6000;
-      const words = lower.split(/[\s\-_\/\\:.]+/);
+      const words = splitSearchWords(name || '');
       if (words.some(w => w.startsWith(q))) return 4500;
       if (q.length > 2) {
         const idx = lower.indexOf(q);
         if (idx !== -1) return Math.max(1200, 3000 - idx * 50);
       }
-      return hasDescOrContentMatch ? 100 : 0;
+      return hasSecondaryMatch ? 100 : 0;
     };
-    
-    matchedRepos.sort((a, b) => {
+
+    // 1. 技能包（仅限 collection 类型仓库）
+    let matchedCollections = repos.filter(repo => {
+      if (repo.skills.length === 0 || !isCollectionRepo(repo)) return false;
+      if (filterType === 'skill' || filterType === 'prompt') return false;
+      if (filterSource !== 'all' && repo.source_type !== filterSource) return false;
+
+      const nameMatch = isWordMatch(repo.name, lowerQuery);
+      if (filterNameOnly) return !!nameMatch;
+
+      const repoTags = parseTags(getRepoTags(repo.id));
+      const tagMatch = repoTags.some(t => isWordMatch(t, lowerQuery));
+      const authorMatch = isWordMatch(repo.author, lowerQuery);
+      return !!nameMatch || tagMatch || authorMatch;
+    });
+
+    matchedCollections.sort((a, b) => {
       const aName = (a.name || '').toLowerCase();
       const bName = (b.name || '').toLowerCase();
       if (sortOrder === 'best_match') {
-        const scoreA = getRelevanceScore(aName, lowerQuery);
-        const scoreB = getRelevanceScore(bName, lowerQuery);
+        const scoreA = getRelevanceScore(a.name || '', lowerQuery, true);
+        const scoreB = getRelevanceScore(b.name || '', lowerQuery, true);
         if (scoreA !== scoreB) return scoreB - scoreA;
         return aName.localeCompare(bName);
       } else {
@@ -469,33 +501,36 @@ const SEARCH_SCOPE_STORAGE_KEY = 'skillhub_last_search_scope';
       }
     });
 
+    // 2. 技能（独立单技能 + 技能包内子技能统一归入「技能」）
     let matchedSkills: { skill: Skill, repo: GroupedRepo }[] = [];
-    if (filterType !== 'repo') {
+    if (filterType !== 'collection' && filterType !== 'prompt') {
       repos.forEach(repo => {
-        if (filterSource !== 'all' && repo.source_type !== filterSource) return;
-        // Exclude single-skill repos from showing up in sub-skills
-        if (repo.skills.length <= 1) return;
-        
+        if (repo.skills.length === 0) return;
+        const isCol = isCollectionRepo(repo);
+
         repo.skills.forEach(skill => {
-          const nameMatch = isWordMatch(skill.name, lowerQuery);
+          if (filterSource !== 'all' && skill.source_type !== filterSource) return;
+
+          const nameMatch = isWordMatch(skill.name, lowerQuery) || (!isCol && isWordMatch(repo.name, lowerQuery));
           if (filterNameOnly) {
             if (nameMatch) matchedSkills.push({ skill, repo });
           } else {
             const descMatch = isWordMatch(skill.description, lowerQuery);
-            if (nameMatch || descMatch) {
+            const tagMatch = parseTags(skill.tags).some(t => isWordMatch(t, lowerQuery));
+            if (nameMatch || descMatch || tagMatch) {
               matchedSkills.push({ skill, repo });
             }
           }
         });
       });
     }
-    
+
     matchedSkills.sort((a, b) => {
       const aName = (a.skill.name || '').toLowerCase();
       const bName = (b.skill.name || '').toLowerCase();
       if (sortOrder === 'best_match') {
-        const scoreA = getRelevanceScore(aName, lowerQuery, true);
-        const scoreB = getRelevanceScore(bName, lowerQuery, true);
+        const scoreA = getRelevanceScore(a.skill.name || '', lowerQuery, true);
+        const scoreB = getRelevanceScore(b.skill.name || '', lowerQuery, true);
         if (scoreA !== scoreB) return scoreB - scoreA;
         return aName.localeCompare(bName);
       } else {
@@ -506,23 +541,26 @@ const SEARCH_SCOPE_STORAGE_KEY = 'skillhub_last_search_scope';
       }
     });
 
+    // 3. 提示词
     let matchedPrompts: Prompt[] = [];
-    if (filterType !== 'repo' && filterType !== 'skill') {
+    if (filterType !== 'collection' && filterType !== 'skill') {
       matchedPrompts = prompts.filter(p => {
         if (p.deleted_at) return false;
         const nameMatch = isWordMatch(p.title, lowerQuery);
         if (filterNameOnly) return !!nameMatch;
-        return !!nameMatch || 
+        const tagMatch = parseTags(p.tags).some(t => isWordMatch(t, lowerQuery));
+        return !!nameMatch ||
                isWordMatch(p.content, lowerQuery) ||
-               isWordMatch(p.description, lowerQuery);
+               isWordMatch(p.description, lowerQuery) ||
+               tagMatch;
       });
 
       matchedPrompts.sort((a, b) => {
         const aName = (a.title || '').toLowerCase();
         const bName = (b.title || '').toLowerCase();
         if (sortOrder === 'best_match') {
-          const scoreA = getRelevanceScore(aName, lowerQuery, true);
-          const scoreB = getRelevanceScore(bName, lowerQuery, true);
+          const scoreA = getRelevanceScore(a.title || '', lowerQuery, true);
+          const scoreB = getRelevanceScore(b.title || '', lowerQuery, true);
           if (scoreA !== scoreB) return scoreB - scoreA;
           return aName.localeCompare(bName);
         } else {
@@ -534,7 +572,7 @@ const SEARCH_SCOPE_STORAGE_KEY = 'skillhub_last_search_scope';
       });
     }
 
-    return { matchedRepos, matchedSkills, matchedPrompts };
+    return { matchedCollections, matchedSkills, matchedPrompts };
   }, [query, repos, prompts, filterType, filterSource, filterNameOnly, sortOrder]);
 
   // 资源社区匹配计算
@@ -645,35 +683,70 @@ const SEARCH_SCOPE_STORAGE_KEY = 'skillhub_last_search_scope';
       }
 
       const currentToken = getGitHubToken();
-      const headers: Record<string, string> = {
-        'Accept': 'application/vnd.github.v3+json',
-      };
-      if (currentToken) {
-        headers['Authorization'] = `Bearer ${currentToken}`;
+      let status = 200;
+      let rateLimitReset: number | null = null;
+      let data: any = null;
+
+      // 优先通过后端多通道容灾请求 GitHub API（兼容系统代理、HTTP/1.1 及国内无 VPN 镜像兜底）
+      const isTauriEnv = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+      if (isTauriEnv) {
+        const res = await invoke<{
+          status: number;
+          body: string;
+          rate_limit_reset?: number | null;
+        }>('search_github_repositories', {
+          queryUrl: url,
+          token: currentToken || null,
+        });
+
+        // 若请求已被新的输入取消，直接丢弃过期结果
+        if (controller.signal.aborted) return;
+
+        status = res.status;
+        rateLimitReset = res.rate_limit_reset ?? null;
+        if (status >= 200 && status < 300) {
+          data = JSON.parse(res.body);
+        }
+      } else {
+        const headers: Record<string, string> = {
+          'Accept': 'application/vnd.github.v3+json',
+        };
+        if (currentToken) {
+          headers['Authorization'] = `Bearer ${currentToken}`;
+        }
+
+        const res = await fetch(url, {
+          signal: controller.signal,
+          headers,
+        });
+        status = res.status;
+        const resetHeader = res.headers.get('x-ratelimit-reset');
+        if (resetHeader) {
+          const parsed = parseInt(resetHeader, 10);
+          if (!Number.isNaN(parsed)) {
+            rateLimitReset = parsed;
+          }
+        }
+        if (res.ok) {
+          data = await res.json();
+        }
       }
 
-      const res = await fetch(url, {
-        signal: controller.signal,
-        headers,
-      });
-
-      if (!res.ok) {
-        if (res.status === 403 || res.status === 429) {
+      if (status < 200 || status >= 300) {
+        if (status === 403 || status === 429) {
           setIsRateLimited(true);
-          const resetHeader = res.headers.get('x-ratelimit-reset');
           let remainingSec = 60;
-          if (resetHeader) {
-            const resetTime = parseInt(resetHeader, 10) * 1000;
+          if (rateLimitReset) {
+            const resetTime = rateLimitReset * 1000;
             remainingSec = Math.max(1, Math.ceil((resetTime - Date.now()) / 1000));
           }
           setGithubRateLimitResetSec(remainingSec);
           throw new Error('RATE_LIMITED');
         }
-        throw new Error(`GitHub 接口响应异常 (HTTP ${res.status})`);
+        throw new Error(`GitHub 接口响应异常 (HTTP ${status})`);
       }
 
-      const data = await res.json();
-      const items: GitHubRepo[] = data.items || [];
+      const items: GitHubRepo[] = data?.items || [];
 
       if (append) {
         setGithubResults(prev => [...prev, ...items]);
@@ -740,9 +813,9 @@ const SEARCH_SCOPE_STORAGE_KEY = 'skillhub_last_search_scope';
   // 自动根据当前搜索域联动默认选中第一项
   useEffect(() => {
     if (searchScope === 'local') {
-      if (query.trim() && (matchedRepos.length > 0 || matchedSkills.length > 0 || matchedPrompts.length > 0)) {
-        if (matchedRepos.length > 0) {
-          setHoveredItem({ type: 'repo', repo: matchedRepos[0] });
+      if (query.trim() && (matchedCollections.length > 0 || matchedSkills.length > 0 || matchedPrompts.length > 0)) {
+        if (matchedCollections.length > 0) {
+          setHoveredItem({ type: 'repo', repo: matchedCollections[0] });
         } else if (matchedSkills.length > 0) {
           setHoveredItem({ type: 'skill', skill: matchedSkills[0].skill, repo: matchedSkills[0].repo });
         } else if (matchedPrompts.length > 0) {
@@ -764,7 +837,7 @@ const SEARCH_SCOPE_STORAGE_KEY = 'skillhub_last_search_scope';
         setHoveredItem(null);
       }
     }
-  }, [searchScope, query, matchedRepos, matchedSkills, matchedPrompts, matchedCommunityResources, githubResults]);
+  }, [searchScope, query, matchedCollections, matchedSkills, matchedPrompts, matchedCommunityResources, githubResults]);
 
   const handleOpenItem = (item: HoveredItem | null) => {
     if (!item) return;
@@ -935,7 +1008,7 @@ const SEARCH_SCOPE_STORAGE_KEY = 'skillhub_last_search_scope';
                     let allItems: HoveredItem[] = [];
                     if (searchScope === 'local') {
                       allItems = [
-                        ...matchedRepos.map(repo => ({ type: 'repo' as const, repo })),
+                        ...matchedCollections.map(repo => ({ type: 'repo' as const, repo })),
                         ...matchedSkills.map(s => ({ type: 'skill' as const, skill: s.skill, repo: s.repo })),
                         ...matchedPrompts.map(p => ({ type: 'prompt' as const, prompt: p }))
                       ];
@@ -1053,19 +1126,27 @@ const SEARCH_SCOPE_STORAGE_KEY = 'skillhub_last_search_scope';
                     仅搜索名称
                   </button>
                   <button 
-                    onClick={() => setFilterType(filterType === 'all' ? 'repo' : filterType === 'repo' ? 'skill' : filterType === 'skill' ? 'prompt' : 'all')}
+                    onClick={() => setFilterType(filterType === 'all' ? 'collection' : filterType === 'collection' ? 'skill' : filterType === 'skill' ? 'prompt' : 'all')}
                     className={`flex items-center px-2 py-1 text-xs font-medium rounded transition-all hover:bg-black/5 ${filterType !== 'all' ? 'bg-black/10 text-[var(--foreground)]' : 'text-[var(--color-muted)]'}`}
                   >
-                    <FolderGit2 className="w-3.5 h-3.5 mr-1.5 opacity-70" />
-                    {filterType === 'all' ? '全部类型' : filterType === 'repo' ? '仅技能' : filterType === 'skill' ? '仅子技能' : '仅提示词'}
+                    {filterType === 'collection' ? (
+                      <Package className="w-3.5 h-3.5 mr-1.5 opacity-70" />
+                    ) : filterType === 'skill' ? (
+                      <FileCode className="w-3.5 h-3.5 mr-1.5 opacity-70" />
+                    ) : filterType === 'prompt' ? (
+                      <MessageSquareQuote className="w-3.5 h-3.5 mr-1.5 opacity-70" />
+                    ) : (
+                      <FolderGit2 className="w-3.5 h-3.5 mr-1.5 opacity-70" />
+                    )}
+                    {filterType === 'all' ? '全部类型' : filterType === 'collection' ? '仅技能包' : filterType === 'skill' ? '仅技能' : '仅提示词'}
                   </button>
                   {filterType !== 'prompt' && (
                     <button 
-                      onClick={() => setFilterSource(filterSource === 'all' ? 'github' : filterSource === 'github' ? 'local' : 'all')}
+                      onClick={() => setFilterSource(filterSource === 'all' ? 'github' : filterSource === 'github' ? 'local' : filterSource === 'local' ? 'online' : 'all')}
                       className={`flex items-center px-2 py-1 text-xs font-medium rounded transition-all hover:bg-black/5 ${filterSource !== 'all' ? 'bg-black/10 text-[var(--foreground)]' : 'text-[var(--color-muted)]'}`}
                     >
                       <Globe className="w-3.5 h-3.5 mr-1.5 opacity-70" />
-                      {filterSource === 'all' ? '所有来源' : filterSource === 'github' ? '仅 Github' : '仅本地'}
+                      {filterSource === 'all' ? '所有来源' : filterSource === 'github' ? '仅 Github' : filterSource === 'local' ? '仅本地' : '仅线上'}
                     </button>
                   )}
                   
@@ -1112,31 +1193,31 @@ const SEARCH_SCOPE_STORAGE_KEY = 'skillhub_last_search_scope';
                   
                   <div className="flex-1"></div>
                   
-                  {(matchedRepos.length > 0 || matchedSkills.length > 0 || matchedPrompts.length > 0) && (
+                  {(matchedCollections.length > 0 || matchedSkills.length > 0 || matchedPrompts.length > 0) && (
                     <div className="flex items-center space-x-2 text-xs">
                       <span className="text-[var(--color-muted)] mr-1">
-                        搜索结果 ({(matchedRepos.length + matchedSkills.length + matchedPrompts.length) > 999 ? '999+' : (matchedRepos.length + matchedSkills.length + matchedPrompts.length)})
+                        搜索结果 ({(matchedCollections.length + matchedSkills.length + matchedPrompts.length) > 999 ? '999+' : (matchedCollections.length + matchedSkills.length + matchedPrompts.length)})
                       </span>
-                      {matchedRepos.length > 0 && (
+                      {matchedCollections.length > 0 && (
                         <button 
-                          onClick={() => document.getElementById('search-group-repos')?.scrollIntoView({ behavior: 'smooth' })}
-                          className="px-2 py-1 rounded bg-black/5 hover:bg-black/10 text-[var(--foreground)] transition-colors"
+                          onClick={() => document.getElementById('search-group-collections')?.scrollIntoView({ behavior: 'smooth' })}
+                          className="px-2 py-1 rounded bg-black/5 hover:bg-black/10 text-[var(--foreground)] transition-colors cursor-pointer"
                         >
-                          技能
+                          技能包
                         </button>
                       )}
                       {matchedSkills.length > 0 && (
                         <button 
                           onClick={() => document.getElementById('search-group-skills')?.scrollIntoView({ behavior: 'smooth' })}
-                          className="px-2 py-1 rounded bg-black/5 hover:bg-black/10 text-[var(--foreground)] transition-colors"
+                          className="px-2 py-1 rounded bg-black/5 hover:bg-black/10 text-[var(--foreground)] transition-colors cursor-pointer"
                         >
-                          子技能
+                          技能
                         </button>
                       )}
                       {matchedPrompts.length > 0 && (
                         <button 
                           onClick={() => document.getElementById('search-group-prompts')?.scrollIntoView({ behavior: 'smooth' })}
-                          className="px-2 py-1 rounded bg-black/5 hover:bg-black/10 text-[var(--foreground)] transition-colors"
+                          className="px-2 py-1 rounded bg-black/5 hover:bg-black/10 text-[var(--foreground)] transition-colors cursor-pointer"
                         >
                           提示词
                         </button>
@@ -1258,8 +1339,8 @@ const SEARCH_SCOPE_STORAGE_KEY = 'skillhub_last_search_scope';
               {/* 本地搜索域吸顶条 */}
               {searchScope === 'local' && stuckGroup && (
                 <div className="absolute top-0 left-0 right-0 z-20 bg-white/95 backdrop-blur-md px-4 py-2 text-[11px] font-semibold text-gray-500 uppercase tracking-wider border-b border-black/[0.05] shadow-[0_1px_2px_rgba(0,0,0,0.03)] pointer-events-none select-none animate-in fade-in duration-100">
-                  {stuckGroup === 'repos' && `技能 (${matchedRepos.length})`}
-                  {stuckGroup === 'skills' && `子技能 (${matchedSkills.length})`}
+                  {stuckGroup === 'collections' && `技能包 (${matchedCollections.length})`}
+                  {stuckGroup === 'skills' && `技能 (${matchedSkills.length})`}
                   {stuckGroup === 'prompts' && `提示词 (${matchedPrompts.length})`}
                 </div>
               )}
@@ -1270,21 +1351,21 @@ const SEARCH_SCOPE_STORAGE_KEY = 'skillhub_last_search_scope';
                   !query.trim() ? (
                     <div className="px-6 py-12 text-center text-gray-400 text-sm flex flex-col items-center justify-center h-full">
                       <Command className="w-12 h-12 mb-4 opacity-20" />
-                      <p>输入关键词搜索本地技能和提示词</p>
+                      <p>输入关键词搜索本地技能包、技能和提示词</p>
                     </div>
-                  ) : matchedRepos.length === 0 && matchedSkills.length === 0 && matchedPrompts.length === 0 ? (
+                  ) : matchedCollections.length === 0 && matchedSkills.length === 0 && matchedPrompts.length === 0 ? (
                     <div className="px-6 py-12 text-center text-gray-500 text-sm flex items-center justify-center h-full">
                       本地未找到匹配项 "{query}"
                     </div>
                   ) : (
                     <div className="space-y-3 pb-3">
-                      {matchedRepos.length > 0 && (
-                        <div id="search-group-repos">
-                          <h3 ref={reposHeaderRef} className="px-4 py-2 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
-                            技能 ({matchedRepos.length})
+                      {matchedCollections.length > 0 && (
+                        <div id="search-group-collections">
+                          <h3 ref={collectionsHeaderRef} className="px-4 py-2 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+                            技能包 ({matchedCollections.length})
                           </h3>
                           <div className="p-2 space-y-1">
-                            {matchedRepos.map(repo => {
+                            {matchedCollections.map(repo => {
                               const isHovered = hoveredItem?.type === 'repo' && hoveredItem.repo.id === repo.id;
                               return (
                                 <button
@@ -1303,23 +1384,28 @@ const SEARCH_SCOPE_STORAGE_KEY = 'skillhub_last_search_scope';
                                         : 'hover:bg-black/5 text-gray-800'
                                   }`}
                                 >
-                                  <div className="flex items-center space-x-3 truncate">
+                                  <div className="flex items-center space-x-3 truncate min-w-0">
                                     <div 
                                       className={`w-7 h-7 rounded-md flex items-center justify-center shrink-0 ${
                                         isHovered 
                                           ? 'bg-black/5 text-[var(--foreground)]' 
-                                          : repo.source_type === 'online'
-                                            ? 'bg-emerald-500/10 text-emerald-600'
-                                            : repo.source_type === 'github' 
-                                              ? 'bg-blue-50 text-blue-600' 
-                                              : 'bg-gray-100 text-gray-500'
+                                          : repo.source_type === 'github' 
+                                            ? 'bg-[#0066FF]/10 text-[#0066FF]' 
+                                            : 'bg-[#86868B]/10 text-[#86868B]'
                                       }`}
                                     >
-                                      <FileCode className="w-4 h-4 stroke-[2px]" />
+                                      <Package className="w-4 h-4 stroke-[2px]" />
                                     </div>
-                                    <div>
-                                      <div className="text-[13px] font-medium truncate">{repo.name}</div>
-                                      <div className="text-[11px] mt-0.5 flex items-center text-[var(--color-muted)] min-w-0">
+                                    <div className="min-w-0">
+                                      <div className="flex items-center gap-1.5 min-w-0">
+                                        <div className="text-[13px] font-medium truncate">{repo.name}</div>
+                                        {isRepoStarred(repo.id) && (
+                                          <Star className="w-3 h-3 text-amber-500 fill-amber-500 shrink-0" />
+                                        )}
+                                      </div>
+                                      <div className="text-[11px] mt-0.5 flex items-center text-[var(--color-muted)] min-w-0 gap-1.5">
+                                        <span className="shrink-0">{repo.skills.length} 个技能</span>
+                                        <span className="opacity-40 shrink-0">·</span>
                                         <span className="truncate min-w-0">{repo.path.replace(/[/\\\\][^/\\\\]+$/, '')}</span>
                                       </div>
                                     </div>
@@ -1340,11 +1426,12 @@ const SEARCH_SCOPE_STORAGE_KEY = 'skillhub_last_search_scope';
                       {matchedSkills.length > 0 && (
                         <div id="search-group-skills">
                           <h3 ref={skillsHeaderRef} className="px-4 py-2 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
-                            子技能 ({matchedSkills.length})
+                            技能 ({matchedSkills.length})
                           </h3>
                           <div className="p-2 space-y-1">
                             {matchedSkills.map(({ skill, repo }) => {
                               const isHovered = hoveredItem?.type === 'skill' && hoveredItem.skill.id === skill.id;
+                              const isSub = isCollectionRepo(repo);
                               return (
                                 <button
                                   id={`search-item-skill-${skill.id}`}
@@ -1362,14 +1449,57 @@ const SEARCH_SCOPE_STORAGE_KEY = 'skillhub_last_search_scope';
                                         : 'hover:bg-black/5 text-gray-800'
                                   }`}
                                 >
-                                  <div className="flex items-center space-x-3 truncate">
-                                    <div className="w-7 h-7 rounded-md bg-gray-100 text-gray-500 flex items-center justify-center shrink-0">
-                                      <HardDrive className="w-4 h-4" />
+                                  <div className="flex items-center space-x-3 truncate min-w-0">
+                                    <div
+                                      className={`w-7 h-7 rounded-md flex items-center justify-center shrink-0 ${
+                                        isHovered
+                                          ? 'bg-black/5 text-[var(--foreground)]'
+                                          : skill.source_type === 'online'
+                                            ? 'bg-emerald-500/10 text-emerald-600'
+                                            : skill.source_type === 'github'
+                                              ? 'bg-[#0066FF]/10 text-[#0066FF]'
+                                              : 'bg-[#86868B]/10 text-[#86868B]'
+                                      }`}
+                                    >
+                                      {skill.source_type === 'online' ? (
+                                        <Globe className="w-4 h-4 stroke-[2px]" />
+                                      ) : (
+                                        <FileCode className="w-4 h-4 stroke-[2px]" />
+                                      )}
                                     </div>
-                                    <div>
-                                      <div className="text-[13px] font-medium truncate">{skill.name}</div>
-                                      <div className="text-[11px] mt-0.5 flex items-center text-[var(--color-muted)] min-w-0">
-                                        <span className="truncate min-w-0">{repo.name}</span>
+                                    <div className="min-w-0">
+                                      <div className="text-[13px] font-medium truncate flex items-center gap-1.5">
+                                        <span className="truncate">{skill.name}</span>
+                                        {skill.is_favorite && <Star className="w-3 h-3 text-amber-500 fill-amber-500 shrink-0" />}
+                                      </div>
+                                      <div className="text-[11px] mt-0.5 flex items-center text-[var(--color-muted)] min-w-0 gap-1.5">
+                                        {isSub ? (
+                                          <>
+                                            <span className="shrink-0 text-[9px] font-medium bg-black/[0.05] text-[var(--color-muted)] px-1.5 py-[1px] rounded-sm leading-none">
+                                              子技能
+                                            </span>
+                                            <span className="truncate min-w-0">{repo.name}</span>
+                                          </>
+                                        ) : skill.source_type === 'online' ? (
+                                          <span className="shrink-0 text-emerald-600">线上技能</span>
+                                        ) : (
+                                          <>
+                                            <span className="shrink-0">
+                                              {skill.source_type === 'github' ? 'GitHub 技能' : '本地技能'}
+                                            </span>
+                                            {repo.author ? (
+                                              <>
+                                                <span className="opacity-40 shrink-0">·</span>
+                                                <span className="truncate min-w-0">@{repo.author}</span>
+                                              </>
+                                            ) : (
+                                              <>
+                                                <span className="opacity-40 shrink-0">·</span>
+                                                <span className="truncate min-w-0">{repo.path.replace(/[/\\\\][^/\\\\]+$/, '')}</span>
+                                              </>
+                                            )}
+                                          </>
+                                        )}
                                       </div>
                                     </div>
                                   </div>
@@ -1770,173 +1900,274 @@ const SEARCH_SCOPE_STORAGE_KEY = 'skillhub_last_search_scope';
                 {hoveredItem ? (
                   <div className="w-full max-w-[320px] mx-auto animate-in fade-in slide-in-from-right-4 duration-200">
                     
-                    {/* 1. 本地 Repo 预览 */}
-                    {hoveredItem.type === 'repo' && (
-                      <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm w-full flex flex-col group relative">
-                        <div className="flex items-center space-x-3 mb-4">
-                          <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                            hoveredItem.repo.source_type === 'online'
-                              ? 'bg-emerald-500/10 text-emerald-600'
-                              : hoveredItem.repo.source_type === 'github'
-                                ? 'bg-blue-50 text-blue-600'
-                                : 'bg-gray-100 text-gray-500'
-                          }`}>
-                            <FileCode className="w-5 h-5 stroke-[2px]" />
+                    {/* 1. 本地技能包预览 */}
+                    {hoveredItem.type === 'repo' && (() => {
+                      const repo = hoveredItem.repo;
+                      const repoTags = parseTags(getRepoTags(repo.id));
+                      const subSummary = repo.skills.length > 0
+                        ? `包含 ${repo.skills.length} 个技能：${repo.skills.slice(0, 4).map(s => s.name).join('、')}${repo.skills.length > 4 ? ' 等' : ''}`
+                        : '暂无描述信息';
+                      return (
+                        <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm w-full flex flex-col group relative">
+                          <div className="flex items-center space-x-3 mb-4">
+                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                              repo.source_type === 'github'
+                                ? 'bg-[#0066FF]/10 text-[#0066FF]'
+                                : 'bg-[#86868B]/10 text-[#86868B]'
+                            }`}>
+                              <Package className="w-5 h-5 stroke-[2px]" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <h3 className="font-semibold text-gray-800 text-base truncate">{repo.name}</h3>
+                                {isRepoStarred(repo.id) && (
+                                  <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500 shrink-0" />
+                                )}
+                              </div>
+                              <div className="flex items-center space-x-1.5 mt-1 flex-wrap">
+                                <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded flex items-center ${
+                                  repo.source_type === 'github' ? 'bg-blue-50 text-blue-600' : 'bg-gray-100 text-gray-600'
+                                }`}>
+                                  {repo.source_type === 'github' ? <Globe className="w-3 h-3 mr-1" /> : <FolderOpen className="w-3 h-3 mr-1" />}
+                                  {repo.source_type === 'github' ? 'Github' : '本地'}
+                                </span>
+                                <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-black/[0.04] text-gray-600">
+                                  技能包 · {repo.skills.length} 个技能
+                                </span>
+                              </div>
+                            </div>
                           </div>
-                          <div className="min-w-0 flex-1">
-                            <h3 className="font-semibold text-gray-800 text-base truncate">{hoveredItem.repo.name}</h3>
-                            <div className="flex items-center space-x-2 mt-1">
-                              <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded flex items-center ${
-                                hoveredItem.repo.source_type === 'online' ? 'bg-emerald-50 text-emerald-600' :
-                                hoveredItem.repo.source_type === 'github' ? 'bg-blue-50 text-blue-600' : 'bg-gray-100 text-gray-600'
-                              }`}>
-                                {hoveredItem.repo.source_type === 'online' ? <Globe className="w-3 h-3 mr-1" /> :
-                                 hoveredItem.repo.source_type === 'github' ? <Globe className="w-3 h-3 mr-1" /> : <FolderOpen className="w-3 h-3 mr-1" />}
-                                {hoveredItem.repo.source_type === 'online' ? '线上技能' :
-                                 hoveredItem.repo.source_type === 'github' ? 'Github' : '本地'}
+                          
+                          <div className="space-y-3 text-sm text-gray-600 flex-1">
+                            <div className="flex flex-col py-2 border-b border-gray-50">
+                              <span className="text-gray-400 text-[10px] uppercase tracking-wider mb-1">包含技能</span>
+                              <SmartTooltipText 
+                                text={subSummary} 
+                                className="text-[11px] leading-relaxed text-[var(--color-muted)] line-clamp-4 cursor-default"
+                              />
+                            </div>
+                            {repoTags.length > 0 && (
+                              <div className="py-2 border-b border-gray-50">
+                                <span className="text-gray-400 text-[10px] uppercase tracking-wider block mb-1.5">标签</span>
+                                <div className="flex flex-wrap gap-1">
+                                  {repoTags.map((t, idx) => (
+                                    <span key={idx} className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50/70 text-blue-600">
+                                      #{t}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            <div className="flex flex-col">
+                              <span className="text-gray-400 text-[10px] uppercase tracking-wider mb-1">路径</span>
+                              <span className="break-all bg-gray-50 p-2 rounded text-[11px] font-mono text-[var(--color-muted)] block cursor-default">
+                                {repo.path.replace(/[/\\\\][^/\\\\]+$/, '')}
                               </span>
                             </div>
                           </div>
-                        </div>
-                        
-                        <div className="space-y-3 text-sm text-gray-600 flex-1">
-                          <div className="flex flex-col py-2 border-b border-gray-50">
-                            <span className="text-gray-400 text-[10px] uppercase tracking-wider mb-1">描述</span>
-                            {hoveredItem.repo.skills[0]?.description ? (
-                              <SmartTooltipText 
-                                text={hoveredItem.repo.skills[0].description} 
-                                className="text-[11px] leading-relaxed text-[var(--color-muted)] line-clamp-4 cursor-default"
-                              />
-                            ) : (
-                              <span className="text-[11px] leading-relaxed text-[var(--color-muted)]">暂无描述信息</span>
-                            )}
-                          </div>
-                          <div className="flex flex-col">
-                            <span className="text-gray-400 text-[10px] uppercase tracking-wider mb-1">路径</span>
-                            <span className="break-all bg-gray-50 p-2 rounded text-[11px] font-mono text-[var(--color-muted)] block cursor-default">
-                              {hoveredItem.repo.path.replace(/[/\\\\][^/\\\\]+$/, '')}
-                            </span>
-                          </div>
-                        </div>
 
-                        <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between">
-                          <div className="flex items-center space-x-1.5">
-                            <Tooltip content="复制路径">
-                              <button onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(hoveredItem.repo.path); showToast('路径已复制'); }} className="p-1.5 text-gray-400 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors cursor-pointer">
-                                <Copy className="w-4 h-4" />
-                              </button>
-                            </Tooltip>
-                            <Tooltip content="刷新当前内容">
-                              <button onClick={(e) => { 
-                                e.stopPropagation(); 
-                                if (hoveredItem.repo.source_dir_id) {
-                                  invoke('rescan_directory', { path: hoveredItem.repo.source_dir_id })
-                                    .then(() => showToast('已下发刷新指令，稍后可重开搜索面板查看最新内容'))
-                                    .catch((err) => { console.error(err); showToast('刷新失败'); });
-                                } else {
-                                  showToast('无法刷新此目录');
-                                }
-                              }} className="p-1.5 text-gray-400 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors cursor-pointer">
-                                <RefreshCw className="w-4 h-4" />
-                              </button>
-                            </Tooltip>
-                            <Tooltip content="在文件管理器中打开">
-                              <button onClick={(e) => { e.stopPropagation(); invoke('open_local_folder', { path: hoveredItem.repo.path }).catch(console.error); }} className="p-1.5 text-gray-400 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors cursor-pointer">
-                                <FolderOpen className="w-4 h-4" />
-                              </button>
-                            </Tooltip>
-                            {hoveredItem.repo.source_type === 'github' && (
-                              <Tooltip content="在浏览器中打开 GitHub">
-                                <button onClick={(e) => { e.stopPropagation(); openUrl(`https://github.com/${hoveredItem.repo.name}`).catch(console.error); }} className="p-1.5 text-gray-400 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors cursor-pointer">
-                                  <GithubIcon className="w-4 h-4" />
+                          <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between">
+                            <div className="flex items-center space-x-1.5">
+                              <Tooltip content="复制路径">
+                                <button onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(repo.path); showToast('路径已复制'); }} className="p-1.5 text-gray-400 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors cursor-pointer">
+                                  <Copy className="w-4 h-4" />
                                 </button>
                               </Tooltip>
-                            )}
-                            <Tooltip content="删除">
-                              <button onClick={(e) => onDeleteRepo(e, hoveredItem.repo)} className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors cursor-pointer">
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </Tooltip>
+                              <Tooltip content="刷新当前内容">
+                                <button onClick={(e) => { 
+                                  e.stopPropagation(); 
+                                  const targetPath = repo.source_dir_id || repo.path;
+                                  if (targetPath) {
+                                    invoke('rescan_directory', { path: targetPath })
+                                      .then(() => showToast('已下发刷新指令，稍后可重开搜索面板查看最新内容'))
+                                      .catch((err) => { console.error(err); showToast('刷新失败'); });
+                                  } else {
+                                    showToast('无法刷新此目录');
+                                  }
+                                }} className="p-1.5 text-gray-400 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors cursor-pointer">
+                                  <RefreshCw className="w-4 h-4" />
+                                </button>
+                              </Tooltip>
+                              <Tooltip content="在文件管理器中打开">
+                                <button onClick={(e) => { e.stopPropagation(); invoke('open_local_folder', { path: repo.path }).catch(console.error); }} className="p-1.5 text-gray-400 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors cursor-pointer">
+                                  <FolderOpen className="w-4 h-4" />
+                                </button>
+                              </Tooltip>
+                              {repo.source_type === 'github' && (
+                                <Tooltip content="在浏览器中打开 GitHub">
+                                  <button onClick={(e) => { e.stopPropagation(); openUrl(`https://github.com/${repo.name}`).catch(console.error); }} className="p-1.5 text-gray-400 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors cursor-pointer">
+                                    <GithubIcon className="w-4 h-4" />
+                                  </button>
+                                </Tooltip>
+                              )}
+                              <Tooltip content="删除">
+                                <button onClick={(e) => onDeleteRepo(e, repo)} className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors cursor-pointer">
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </Tooltip>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenItem(hoveredItem)}
+                              className="px-2 py-1 bg-gray-50 hover:bg-gray-100 active:bg-gray-200 border border-gray-200 rounded text-[10px] text-gray-600 font-sans shadow-sm flex items-center transition-colors cursor-pointer"
+                            >
+                              ↵ Enter 打开
+                            </button>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => handleOpenItem(hoveredItem)}
-                            className="px-2 py-1 bg-gray-50 hover:bg-gray-100 active:bg-gray-200 border border-gray-200 rounded text-[10px] text-gray-600 font-sans shadow-sm flex items-center transition-colors cursor-pointer"
-                          >
-                            ↵ Enter 打开
-                          </button>
                         </div>
-                      </div>
-                    )}
+                      );
+                    })()}
 
-                    {/* 2. 本地 Skill 预览 */}
-                    {hoveredItem.type === 'skill' && (
-                      <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm w-full flex flex-col">
-                        <div className="flex items-center space-x-3 mb-4">
-                          <div className="w-10 h-10 rounded-xl bg-gray-100 text-gray-500 flex items-center justify-center shrink-0">
-                            <HardDrive className="w-5 h-5" />
+                    {/* 2. 本地 Skill 预览（独立单技能 & 包内子技能） */}
+                    {hoveredItem.type === 'skill' && (() => {
+                      const skill = hoveredItem.skill;
+                      const repo = hoveredItem.repo;
+                      const isSub = isCollectionRepo(repo);
+                      const isOnline = skill.source_type === 'online';
+                      const isGithub = skill.source_type === 'github';
+                      const onlineUrl = skill.online_url || skill.local_path;
+                      const skillTags = parseTags(skill.tags);
+                      return (
+                        <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm w-full flex flex-col">
+                          <div className="flex items-center space-x-3 mb-4">
+                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                              isOnline
+                                ? 'bg-emerald-500/10 text-emerald-600'
+                                : isGithub
+                                  ? 'bg-[#0066FF]/10 text-[#0066FF]'
+                                  : 'bg-[#86868B]/10 text-[#86868B]'
+                            }`}>
+                              {isOnline ? <Globe className="w-5 h-5 stroke-[2px]" /> : <FileCode className="w-5 h-5 stroke-[2px]" />}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <h3 className="font-semibold text-gray-800 text-base truncate flex items-center gap-1.5">
+                                <span className="truncate">{skill.name}</span>
+                                {skill.is_favorite && <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500 shrink-0" />}
+                              </h3>
+                              <div className="flex items-center space-x-1.5 mt-1">
+                                <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded flex items-center ${
+                                  isOnline
+                                    ? 'bg-emerald-50 text-emerald-600'
+                                    : isGithub
+                                      ? 'bg-blue-50 text-blue-600'
+                                      : 'bg-gray-100 text-gray-600'
+                                }`}>
+                                  {isOnline || isGithub ? <Globe className="w-3 h-3 mr-1" /> : <FolderOpen className="w-3 h-3 mr-1" />}
+                                  {isOnline ? '线上技能' : isGithub ? 'Github' : '本地技能'}
+                                </span>
+                                {isSub && (
+                                  <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-black/[0.04] text-gray-600">
+                                    子技能
+                                  </span>
+                                )}
+                              </div>
+                            </div>
                           </div>
-                          <div className="min-w-0 flex-1">
-                            <h3 className="font-semibold text-gray-800 text-base truncate">{hoveredItem.skill.name}</h3>
-                            <div className="flex items-center space-x-2 mt-1">
-                              <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded flex items-center ${hoveredItem.repo.source_type === 'github' ? 'bg-blue-50 text-blue-600' : 'bg-purple-50 text-purple-600'}`}>
-                                {hoveredItem.repo.source_type === 'github' ? <Globe className="w-3 h-3 mr-1" /> : <FolderOpen className="w-3 h-3 mr-1" />}
-                                {hoveredItem.repo.source_type === 'github' ? 'Github' : 'Local'}
+                          
+                          <div className="space-y-3 text-sm text-gray-600 flex-1">
+                            {isSub && (
+                              <div className="flex flex-col">
+                                <span className="text-gray-400 text-[10px] uppercase tracking-wider mb-1">所属技能包</span>
+                                <span className="font-medium text-[12px] flex items-center">
+                                  <Package className="w-3.5 h-3.5 mr-1.5 text-blue-500" />
+                                  {repo.name}
+                                </span>
+                              </div>
+                            )}
+                            <div className={`flex flex-col ${isSub ? 'py-2 border-t border-gray-50' : 'pb-2'}`}>
+                              <span className="text-gray-400 text-[10px] uppercase tracking-wider mb-1">描述</span>
+                              {skill.description ? (
+                                <SmartTooltipText 
+                                  text={skill.description} 
+                                  className="text-[11px] leading-relaxed text-[var(--color-muted)] line-clamp-4 cursor-default"
+                                />
+                              ) : (
+                                <span className="text-[11px] leading-relaxed text-[var(--color-muted)]">暂无描述信息</span>
+                              )}
+                            </div>
+                            {skillTags.length > 0 && (
+                              <div className="py-2 border-t border-gray-50">
+                                <span className="text-gray-400 text-[10px] uppercase tracking-wider block mb-1.5">标签</span>
+                                <div className="flex flex-wrap gap-1">
+                                  {skillTags.map((t, idx) => (
+                                    <span key={idx} className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50/70 text-blue-600">
+                                      #{t}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            <div className="flex flex-col py-2 border-t border-gray-50">
+                              <span className="text-gray-400 text-[10px] uppercase tracking-wider mb-1">
+                                {isOnline ? '线上地址' : '本地路径'}
+                              </span>
+                              <span className="break-all bg-gray-50 p-2 rounded text-[11px] font-mono text-[var(--color-muted)] block cursor-default">
+                                {isOnline ? onlineUrl : skill.local_path.replace(/[/\\\\][^/\\\\]+$/, '')}
                               </span>
                             </div>
                           </div>
-                        </div>
-                        
-                        <div className="space-y-3 text-sm text-gray-600 flex-1">
-                          <div className="flex flex-col">
-                            <span className="text-gray-400 text-[10px] uppercase tracking-wider mb-1">所属技能</span>
-                            <span className="font-medium text-[12px] flex items-center">
-                              <FolderGit2 className="w-3.5 h-3.5 mr-1.5 text-blue-500" />
-                              {hoveredItem.repo.name}
-                            </span>
-                          </div>
-                          <div className="flex flex-col py-2 border-t border-gray-50">
-                            <span className="text-gray-400 text-[10px] uppercase tracking-wider mb-1">描述</span>
-                            {hoveredItem.skill.description ? (
-                              <SmartTooltipText 
-                                text={hoveredItem.skill.description} 
-                                className="text-[11px] leading-relaxed text-[var(--color-muted)] line-clamp-4 cursor-default"
-                              />
-                            ) : (
-                              <span className="text-[11px] leading-relaxed text-[var(--color-muted)]">暂无描述信息</span>
-                            )}
-                          </div>
-                          <div className="flex flex-col py-2 border-t border-gray-50">
-                            <span className="text-gray-400 text-[10px] uppercase tracking-wider mb-1">本地路径</span>
-                            <span className="break-all bg-gray-50 p-2 rounded text-[11px] font-mono text-[var(--color-muted)] block cursor-default">
-                              {hoveredItem.skill.local_path.replace(/[/\\\\][^/\\\\]+$/, '')}
-                            </span>
-                          </div>
-                        </div>
 
-                        <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between">
-                          <div className="flex items-center space-x-1.5">
-                            <Tooltip content="复制路径">
-                              <button onClick={(e) => onCopyPath(e, hoveredItem.skill)} className="p-1.5 text-gray-400 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors cursor-pointer">
-                                <Copy className="w-4 h-4" />
-                              </button>
-                            </Tooltip>
-                            <Tooltip content="在文件管理器中打开">
-                              <button onClick={(e) => { e.stopPropagation(); invoke('reveal_in_finder', { path: hoveredItem.skill.local_path }).catch(console.error); }} className="p-1.5 text-gray-400 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors cursor-pointer">
-                                <FolderOpen className="w-4 h-4" />
-                              </button>
-                            </Tooltip>
+                          <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between">
+                            <div className="flex items-center space-x-1.5">
+                              {isOnline ? (
+                                <>
+                                  <Tooltip content="复制链接">
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        navigator.clipboard.writeText(onlineUrl);
+                                        showToast('链接已复制');
+                                      }}
+                                      className="p-1.5 text-gray-400 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
+                                    >
+                                      <Copy className="w-4 h-4" />
+                                    </button>
+                                  </Tooltip>
+                                  <Tooltip content="在浏览器打开">
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        openUrl(onlineUrl).catch(console.error);
+                                      }}
+                                      className="p-1.5 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-md transition-colors cursor-pointer"
+                                    >
+                                      <ExternalLink className="w-4 h-4" />
+                                    </button>
+                                  </Tooltip>
+                                </>
+                              ) : (
+                                <>
+                                  <Tooltip content="复制路径">
+                                    <button onClick={(e) => onCopyPath(e, skill)} className="p-1.5 text-gray-400 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors cursor-pointer">
+                                      <Copy className="w-4 h-4" />
+                                    </button>
+                                  </Tooltip>
+                                  <Tooltip content="在文件管理器中打开">
+                                    <button onClick={(e) => { e.stopPropagation(); invoke('reveal_in_finder', { path: skill.local_path }).catch(console.error); }} className="p-1.5 text-gray-400 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors cursor-pointer">
+                                      <FolderOpen className="w-4 h-4" />
+                                    </button>
+                                  </Tooltip>
+                                </>
+                              )}
+                              {!isSub && (
+                                <Tooltip content="删除">
+                                  <button onClick={(e) => onDeleteRepo(e, repo)} className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors cursor-pointer">
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </Tooltip>
+                              )}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenItem(hoveredItem)}
+                              className="px-2 py-1 bg-gray-50 hover:bg-gray-100 active:bg-gray-200 border border-gray-200 rounded text-[10px] text-gray-600 font-sans shadow-sm flex items-center transition-colors cursor-pointer"
+                            >
+                              ↵ Enter 打开
+                            </button>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => handleOpenItem(hoveredItem)}
-                            className="px-2 py-1 bg-gray-50 hover:bg-gray-100 active:bg-gray-200 border border-gray-200 rounded text-[10px] text-gray-600 font-sans shadow-sm flex items-center transition-colors cursor-pointer"
-                          >
-                            ↵ Enter 打开
-                          </button>
                         </div>
-                      </div>
-                    )}
+                      );
+                    })()}
 
                     {/* 3. 本地 Prompt 预览 */}
                     {hoveredItem.type === 'prompt' && (

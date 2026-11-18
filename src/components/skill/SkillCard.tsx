@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileCode, Star } from 'lucide-react';
+import { FileCode, Globe, Star } from 'lucide-react';
 import { Skill, SyncRecord, AgentConfig } from '../../types';
 import { Tooltip } from '../ui/Tooltip';
 
@@ -52,21 +52,29 @@ export const SkillCard: React.FC<SkillCardProps> = ({
       <div className="flex items-center w-full">
         {/* 图标 + 名称 */}
         <div className="flex items-center space-x-2.5 min-w-0 flex-1">
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-[var(--color-primary)]/5 text-[var(--color-primary)] relative">
-            <FileCode className="w-4 h-4" />
+          <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 relative ${
+            skill.source_type === 'online'
+              ? 'bg-emerald-500/10 text-emerald-600'
+              : skill.source_type === 'github'
+                ? 'bg-[#0066FF]/10 text-[#0066FF]'
+                : 'bg-[#86868B]/10 text-[#86868B]'
+          }`}>
+            {skill.source_type === 'online' ? <Globe className="w-4 h-4" /> : <FileCode className="w-4 h-4" />}
           </div>
-          <div className="min-w-0 flex-1 flex flex-col justify-center gap-0.5 pr-1">
+          <div className={`min-w-0 flex-1 flex flex-col justify-center gap-0.5 ${onFavoriteToggle && skill.is_favorite ? 'pr-7' : 'pr-1'}`}>
             <Tooltip content={skill.name}>
               <h3 className="font-semibold text-[13px] text-[var(--foreground)] mask-fade-x leading-tight cursor-default">{skill.name}</h3>
             </Tooltip>
             <div className="flex items-center gap-1.5 mt-0.5 min-w-0">
               {skill.source_type === 'online' ? (
-                <span className="shrink-0 whitespace-nowrap text-[9px] font-medium text-[var(--color-muted)] bg-black/[0.04] dark:bg-white/[0.06] px-1.5 py-[2px] rounded-sm tracking-wide leading-none">URL</span>
+                <span className="shrink-0 whitespace-nowrap text-[9px] font-medium text-emerald-600 bg-emerald-500/10 px-1.5 py-[2px] rounded-sm tracking-wide leading-none">线上技能</span>
               ) : isActualSubSkill ? (
                 <span className="shrink-0 whitespace-nowrap text-[9px] font-medium text-[var(--color-muted)] bg-black/[0.04] dark:bg-white/[0.06] px-1.5 py-[2px] rounded-sm tracking-wide leading-none">子技能</span>
-              ) : (
-                <span className="shrink-0 whitespace-nowrap text-[9px] font-medium text-[var(--color-muted)] bg-black/[0.04] dark:bg-white/[0.06] px-1.5 py-[2px] rounded-sm tracking-wide leading-none">单技能</span>
-              )}
+              ) : !parentRepoName ? (
+                <span className="text-[10px] text-[var(--color-muted)] shrink-0 leading-none">
+                  {skill.source_type === 'github' ? 'GitHub 技能' : '本地技能'}
+                </span>
+              ) : null}
               {parentRepoName && (
                 <Tooltip content={parentRepoName}>
                   <span className="text-[10px] text-[var(--color-muted)] min-w-0 flex-1 mask-fade-x leading-none cursor-default">{parentRepoName}</span>
@@ -77,22 +85,24 @@ export const SkillCard: React.FC<SkillCardProps> = ({
         </div>
       </div>
 
-      {/* 收藏按钮：绝对定位盖在右上角，鼠标移入或已收藏时呈现，不占据文本流空间 */}
+      {/* 星标按钮：绝对定位盖在右上角，鼠标移入或已星标时呈现，不占据文本流空间 */}
       {onFavoriteToggle && (
-        <Tooltip content={skill.is_favorite ? '取消收藏' : '收藏'}>
+        <Tooltip content={skill.is_favorite ? '取消星标' : '星标'}>
           <button
             type="button"
+            onMouseDown={(e) => e.stopPropagation()}
+            onDoubleClick={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
               onFavoriteToggle(e, skill);
             }}
-            className={`absolute top-2 right-2 p-1.5 rounded-lg transition-all z-10 ${
-              skill.is_favorite 
-                ? 'text-amber-500 bg-white/90 dark:bg-black/60 shadow-xs backdrop-blur-xs' 
-                : 'text-[var(--color-muted)] opacity-0 group-hover:opacity-100 bg-white/90 dark:bg-black/60 hover:text-amber-500 hover:bg-white shadow-xs backdrop-blur-xs'
+            className={`absolute top-1.5 right-1.5 w-8 h-8 flex items-center justify-center rounded-lg transition-[opacity,transform,background-color] duration-150 active:scale-90 z-10 cursor-pointer ${
+              skill.is_favorite
+                ? 'opacity-100 text-amber-500 bg-white/90 dark:bg-black/60 hover:bg-amber-50/90 dark:hover:bg-amber-950/40'
+                : 'opacity-0 group-hover:opacity-100 text-[var(--color-muted)] hover:text-amber-500 bg-white/95 dark:bg-black/60 hover:bg-amber-50/90 dark:hover:bg-amber-950/40 shadow-xs backdrop-blur-xs'
             }`}
           >
-            <Star className={`w-3.5 h-3.5 ${skill.is_favorite ? 'fill-current' : ''}`} />
+            <Star className={`w-4 h-4 ${skill.is_favorite ? 'fill-amber-500 text-amber-500' : ''}`} />
           </button>
         </Tooltip>
       )}

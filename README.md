@@ -5,8 +5,8 @@
 <div align="center">
   <img src="src-tauri/icons/icon.png" width="128" height="128" alt="SkillHub Logo" />
   <h1>SkillHub</h1>
-  <p><strong>你的跨平台必备 AI Skills 搜集与管理工具</strong></p>
-  <p>即插即用，一站式整理、同步与调用海量 AI 技能与 Prompt</p>
+  <p><strong>跨平台的 AI 技能与提示词桌面管理工具</strong></p>
+  <p>把分散在本地、GitHub 和书签里的 Skill、技能包与 Prompt 收纳到一起，方便查找、阅读和同步到常用 AI 工具。</p>
   <p>
     <img src="https://img.shields.io/github/v/release/VipBeCool/SkillHub?style=flat-square" alt="release" />
     <img src="https://img.shields.io/github/license/VipBeCool/SkillHub?style=flat-square" alt="license" />
@@ -16,145 +16,143 @@
 </div>
 
 <p align="center">
-  <a href="#它解决什么问题">为什么需要</a> ·
-  <a href="#看看长什么样">功能截图</a> ·
-  <a href="#核心特性清单">特性清单</a> ·
+  <a href="#为什么做这个">为什么做这个</a> ·
+  <a href="#界面与功能">界面与功能</a> ·
+  <a href="#主要功能">主要功能</a> ·
   <a href="#下载安装">下载安装</a> ·
   <a href="#本地开发">本地开发</a> ·
   <a href="#交流群">交流群</a> ·
-  <a href="#请我喝咖啡">支持项目</a>
+  <a href="#请我喝咖啡">请我喝咖啡</a>
 </p>
 
-## 它解决什么问题
+## 为什么做这个
 
-平时不管是做 PPT、写文案、分析表格数据，还是使用 Claude、ChatGPT、Cursor、Antigravity 等各类 AI 工具与智能体，大家往往会积攒大量好用的专业技能包（Skills）、工作流规则和高频 Prompt 模板。时间一长，容易遇到这些繁琐问题：
+平时用 Claude Code、Cursor、Antigravity、Codex 这类 AI 工具写代码、做文档或跑工作流，时间一长，手里往往会攒下不少 Skill 文件夹、整套技能包和常用的 Prompt 模板。管理起来通常会碰到几件烦心事：
 
-- **存放散乱**：有的存放在本地临时文件夹，有的收藏在 GitHub 仓库，还有的散落在备忘录或浏览器书签，想用时得四处翻找；
-- **更新脱节**：收藏的开源技能或模板更新了往往察觉不到，重新下载覆盖又十分繁琐；
-- **查阅费劲**：很多开源技能是纯英文长篇文档，既缺乏结构大纲快速跳转，阅读也有语言门槛；
-- **调用繁琐**：想让 AI 严格按照某套复杂规则干活，需要反复复制粘贴并组织执行提示词。
+- **放得很散**：有的躺在本地临时目录里，有的刚从 GitHub 仓库拉下来，还有的记在备忘录或浏览器书签里，真要用的时候得四处翻；
+- **更新不同步**：关注或克隆过的开源技能库上游更新了也不知道，手动一个个 `git pull` 很麻烦；
+- **长文档难读**：不少开源 Skill 是很长的英文 `SKILL.md`，在编辑器里直接看既没有大纲跳转，读英文也费劲；
+- **复用成本高**：想让不同的 Agent 共用同一批技能，总要手工复制目录或拼接提示词上下文。
 
-**SkillHub 就是为了解决这些琐事打造的“AI 技能拓展坞”**：把散落各处的技能包与提示词收录进一个清爽的桌面应用里，支持本地文件夹、GitHub 仓库和常用链接。你可以随时快速检索、一键同步更新、按空格键速览正文，并能直接把技能装进你常用的各类 AI 工具中。
+**SkillHub 就是把这些零散事情理顺的桌面工具**：支持统一收纳本地文件夹、GitHub 仓库和线上技能链接，提供快速搜索、空格预览、标签/星标整理、中英翻译，并可直接同步到常用的 AI Agent 目录里。
 
 ---
 
-## 看看长什么样
+## 界面与功能
 
-> 截图来自 macOS 运行界面，Windows 与 Linux 交互完全一致。
+> 以下截图均来自 macOS 端，Windows 与 Linux 端交互一致。
 
-### 1. 顶部菜单栏 / 系统托盘随身快捷助手 (New in v0.2.9)
+### 1. 菜单栏 / 系统托盘快捷面板
 
-不再需要频繁在前台打开主窗口。在 macOS 顶部菜单栏或 Windows 系统托盘中轻点一下，即可毫秒级弹出轻量快捷面板，支持快速模糊检索本地全部技能与提示词，一键复制 `@skill-name` 引用指令或提示词全文直接粘贴至 AI 对话框，失焦自动收起。
+写代码或聊天时不想切回主窗口，点一下 macOS 顶部菜单栏或 Windows 系统托盘图标就能唤出悬浮面板。支持按当前工作区快速检索技能包、技能与提示词，一键复制 `@skill-name` 引用或提示词正文，切换到其他窗口时自动收起。
 
-<img src="docs/screenshots/快捷访问面板.png" width="800" alt="系统托盘随身快捷助手" />
+<img src="docs/screenshots/快捷访问面板.png" width="800" alt="菜单栏与系统托盘快捷面板" />
 
-### 2. 全局搜索全面进化：直连 GitHub 在线检索开源技能 (New in v0.2.9)
+### 2. 全局搜索与 GitHub 在线检索
 
-按下 `Cmd/Ctrl + K` 唤出全局搜索，新增 **GitHub 在线检索** 模式。直接输入关键词实时探索 GitHub 全球开源社区的前沿 Skills 库，支持键盘方向键无缝浏览并一键克隆安装至本地。
+按下 `Cmd/Ctrl + K` 打开全局搜索，除了查找本地的技能包、技能与提示词，还可以切换到 **GitHub** 页签直接搜索开源仓库，选中后直接克隆到本地技能库。
 
-<img src="docs/screenshots/GitHub搜索技能.png" width="800" alt="全局搜索直连 GitHub 检索开源技能" />
+<img src="docs/screenshots/GitHub搜索技能.png" width="800" alt="全局搜索与 GitHub 在线检索" />
 
-同时支持在设置中配置个人 GitHub Token，配额直接暴涨至 **5,000 次/小时**，零权限申请安全可靠：
+GitHub 对未登录搜索有每分钟 10 次的限制；在设置里填入一个只读的个人 GitHub Token（无需额外敏感权限），即可使用 5,000 次/小时的请求额度。
 
-<img src="docs/screenshots/GitHub配置Token.png" width="800" alt="GitHub Token 配置与高配额" />
+<img src="docs/screenshots/GitHub配置Token.png" width="800" alt="GitHub Token 配置" />
 
-### 3. 多选项卡与技能分类总览
+### 3. 多标签工作区与分层管理
 
-顶部采用像浏览器一样的多标签页设计，你可以同时开着“所有技能”、“常用提示词”以及正在查阅的技能页。系统会自动识别单技能与多技能组合包（Collections），支持分类与平铺自由切换。
+顶部采用类似浏览器的多标签页，可以同时打开「所有技能」、某个「技能包」内部或「提示词」页面随时切换。主视图会自动区分包含多个子技能的**技能包**和独立**单技能**，支持分类视图与网格视图切换，也可以勾选展开技能包里的全部子技能。
 
-<img src="docs/screenshots/多选项卡首页.png" width="800" alt="多选项卡与技能总览" />
+<img src="docs/screenshots/多选项卡首页.png" width="800" alt="多标签工作区与技能总览" />
 
 ### 4. 空格键快速预览（QuickLook）
 
-不需要每次都专门点进详情页再退出来。在列表里选中任何技能，轻按一下**空格键**即可弹出轻量浮层速览 Markdown 正文，看完再按空格或 Esc 随手关闭。
+只是想确认一下某个技能干什么用，不必专门点进详情页再退出来。在列表里选中技能卡片，按一下**空格键**即可弹出浮层预览内容和 Markdown 文档，再按一次空格或 `Esc` 关闭。
 
 <img src="docs/screenshots/空格预览页.png" width="800" alt="空格键快速预览" />
 
-### 5. 提示词独立管理与排版/纯文本双视图 (Updated in v0.2.9)
+### 5. 提示词管理与双视图编辑
 
-拥有专属的提示词管理模块，支持按工作流分组、标签分类与收藏。针对复杂 Markdown 提示词，全新支持 **「排版渲染」与「纯文本」一键无损双视图切换**，原始断句与缩进完美保真，便于精细化调试。
+提示词模块独立管理日常常用的模板与指令，支持按工作流分组、自定义排序、标签筛选和常用星标。查看或修改格式较复杂的提示词时，可以在 **「排版视图」与「纯文本视图」** 之间切换，保留原始换行与缩进，改写参数更直观。
 
 <table>
   <tr>
     <td width="50%"><img src="docs/screenshots/提示词管理.png" alt="提示词分组管理" /></td>
-    <td width="50%"><img src="docs/screenshots/提示词双视图.png" alt="提示词双视图自由切换" /></td>
+    <td width="50%"><img src="docs/screenshots/提示词双视图.png" alt="提示词排版与纯文本切换" /></td>
   </tr>
 </table>
 
-### 6. 长篇大纲导航（TOC）与双轨自愈翻译
+### 6. 文档大纲导航与英文翻译
 
-针对规则繁多的长篇技能文档，右侧自动提取多级标题生成悬浮大纲目录，随滚动高亮并支持一键定位跳转。面对英文开源技能包，内置极速双轨自愈翻译，一键实现地道的中英文无障碍对照阅读。
+针对章节较多、规则较长的 Skill 文档，详情页右侧会自动提取标题层级生成大纲目录，随滚动高亮当前位置，点击即可跳到对应小节。阅读纯英文技能说明时，可以点击翻译切换为中文，并支持原文对照。
 
 <table>
   <tr>
     <td width="50%"><img src="docs/screenshots/技能详情导航.png" alt="文档大纲导航" /></td>
-    <td width="50%"><img src="docs/screenshots/翻译.png" alt="双轨自愈翻译" /></td>
+    <td width="50%"><img src="docs/screenshots/翻译.png" alt="英文技能翻译对照" /></td>
   </tr>
 </table>
 
-### 7. 一键同步安装至 AI Agent
+### 7. 一键同步到 AI Agent
 
-技能不仅是用来阅读的，更能一键分发到实际开发环境中。从卡片右键菜单或侧边栏，你可以一键将技能挂载同步到本地各主流 AI Agent（如 Antigravity、Claude Code、Cursor、Codex 等）的工作目录，卡片状态一目了然。
+支持将本地技能直接同步到常用 AI Agent 的工作目录（如 Antigravity、Claude Code、Cursor、Codex 等）。通过卡片右键菜单或右侧检查器勾选即可安装或取消同步，已同步的目标会在卡片上标明。
 
-<img src="docs/screenshots/安装技能到Agent.png" width="800" alt="一键安装技能到 AI Agent" />
+<img src="docs/screenshots/安装技能到Agent.png" width="800" alt="同步技能到 AI Agent" />
 
-### 8. 智能引用提示词生成
+### 8. 生成引用提示词
 
-让 AI 严格遵守某项技能执行往往需要完整的上下文。选中技能后，SkillHub 能自动为你生成一份带有完整目录结构、执行说明与仓库上下文的专属引用提示词，直接复制粘贴到对话框即可让 Agent 按照规则工作。
+想让 AI 严格按某套技能规则执行时，选中技能可以直接生成一段带目录结构和执行说明的引用提示词，复制粘贴进对话窗口就能直接用。
 
-<img src="docs/screenshots/智能引用提示词.png" width="800" alt="智能引用提示词生成" />
+<img src="docs/screenshots/智能引用提示词.png" width="800" alt="生成引用提示词" />
 
-### 9. 灵活导入与一键同步更新
+### 9. 多源导入与一键拉取更新
 
-支持挂载本地已有文件夹、克隆 GitHub 仓库以及收藏线上技能链接。你也可以直接把文件夹拖拽进应用窗口完成添加。所有 GitHub 技能支持一键批量检测与同步，省去逐个命令拉取的麻烦。
+支持关联本地已有文件夹、直接把文件夹拖入窗口导入、克隆 GitHub 仓库，以及收藏线上链接。来自 GitHub 的仓库支持一键检测与拉取上游更新。
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/screenshots/导入技能.png" alt="多源导入方式" /></td>
-    <td width="50%"><img src="docs/screenshots/拖动导入.png" alt="拖拽文件夹快速导入" /></td>
+    <td width="50%"><img src="docs/screenshots/导入技能.png" alt="多来源导入技能" /></td>
+    <td width="50%"><img src="docs/screenshots/拖动导入.png" alt="拖拽文件夹导入" /></td>
   </tr>
 </table>
 
-### 10. 多选批量操作与分类管理
+### 10. 标签、星标与批量操作
 
-支持像桌面系统一样用鼠标框选多个技能卡片，批量完成导出（ZIP/JSON）、批量更新或删除。每个技能库还可以自由设置 Emoji 图标与专属标签，整理更清爽。
+支持框选多个卡片批量更新、删除或导出（技能支持导出目录或 ZIP，提示词支持导出 Markdown / JSON / 纯文本）。  
+标签与星标采用**两层独立整理**设计：技能包与内部子技能可以各自加星标、打标签而不互相污染；同时内置专属**标签管理面板**，支持常用标签置顶、查看引用数量、重命名、合并以及清理未使用标签。
 
 <table>
   <tr>
     <td width="50%"><img src="docs/screenshots/多选操作.png" alt="多选批量操作" /></td>
-    <td width="50%"><img src="docs/screenshots/技能分类管理.png" alt="自定义分类与 Emoji 图标" /></td>
+    <td width="50%"><img src="docs/screenshots/技能分类管理.png" alt="图标与标签分类管理" /></td>
   </tr>
 </table>
 
-### 11. 数据安全与完整备份恢复
+### 11. 本地存储与备份迁移
 
-所有数据均保存在本地 SQLite 数据库中。在设置中支持一键将全部技能库索引、提示词与配置打包导出为 ZIP 文件；换电脑或迁移系统时直接导入恢复，导入前还会自动静默生成一份当前数据备份，保障数据万无一失。
+所有索引、提示词和偏好配置都存储在本地 SQLite 数据库里。在设置中可以将全部数据打包导出为 ZIP；换电脑或重装系统后一键导入即可恢复，导入前会自动为当前数据留一份本地安全备份。
 
-<img src="docs/screenshots/数据备份导入导出.png" width="800" alt="完整数据备份与恢复" />
+<img src="docs/screenshots/数据备份导入导出.png" width="800" alt="数据备份导出与导入恢复" />
 
 ---
 
-## 核心特性清单
+## 主要功能
 
-| 分类 | 功能点 | 实际体验与说明 |
+| 模块 | 功能 | 说明 |
 | :--- | :--- | :--- |
-| **随身助手** | 菜单栏 / 托盘快捷面板 `0.2.9` | 常驻轻量浮窗，毫秒级唤出模糊检索与一键复制指令，失焦自动收起 |
-| **开源直搜** | GitHub 在线检索与克隆 `0.2.9` | `Cmd/Ctrl + K` 实时检索全球 GitHub 开源技能生态，一键克隆安装到本地 |
-| **高额配额** | GitHub Token 配置 `0.2.9` | 支持配置只读 PAT，配额提升至 5,000 次/小时，附带一键申请指南 |
-| **提示词双视图**| 排版与纯文本无损切换 `0.2.9` | 详情页一键切换 Markdown 渲染与原始纯文本，完整还原断句缩进 |
-| **多源挂载** | 本地 / GitHub / 线上 | 同时挂载本地目录、GitHub 仓库与在线链接，自动扫描子技能并解析说明 |
-| **浏览查看** | 多选项卡工作区 | 浏览器式多标签切换，支持新标签页打开详情，多任务对比不混乱 |
-| **快速预览** | 空格键 QuickLook | 选中轻按空格键秒开弹窗速览 Markdown 文档，无需进出详情页 |
-| **后台任务** | 无感 Git 拉取 | GitHub 仓库克隆不阻塞界面，顶部卡片安静下载，可随时取消并清理脏数据 |
-| **文档阅读** | 浮动大纲导航（TOC） | 长文档自动提取标题层级，右侧大纲一键锚点跳转，阅读不迷失 |
-| **多语言** | 内置即时双语翻译 | 纯英文开源技能一键翻成中文，原文与译文随时切换对照 |
-| **Agent 协作** | 一键安装至 Agent | 直接将技能同步分发到 Antigravity、Cursor、Codex 等 AI 工具目录，卡片带有状态标记 |
-| **提示词支持** | 智能引用生成 | 自动生成包含技能文件结构、执行指令和仓库上下文的 cheatsheet 引用词 |
-| **Prompt 模块** | 独立分组与标签联想 | 提示词单独管理，支持按工作流建组、标签自动补全推荐、Markdown 自适应撑高编辑 |
-| **全局调度** | `Cmd/Ctrl + K` 秒搜 | 全局快捷键随时唤醒，多字段模糊检索，右侧即时预览 |
-| **批量操作** | 框选与拖拽导入 | 拖拽文件夹直接加入库，鼠标框选多个卡片批量更新、导出或删除 |
-| **数据保障** | 离线优先与完整备份 | 数据纯本地 SQLite 存储，支持整库一键打包导出 ZIP 与安全还原备份 |
-| **自动维护** | GitHub 一键更新 | 集中管理多个远端仓库，一键检测并同步最新上游更新 |
+| **托盘快捷面板** | 菜单栏 / 系统托盘唤出 | 不打开主窗口也能快速搜技能包、技能与提示词，一键复制引用或正文 |
+| **全局搜索** | `Cmd/Ctrl + K` 多域搜索 | 支持搜索本地库、资源社区精选与 GitHub 在线开源仓库 |
+| **GitHub Token** | 个人只读 Token 配置 | 填入后将 GitHub 搜索额度提升至 5,000 次/小时，可随时修改或清除 |
+| **多源导入** | 本地 / GitHub / 线上链接 | 支持关联本地目录、拖拽导入、克隆 GitHub 仓库及收藏在线地址 |
+| **标签体系** | 双层打标与标签管理面板 | 技能包、子技能与提示词独立打标；支持常用星标置顶、重命名合并与计数统计 |
+| **星标体系** | 双层独立星标 | 技能包、单技能、子技能和提示词可单独加星标，「星标」视图按层级汇总 |
+| **多标签页** | 浏览器式 Tab 工作区 | 可同时打开多个技能库、技能包详情或文档页，支持快捷键和前进后退 |
+| **快速预览** | 空格键 QuickLook | 选中卡片按空格即可预览说明与 Markdown 文档，无需跳转详情页 |
+| **详情阅读** | 目录大纲与中英翻译 | 自动生成右侧章节目录大纲，英文技能支持中文翻译与原文切换 |
+| **Agent 同步** | 分发到 AI 工具目录 | 一键同步/取消同步到 Antigravity、Claude Code、Cursor、Codex 等目录 |
+| **提示词管理** | 分组与双视图编辑 | 支持工作流分组、标签补全、排版/纯文本切换及多格式导出（MD/JSON/TXT） |
+| **引用生成** | 智能引用提示词 | 自动汇总技能目录与说明生成可直接粘贴使用的引用文本 |
+| **批量操作** | 框选与右键菜单 | 框选多个卡片进行批量星标、批量打标、更新、导出目录/ZIP 或删除 |
+| **数据备份** | 本地 SQLite 与 ZIP 备份 | 数据完全本地存放，支持全库打包导出并在还原前自动备份当前状态 |
 
 ---
 
@@ -164,11 +162,11 @@
 
 | 操作系统 | 安装包格式 |
 | :--- | :--- |
-| **macOS** (Intel & Apple Silicon) | `.dmg`（通用二进制架构） |
+| **macOS** (Intel & Apple Silicon) | `.dmg`（通用架构） |
 | **Windows** (64 位) | `.exe` 安装程序 / `.msi` |
 | **Linux** (64 位) | `.AppImage` / `.deb` |
 
-> 已安装的用户在启动时会自动检测新版本，应用内一键即可更新。
+> 应用支持自动检查新版本并应用内更新。
 
 ---
 
@@ -176,11 +174,11 @@
 
 | 分层 | 使用技术 |
 | :--- | :--- |
-| **用户界面** | React 19, TypeScript, Tailwind CSS v4, Vite |
-| **桌面底座** | Rust, Tauri v2, SQLite (rusqlite) |
-| **自动构建** | GitHub Actions + tauri-action |
+| **前端界面** | React 19, TypeScript, Tailwind CSS v4, Vite |
+| **桌面端与存储** | Rust, Tauri v2, SQLite (rusqlite) |
+| **构建与发布** | GitHub Actions + tauri-action |
 
-采用 Tauri 而非传统的 Electron，安装包体积小（仅约十几兆），内存占用通常不足 50MB，启动轻快无负担。
+基于 Tauri v2 构建，相比传统 Electron 应用安装包更小，平时常驻托盘与后台占用的内存也更低。
 
 ---
 
@@ -188,22 +186,22 @@
 
 ### 前置环境
 
-- [Node.js](https://nodejs.org/) v18 或更高版本
+- [Node.js](https://nodejs.org/) v18 及以上
 - [Rust](https://www.rust-lang.org/tools/install) 稳定版
-- macOS 系统需具备 Xcode Command Line Tools (`xcode-select --install`)
-- Windows 系统需安装 Visual Studio C++ 生成工具
+- macOS 需安装 Xcode Command Line Tools (`xcode-select --install`)
+- Windows 需安装 Visual Studio C++ Build Tools
 
 ### 启动步骤
 
 ```bash
-# 1. 克隆代码仓库
+# 1. 克隆仓库
 git clone https://github.com/VipBeCool/SkillHub.git
 cd SkillHub
 
 # 2. 安装前端依赖
 npm install
 
-# 3. 启动桌面端开发调试模式
+# 3. 启动开发调试
 npm run skillhub dev
 ```
 
@@ -213,13 +211,13 @@ npm run skillhub dev
 npm run skillhub build
 ```
 
-打包完成后的原生安装文件保存在 `src-tauri/target/release/bundle/` 目录中。
+打包产物位于 `src-tauri/target/release/bundle/` 目录。
 
 ---
 
 ## 交流群
 
-欢迎加入 QQ 交流群或关注官方微信公众号，参与日常讨论、提出功能建议与问题反馈：
+使用中遇到问题或者有功能建议，欢迎提 Issue，也可以加 QQ 群或关注公众号交流：
 
 <table>
   <tr>
@@ -236,14 +234,14 @@ npm run skillhub build
 
 ## 请我喝咖啡
 
-如果 SkillHub 帮你在日常使用 AI 时节省了时间、整理得更舒心，欢迎[请作者喝杯咖啡](./docs/DONATE.md)。大家的鼓励与真实反馈是把这个项目长期打磨下去的最大动力。
+如果 SkillHub 在日常工作里替你省下了一些时间，欢迎[请作者喝杯咖啡](./docs/DONATE.md)，感谢支持。
 
 ---
 
 ## 开源协议
 
-本项目采用 [GPL-3.0 协议](./LICENSE) 开源。你可以自由使用、研究和修改源码，但修改后的衍生版本也必须遵循相同协议保持开源。如需商业闭源使用，请提前联系作者授权。
+本项目基于 [GPL-3.0 协议](./LICENSE) 开源。你可以自由使用、研究和修改代码，衍生修改版本也需遵循相同协议保持开源。如有商业闭源使用需求，请提前联系作者授权。
 
 ---
 
-Made with passion by [VipBeCool](https://github.com/VipBeCool)
+By [VipBeCool](https://github.com/VipBeCool)

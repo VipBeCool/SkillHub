@@ -85,13 +85,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: 发布 Release
+      - name: 为国内网络优化 latest.json 下载链路并发布 Release
         uses: actions/github-script@v9
         env:
           release_id: ${{ needs.create-release.outputs.release_id }}
         with:
           script: |
             const fs = require('fs');
+            const releaseId = Number(process.env.release_id);
+
             let releaseNotes = '';
             try {
               const changelog = fs.readFileSync('CHANGELOG.md', 'utf8');
@@ -107,14 +109,63 @@ jobs:
               console.log('读取 CHANGELOG.md 失败或无匹配版本日志', err);
             }
 
+            // 自动改写 latest.json 中的安装包下载链接为国内高速镜像，并注入版本更新日志到 notes 字段
+            try {
+              const { data: assets } = await github.rest.repos.listReleaseAssets({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                release_id: releaseId,
+                per_page: 50
+              });
+              const latestAsset = assets.find(a => a.name === 'latest.json');
+              if (latestAsset) {
+                const dl = await github.rest.repos.getReleaseAsset({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  asset_id: latestAsset.id,
+                  headers: { accept: 'application/octet-stream' }
+                });
+                const rawJson = Buffer.from(dl.data).toString('utf8');
+                const parsed = JSON.parse(rawJson);
+                if (parsed.platforms) {
+                  for (const key of Object.keys(parsed.platforms)) {
+                    const entry = parsed.platforms[key];
+                    if (entry && typeof entry.url === 'string' && entry.url.startsWith('https://github.com/')) {
+                      entry.url = `https://gh-proxy.com/${entry.url}`;
+                    }
+                  }
+                }
+                if (releaseNotes) {
+                  parsed.notes = releaseNotes;
+                } else if (typeof parsed.notes === 'string' && parsed.notes.includes('安装包正在构建中')) {
+                  parsed.notes = '';
+                }
+                const updatedJson = JSON.stringify(parsed, null, 2);
+                await github.rest.repos.deleteReleaseAsset({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  asset_id: latestAsset.id
+                });
+                await github.rest.repos.uploadReleaseAsset({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  release_id: releaseId,
+                  name: 'latest.json',
+                  data: updatedJson
+                });
+              }
+            } catch (err) {
+              console.log('重写 latest.json 镜像链接时出错，保留原文件:', err);
+            }
+
             const body = releaseNotes 
               ? `${releaseNotes}\n\n---\n\n## 下载安装\n\n请根据你的操作系统选择对应的安装包：\n\n| 平台 | 安装包 |\n|------|--------|\n| macOS (Intel + Apple Silicon) | \`.dmg\` |\n| Windows (x64) | \`.exe\` 或 \`.msi\` |\n| Linux (x64) | \`.AppImage\` 或 \`.deb\` |\n\n> 已安装旧版本的用户会在应用内收到更新提示。`
               : `## 下载安装\n\n请根据你的操作系统选择对应的安装包：\n\n| 平台 | 安装包 |\n|------|--------|\n| macOS (Intel + Apple Silicon) | \`.dmg\` |\n| Windows (x64) | \`.exe\` 或 \`.msi\` |\n| Linux (x64) | \`.AppImage\` 或 \`.deb\` |\n\n> 已安装旧版本的用户会在应用内收到更新提示。`;
 
-            github.rest.repos.updateRelease({
+            await github.rest.repos.updateRelease({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              release_id: process.env.release_id,
+              release_id: releaseId,
               draft: false,
               body: body
-            })
+            });

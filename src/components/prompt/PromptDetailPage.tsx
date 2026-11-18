@@ -7,6 +7,7 @@ import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
 import { showToast } from '../ui/Toast';
 import { Prompt, PromptGroup } from "../../types";
+import { computeTagStats, parseTags, serializeTags, recordRecentTag } from "../../utils/tagStore";
 
 interface PromptDetailPageProps {
   promptId?: string; // 如果为空，表示新建
@@ -132,23 +133,14 @@ export function PromptDetailPage({ promptId, isEditingInit = false, onSaveSucces
     }
   }, [headings, handleScroll]);
 
-  // 加载全库已有标签列表
+  // 加载全库已有标签列表（接入统一 tagStore）
   const fetchAllTags = useCallback(() => {
     invoke<Prompt[]>("get_prompts", { groupId: null, search: null })
       .then((prompts) => {
-        const map = new Map<string, number>();
-        prompts.forEach((p) => {
-          if (p.tags) {
-            p.tags.split(/[,，]/).forEach((t) => {
-              const tr = t.trim();
-              if (tr) map.set(tr, (map.get(tr) || 0) + 1);
-            });
-          }
-        });
-        const sorted = Array.from(map.entries())
-          .map(([name, count]) => ({ name, count }))
-          .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
-        setAllTags(sorted);
+        const stats = computeTagStats('prompts', prompts);
+        const starred = stats.filter(s => s.isStarred);
+        const others = stats.filter(s => !s.isStarred);
+        setAllTags([...starred, ...others].map(s => ({ name: s.name, count: s.count })));
       })
       .catch(console.error);
   }, []);
@@ -162,12 +154,35 @@ export function PromptDetailPage({ promptId, isEditingInit = false, onSaveSucces
     fetchAllTags();
   }, [fetchAllTags]);
 
-  // 监听全库标签变动
+  // 监听全库标签变动与标签元数据变动
   useEffect(() => {
-    const handler = () => fetchAllTags();
+    const handler = () => {
+      fetchAllTags();
+      if (promptId && !isEditing) {
+        invoke<Prompt[]>("get_prompts", { groupId: null, search: null })
+          .then((all) => {
+            const found = all.find(p => p.id === promptId);
+            if (found) {
+              setPrompt(prev => prev ? { ...prev, tags: found.tags } : found);
+              setTags(found.tags || "");
+            }
+          })
+          .catch(console.error);
+      }
+    };
+    const metaHandler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (!detail || detail.module === 'prompts') {
+        fetchAllTags();
+      }
+    };
     window.addEventListener('skillhub:prompt-tags-changed', handler);
-    return () => window.removeEventListener('skillhub:prompt-tags-changed', handler);
-  }, [fetchAllTags]);
+    window.addEventListener('skillhub:tag-meta-changed', metaHandler);
+    return () => {
+      window.removeEventListener('skillhub:prompt-tags-changed', handler);
+      window.removeEventListener('skillhub:tag-meta-changed', metaHandler);
+    };
+  }, [fetchAllTags, promptId, isEditing]);
 
   // 监听全库分组变动
   useEffect(() => {
@@ -253,7 +268,7 @@ export function PromptDetailPage({ promptId, isEditingInit = false, onSaveSucces
     fetchPrompt();
   }, [promptId]);
 
-  const tagList = tags.split(/[,，]/).map(t => t.trim()).filter(Boolean);
+  const tagList = parseTags(tags);
   
   // 标签候选推荐过滤
   const filteredSuggestions = useMemo(() => {
@@ -266,17 +281,18 @@ export function PromptDetailPage({ promptId, isEditingInit = false, onSaveSucces
   }, [allTags, tagList, tagInput]);
 
   const addTag = (newTag: string) => {
-    const trimmed = newTag.trim();
+    const trimmed = newTag.trim().replace(/[,，]/g, '');
     if (!trimmed) return;
     if (!tagList.includes(trimmed)) {
-      setTags([...tagList, trimmed].join(","));
+      setTags(serializeTags([...tagList, trimmed]));
+      recordRecentTag('prompts', trimmed);
     }
     setTagInput("");
     setShowTagSuggestions(false);
   };
 
   const removeTag = (tagToRemove: string) => {
-    setTags(tagList.filter(t => t !== tagToRemove).join(","));
+    setTags(serializeTags(tagList.filter(t => t !== tagToRemove)));
   };
 
   const handleCopy = async () => {
@@ -475,19 +491,42 @@ export function PromptDetailPage({ promptId, isEditingInit = false, onSaveSucces
               {title || prompt?.title || (isEditing ? (promptId ? "编辑提示词" : "新建提示词") : "提示词详情")}
             </h2>
             {prompt && (
-              <button
-                onClick={async () => {
-                  try {
-                    await invoke("toggle_prompt_favorite", { id: prompt.id });
-                    setPrompt({ ...prompt, is_favorite: !prompt.is_favorite });
-                  } catch (e) {
-                    showToast(`操作失败: ${e}`, "error");
-                  }
-                }}
-                className={`p-0.5 rounded-md transition-colors ${prompt.is_favorite ? 'text-yellow-500' : 'text-[var(--color-muted)] hover:text-yellow-500 hover:bg-yellow-50'}`}
-              >
-                <Star className={`w-3.5 h-3.5 ${prompt.is_favorite ? 'fill-current' : ''}`} />
-              </button>
+              <Tooltip content={prompt.is_favorite ? "取消星标" : "星标"}>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const prevVal = prompt.is_favorite;
+                    const nextVal = !prevVal;
+                    // 立即乐观更新详情页与提示词列表星标状态
+                    setPrompt(prev => prev ? { ...prev, is_favorite: nextVal } : prev);
+                    window.dispatchEvent(new CustomEvent('skillhub:prompt-favorite-changed', {
+                      detail: { id: prompt.id, isFavorite: nextVal },
+                    }));
+                    try {
+                      const actualVal = await invoke<boolean>("toggle_prompt_favorite", { id: prompt.id });
+                      if (actualVal !== nextVal) {
+                        setPrompt(prev => prev ? { ...prev, is_favorite: actualVal } : prev);
+                        window.dispatchEvent(new CustomEvent('skillhub:prompt-favorite-changed', {
+                          detail: { id: prompt.id, isFavorite: actualVal },
+                        }));
+                      }
+                    } catch (e) {
+                      setPrompt(prev => prev ? { ...prev, is_favorite: prevVal } : prev);
+                      window.dispatchEvent(new CustomEvent('skillhub:prompt-favorite-changed', {
+                        detail: { id: prompt.id, isFavorite: prevVal },
+                      }));
+                      showToast(`操作失败: ${e}`, "error");
+                    }
+                  }}
+                  className={`w-7 h-7 flex items-center justify-center rounded-lg shrink-0 transition-[transform,background-color] duration-150 active:scale-90 cursor-pointer ${
+                    prompt.is_favorite
+                      ? 'text-amber-500 hover:bg-amber-50'
+                      : 'text-[var(--color-muted)] hover:text-amber-500 hover:bg-amber-50'
+                  }`}
+                >
+                  <Star className={`w-4 h-4 ${prompt.is_favorite ? 'fill-amber-500 text-amber-500' : ''}`} />
+                </button>
+              </Tooltip>
             )}
           </div>
         </div>

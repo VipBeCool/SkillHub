@@ -359,7 +359,7 @@ export function AddRepositoryDialog({
                     {isLocalDuplicate && (
                       <div className="flex items-center space-x-2 p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-[12px] animate-in fade-in duration-200">
                         <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-                        <span>当前技能库中已存在同名技能组合包「{localDirName}」，已阻止重复导入</span>
+                        <span>当前技能库中已存在同名技能包「{localDirName}」，已阻止重复导入</span>
                       </div>
                     )}
                   </div>

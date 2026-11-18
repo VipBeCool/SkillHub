@@ -117,14 +117,26 @@ pub async fn pull_single_repo(path: String) -> Result<String, String> {
 
 #[tauri::command]
 pub fn get_git_remote_url(path: String) -> Result<String, String> {
-    let output = std::process::Command::new("git")
-        .current_dir(&path)
-        .args(["config", "--get", "remote.origin.url"])
-        .output()
-        .map_err(|e| e.to_string())?;
-        
-    if output.status.success() {
-        let url = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    // 优先直接解析 .git/config，无需启动子进程且兼容 ZIP 降级下载的仓库
+    let raw_url = if let Some(u) = crate::git_engine::read_remote_url_from_git_config(Path::new(&path)) {
+        Some(u)
+    } else {
+        let output = std::process::Command::new("git")
+            .current_dir(&path)
+            .args(["config", "--get", "remote.origin.url"])
+            .output()
+            .ok();
+        output.and_then(|o| {
+            if o.status.success() {
+                let s = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                if !s.is_empty() { Some(s) } else { None }
+            } else {
+                None
+            }
+        })
+    };
+
+    if let Some(url) = raw_url {
         // 如果是 SSH 格式的 URL (git@github.com:user/repo.git)，转成 HTTPS 格式以便浏览器打开
         if url.starts_with("git@") {
             let https_url = url.replace(":", "/").replace("git@", "https://");
@@ -200,7 +212,23 @@ pub fn get_skills(state: State<'_, AppState>) -> Result<Vec<Skill>, String> {
 #[tauri::command]
 pub fn get_source_directories(state: State<'_, AppState>) -> Result<Vec<SourceDirectory>, String> {
     let db = state.db.lock().unwrap();
-    crate::db::get_source_directories(&db)
+    let dirs = crate::db::get_source_directories(&db)?;
+
+    // Windows 端存量资源库图标自愈：若目录存在但尚未生成 .skillhub_icon.ico 或 desktop.ini，自动补刷
+    #[cfg(target_os = "windows")]
+    {
+        for dir in &dirs {
+            let normalized = normalize_folder_path(&dir.path).replace('/', "\\");
+            let p = Path::new(&normalized);
+            if p.exists() && p.is_dir() {
+                if !p.join(".skillhub_icon.ico").exists() || !p.join("desktop.ini").exists() {
+                    set_folder_icon(&normalized);
+                }
+            }
+        }
+    }
+
+    Ok(dirs)
 }
 
 use crate::models::GroupedRepo;
@@ -545,7 +573,7 @@ pub async fn import_local_skills_to_workspace(
             
             // 如果已存在同名目录，直接拦截报错，不加 _1
             if final_target_dir.exists() {
-                return Err(format!("当前技能库中已存在同名技能/组合包「{}」，无需重复导入", dir_name.to_string_lossy()));
+                return Err(format!("当前技能库中已存在同名技能/技能包「{}」，无需重复导入", dir_name.to_string_lossy()));
             }
 
             let src_clone = src_path.clone();
@@ -583,7 +611,7 @@ pub async fn import_local_skills_to_workspace(
         ).unwrap_or(false);
         if existing {
             if Path::new(&final_path).exists() {
-                return Err("该技能/组合包已在当前技能库中，无需重复导入".to_string());
+                return Err("该技能/技能包已在当前技能库中，无需重复导入".to_string());
             } else {
                 let _ = db.execute(
                     "DELETE FROM repositories WHERE source_dir_id = ?1 AND local_path = ?2",
@@ -813,16 +841,30 @@ pub async fn pull_repository(state: State<'_, AppState>, path: String) -> Result
 #[tauri::command]
 pub async fn rescan_directory(state: State<'_, AppState>, path: String) -> Result<(), String> {
     let mut db = state.db.lock().unwrap();
-    
-    let (source_dir_id, source_type): (String, String) = db.query_row(
-        "SELECT id, source_type FROM source_directories WHERE path = ?1",
+
+    // 优先按仓库根目录 path 或 id 精确匹配；若传入子仓库路径，则回退匹配所属的最深层根目录
+    let matched_dir: Option<(String, String, String)> = db.query_row(
+        "SELECT id, path, source_type FROM source_directories WHERE path = ?1 OR id = ?1",
         rusqlite::params![path],
-        |row| Ok((row.get(0)?, row.get(1)?)),
-    ).map_err(|e| e.to_string())?;
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+    ).ok();
+
+    let (source_dir_id, resolved_path, source_type) = match matched_dir {
+        Some(row) => row,
+        None => {
+            let dirs = crate::db::get_source_directories(&db)?;
+            let norm_input = Path::new(&path);
+            dirs.into_iter()
+                .filter(|d| norm_input.starts_with(Path::new(&d.path)))
+                .max_by_key(|d| d.path.len())
+                .map(|d| (d.id, d.path, d.source_type))
+                .ok_or_else(|| format!("未找到对应的技能库目录: {}", path))?
+        }
+    };
 
     // Perform database synchronization
-    sync_skills_to_db(&mut db, Path::new(&path), &source_dir_id, &source_type)?;
-    
+    sync_skills_to_db(&mut db, Path::new(&resolved_path), &source_dir_id, &source_type)?;
+
     Ok(())
 }
 
@@ -2223,7 +2265,7 @@ pub async fn validate_and_copy_dropped_folders(
         
         // 如果目标技能库中已经存在同名文件夹，直接拦截提示已存在，不自动加 _1
         if final_target_dir.exists() {
-            failed_paths.push(format!("技能组合包/技能「{}」已存在于当前技能库中，无需重复导入", dir_name.to_string_lossy()));
+            failed_paths.push(format!("技能包/技能「{}」已存在于当前技能库中，无需重复导入", dir_name.to_string_lossy()));
             continue;
         }
         
@@ -2393,10 +2435,38 @@ end run
 }
 
 #[cfg(target_os = "windows")]
-fn notify_windows_shell(folder_path: &std::path::Path) {
+fn to_win_wide_path(path: &std::path::Path) -> Vec<u16> {
+    use std::ffi::OsStr;
     use std::os::windows::ffi::OsStrExt;
-    let mut wide: Vec<u16> = folder_path.as_os_str().encode_wide().collect();
+    let normalized = path.to_string_lossy().replace('/', "\\");
+    let mut wide: Vec<u16> = OsStr::new(&normalized).encode_wide().collect();
     wide.push(0);
+    wide
+}
+
+#[cfg(target_os = "windows")]
+#[link(name = "kernel32")]
+extern "system" {
+    fn SetFileAttributesW(lpFileName: *const u16, dwFileAttributes: u32) -> i32;
+    fn GetFileAttributesW(lpFileName: *const u16) -> u32;
+}
+
+#[cfg(target_os = "windows")]
+const FILE_ATTRIBUTE_READONLY: u32 = 0x0000_0001;
+#[cfg(target_os = "windows")]
+const FILE_ATTRIBUTE_HIDDEN: u32 = 0x0000_0002;
+#[cfg(target_os = "windows")]
+const FILE_ATTRIBUTE_SYSTEM: u32 = 0x0000_0004;
+#[cfg(target_os = "windows")]
+const FILE_ATTRIBUTE_ARCHIVE: u32 = 0x0000_0020;
+#[cfg(target_os = "windows")]
+const FILE_ATTRIBUTE_NORMAL: u32 = 0x0000_0080;
+#[cfg(target_os = "windows")]
+const INVALID_FILE_ATTRIBUTES: u32 = 0xFFFF_FFFF;
+
+#[cfg(target_os = "windows")]
+fn notify_windows_shell(folder_path: &std::path::Path) {
+    let wide = to_win_wide_path(folder_path);
 
     unsafe {
         #[link(name = "shell32")]
@@ -2409,8 +2479,7 @@ fn notify_windows_shell(folder_path: &std::path::Path) {
         SHChangeNotify(0x0000_2000, 0x0005, wide.as_ptr(), std::ptr::null());
         SHChangeNotify(0x0000_0800, 0x0005, wide.as_ptr(), std::ptr::null());
         if let Some(parent) = folder_path.parent() {
-            let mut parent_wide: Vec<u16> = parent.as_os_str().encode_wide().collect();
-            parent_wide.push(0);
+            let parent_wide = to_win_wide_path(parent);
             SHChangeNotify(0x0000_1000, 0x0005, parent_wide.as_ptr(), std::ptr::null()); // SHCNE_UPDATEDIR
         }
     }
@@ -2419,10 +2488,10 @@ fn notify_windows_shell(folder_path: &std::path::Path) {
 #[cfg(target_os = "windows")]
 fn set_windows_folder_icon(folder_path: &str) {
     use std::fs;
-    use std::path::Path;
-    use std::process::Command;
+    use std::path::PathBuf;
 
-    let folder_path = Path::new(folder_path);
+    let normalized_folder = folder_path.replace('/', "\\");
+    let folder_path = PathBuf::from(&normalized_folder);
     if !folder_path.exists() {
         return;
     }
@@ -2431,44 +2500,67 @@ fn set_windows_folder_icon(folder_path: &str) {
     let icon_path = folder_path.join(".skillhub_icon.ico");
     let ini_path = folder_path.join("desktop.ini");
 
-    // 若此前已有只读/隐藏/系统属性，先临时移除以便写操作
-    let _ = Command::new("attrib").args(&["-r", "-h", "-s", ini_path.to_str().unwrap_or("")]).output();
-    let _ = Command::new("attrib").args(&["-r", "-h", "-s", icon_path.to_str().unwrap_or("")]).output();
+    let icon_wide = to_win_wide_path(&icon_path);
+    let ini_wide = to_win_wide_path(&ini_path);
+    let folder_wide = to_win_wide_path(&folder_path);
+
+    // 若此前已有只读/隐藏/系统属性，直接通过 Win32 API 重置为普通属性以便覆盖写入
+    unsafe {
+        SetFileAttributesW(ini_wide.as_ptr(), FILE_ATTRIBUTE_NORMAL);
+        SetFileAttributesW(icon_wide.as_ptr(), FILE_ATTRIBUTE_NORMAL);
+    }
 
     if fs::write(&icon_path, icon_data).is_ok() {
-        let ini_content = "[.ShellClassInfo]\r\nIconResource=.skillhub_icon.ico,0\r\n[ViewState]\r\nMode=\r\nVid=\r\nFolderType=Generic\r\n";
+        let ini_content = "[.ShellClassInfo]\r\nIconResource=.skillhub_icon.ico,0\r\nIconFile=.skillhub_icon.ico\r\nIconIndex=0\r\n[ViewState]\r\nMode=\r\nVid=\r\nFolderType=Generic\r\n";
         let _ = fs::write(&ini_path, ini_content);
 
-        // Hide files and set folder as read-only
-        let _ = Command::new("attrib").args(&["+h", "+s", icon_path.to_str().unwrap_or("")]).output();
-        let _ = Command::new("attrib").args(&["+h", "+s", ini_path.to_str().unwrap_or("")]).output();
-        let _ = Command::new("attrib").args(&["+r", folder_path.to_str().unwrap_or("")]).output();
+        // 通过 Win32 API 直接设置隐藏 + 系统属性，并在保留原文件夹属性的基础上叠加只读标志
+        unsafe {
+            let hidden_sys = FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM | FILE_ATTRIBUTE_ARCHIVE;
+            SetFileAttributesW(icon_wide.as_ptr(), hidden_sys);
+            SetFileAttributesW(ini_wide.as_ptr(), hidden_sys);
+
+            let current_attrs = GetFileAttributesW(folder_wide.as_ptr());
+            if current_attrs != INVALID_FILE_ATTRIBUTES {
+                SetFileAttributesW(folder_wide.as_ptr(), current_attrs | FILE_ATTRIBUTE_READONLY);
+            } else {
+                SetFileAttributesW(folder_wide.as_ptr(), FILE_ATTRIBUTE_READONLY);
+            }
+        }
 
         // 即时通知 Windows Explorer 刷新图标
-        notify_windows_shell(folder_path);
+        notify_windows_shell(&folder_path);
     }
 }
 
 #[cfg(target_os = "windows")]
 fn remove_windows_folder_icon(folder_path: &str) {
     use std::fs;
-    use std::path::Path;
-    use std::process::Command;
+    use std::path::PathBuf;
 
-    let folder_path = Path::new(folder_path);
-    let _ = Command::new("attrib").args(&["-r", folder_path.to_str().unwrap_or("")]).output();
-    
+    let normalized_folder = folder_path.replace('/', "\\");
+    let folder_path = PathBuf::from(&normalized_folder);
     let icon_path = folder_path.join(".skillhub_icon.ico");
     let ini_path = folder_path.join("desktop.ini");
-    
-    let _ = Command::new("attrib").args(&["-h", "-s", icon_path.to_str().unwrap_or("")]).output();
-    let _ = Command::new("attrib").args(&["-h", "-s", ini_path.to_str().unwrap_or("")]).output();
-    
+
+    let icon_wide = to_win_wide_path(&icon_path);
+    let ini_wide = to_win_wide_path(&ini_path);
+    let folder_wide = to_win_wide_path(&folder_path);
+
+    unsafe {
+        let current_attrs = GetFileAttributesW(folder_wide.as_ptr());
+        if current_attrs != INVALID_FILE_ATTRIBUTES {
+            SetFileAttributesW(folder_wide.as_ptr(), current_attrs & !FILE_ATTRIBUTE_READONLY);
+        }
+        SetFileAttributesW(icon_wide.as_ptr(), FILE_ATTRIBUTE_NORMAL);
+        SetFileAttributesW(ini_wide.as_ptr(), FILE_ATTRIBUTE_NORMAL);
+    }
+
     let _ = fs::remove_file(icon_path);
     let _ = fs::remove_file(ini_path);
 
     // 即时通知 Windows Explorer 刷新恢复默认图标
-    notify_windows_shell(folder_path);
+    notify_windows_shell(&folder_path);
 }
 
 #[cfg(target_os = "linux")]
@@ -2675,19 +2767,54 @@ pub async fn exit_app(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+fn default_autostart_silent() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct GeneralSettings {
     pub close_action: String,
     pub keep_dock_icon: bool,
+    #[serde(default)]
+    pub autostart: bool,
+    #[serde(default = "default_autostart_silent")]
+    pub autostart_silent: bool,
 }
 
 #[tauri::command]
-pub fn get_general_settings(state: tauri::State<'_, crate::AppState>) -> Result<GeneralSettings, String> {
+pub fn get_general_settings(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, crate::AppState>,
+) -> Result<GeneralSettings, String> {
+    use tauri_plugin_autostart::ManagerExt;
+
     let db = state.db.lock().map_err(|e| e.to_string())?;
-    let close_action = crate::db::get_setting(&db, "close_action")
+    let raw_close_action = crate::db::get_setting(&db, "close_action")
         .map_err(|e| e.to_string())?
-        .unwrap_or_else(|| "minimize_to_tray".to_string());
+        .unwrap_or_else(|| "tray".to_string());
+    // 兼容历史默认值 "minimize_to_tray"，统一归一化为 "tray"
+    let close_action = if raw_close_action == "quit" {
+        "quit".to_string()
+    } else {
+        "tray".to_string()
+    };
+
     let keep_dock_icon = crate::db::get_setting(&db, "keep_dock_icon")
+        .map_err(|e| e.to_string())?
+        .map(|v| v == "true")
+        .unwrap_or(true);
+
+    let db_autostart = crate::db::get_setting(&db, "autostart")
+        .map_err(|e| e.to_string())?
+        .map(|v| v == "true")
+        .unwrap_or(false);
+    // 优先读取系统真实的开机启动状态，确保与系统设置保持一致
+    let autostart = app
+        .autolaunch()
+        .is_enabled()
+        .unwrap_or(db_autostart);
+
+    let autostart_silent = crate::db::get_setting(&db, "autostart_silent")
         .map_err(|e| e.to_string())?
         .map(|v| v == "true")
         .unwrap_or(true);
@@ -2695,15 +2822,146 @@ pub fn get_general_settings(state: tauri::State<'_, crate::AppState>) -> Result<
     Ok(GeneralSettings {
         close_action,
         keep_dock_icon,
+        autostart,
+        autostart_silent,
     })
 }
 
 #[tauri::command]
-pub fn update_general_settings(state: tauri::State<'_, crate::AppState>, settings: GeneralSettings) -> Result<(), String> {
+pub fn update_general_settings(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, crate::AppState>,
+    settings: GeneralSettings,
+) -> Result<(), String> {
+    use tauri_plugin_autostart::ManagerExt;
+
+    // 仅当系统实际开机启动状态与目标值不一致时才写入登录项/启动项
+    let autolaunch = app.autolaunch();
+    let current_enabled = autolaunch.is_enabled().ok();
+    if current_enabled != Some(settings.autostart) {
+        if settings.autostart {
+            autolaunch
+                .enable()
+                .map_err(|e| format!("开启随系统开机启动失败: {}", e))?;
+        } else {
+            autolaunch
+                .disable()
+                .map_err(|e| format!("关闭随系统开机启动失败: {}", e))?;
+        }
+    }
+
     let db = state.db.lock().map_err(|e| e.to_string())?;
     crate::db::set_setting(&db, "close_action", &settings.close_action).map_err(|e| e.to_string())?;
     crate::db::set_setting(&db, "keep_dock_icon", if settings.keep_dock_icon { "true" } else { "false" }).map_err(|e| e.to_string())?;
+    crate::db::set_setting(&db, "autostart", if settings.autostart { "true" } else { "false" }).map_err(|e| e.to_string())?;
+    crate::db::set_setting(&db, "autostart_silent", if settings.autostart_silent { "true" } else { "false" }).map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[derive(serde::Serialize)]
+pub struct GitHubSearchResponse {
+    pub status: u16,
+    pub body: String,
+    pub rate_limit_reset: Option<u64>,
+}
+
+/// 请求单个 GitHub 搜索端点并解析状态码、响应体与限流重置时间戳
+async fn request_github_search_endpoint(
+    client: &reqwest::Client,
+    url: &str,
+    token: Option<&str>,
+) -> Result<GitHubSearchResponse, String> {
+    let mut req = client
+        .get(url)
+        .header("Accept", "application/vnd.github.v3+json")
+        .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) SkillHub/0.3");
+
+    if let Some(t) = token {
+        let trimmed = t.trim();
+        if !trimmed.is_empty() {
+            req = req.header("Authorization", format!("Bearer {}", trimmed));
+        }
+    }
+
+    let resp = req.send().await.map_err(|e| e.to_string())?;
+    let status = resp.status().as_u16();
+    let rate_limit_reset = resp
+        .headers()
+        .get("x-ratelimit-reset")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.parse::<u64>().ok());
+    let body = resp.text().await.map_err(|e| e.to_string())?;
+
+    Ok(GitHubSearchResponse {
+        status,
+        body,
+        rate_limit_reset,
+    })
+}
+
+/// 跨环境多通道 GitHub 在线搜索：系统代理 -> 官方直连 -> 国内镜像加速兜底（镜像通道自动剥离 Token）
+#[tauri::command]
+pub async fn search_github_repositories(
+    query_url: String,
+    token: Option<String>,
+) -> Result<GitHubSearchResponse, String> {
+    if !query_url.starts_with("https://api.github.com/search/repositories?") {
+        return Err("非法的 GitHub 搜索地址".to_string());
+    }
+
+    let system_proxy = crate::git_engine::detect_system_proxy();
+    let mut errors = Vec::new();
+
+    // 通道 1：系统代理 + HTTP/1.1 请求官方接口（支持携带用户 Token）
+    if let Some(ref proxy_str) = system_proxy {
+        if let Ok(proxy) = reqwest::Proxy::all(proxy_str) {
+            if let Ok(proxy_client) = reqwest::Client::builder()
+                .http1_only()
+                .proxy(proxy)
+                .connect_timeout(std::time::Duration::from_secs(8))
+                .timeout(std::time::Duration::from_secs(15))
+                .build()
+            {
+                match request_github_search_endpoint(&proxy_client, &query_url, token.as_deref()).await {
+                    Ok(res) if res.status == 200 || res.status == 403 || res.status == 429 || res.status == 422 => {
+                        return Ok(res);
+                    }
+                    Ok(res) => errors.push(format!("代理通道 HTTP {}", res.status)),
+                    Err(e) => errors.push(format!("代理通道失败: {}", e)),
+                }
+            }
+        }
+    }
+
+    // 通道 2：无代理极速直连官方接口（支持携带用户 Token，兼容 TUN 及直连网络）
+    let direct_connect_secs = if system_proxy.is_some() { 5 } else { 4 };
+    if let Ok(direct_client) = reqwest::Client::builder()
+        .http1_only()
+        .no_proxy()
+        .connect_timeout(std::time::Duration::from_secs(direct_connect_secs))
+        .timeout(std::time::Duration::from_secs(12))
+        .build()
+    {
+        match request_github_search_endpoint(&direct_client, &query_url, token.as_deref()).await {
+            Ok(res) if res.status == 200 || res.status == 403 || res.status == 429 || res.status == 422 => {
+                return Ok(res);
+            }
+            Ok(res) => errors.push(format!("直连通道 HTTP {}", res.status)),
+            Err(e) => errors.push(format!("直连通道失败: {}", e)),
+        }
+
+        // 通道 3：国内加速镜像兜底（严禁携带 Authorization Token，防止泄露给第三方镜像）
+        let mirror_url = format!("https://gh-proxy.com/{}", query_url);
+        match request_github_search_endpoint(&direct_client, &mirror_url, None).await {
+            Ok(res) if res.status == 200 || res.status == 403 || res.status == 429 || res.status == 422 => {
+                return Ok(res);
+            }
+            Ok(res) => errors.push(format!("镜像通道 HTTP {}", res.status)),
+            Err(e) => errors.push(format!("镜像通道失败: {}", e)),
+        }
+    }
+
+    Err(format!("网络连接失败，请检查网络连接或代理配置 ({})", errors.join("; ")))
 }
 
 

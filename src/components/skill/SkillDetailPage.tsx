@@ -1,6 +1,6 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { FolderGit2, HardDrive, Edit2, Save, Loader2, Sparkles, Languages, Star } from "lucide-react";
+import { FileCode, Globe, Edit2, Save, Loader2, Sparkles, Languages, Star } from "lucide-react";
 import { Tooltip } from '../ui/Tooltip';
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -17,9 +17,10 @@ interface SkillFile {
 interface SkillDetailPageProps {
   skillId: string;
   onGeneratePrompt?: (skill: Skill) => void;
+  onFavoriteChange?: (skillId: string, isFavorite: boolean) => void;
 }
 
-export function SkillDetailPage({ skillId, onGeneratePrompt }: SkillDetailPageProps) {
+export function SkillDetailPage({ skillId, onGeneratePrompt, onFavoriteChange }: SkillDetailPageProps) {
   const [skill, setSkill] = useState<Skill | null>(null);
   const [content, setContent] = useState<string>("");
   const [loading, setLoading] = useState(false);
@@ -258,7 +259,7 @@ export function SkillDetailPage({ skillId, onGeneratePrompt }: SkillDetailPagePr
       };
       loadContent();
     }
-  }, [skill]);
+  }, [skill?.id, skill?.local_path, skill?.source_type, skill?.online_url]);
 
   const handleTabChange = (filename: string) => {
     setActiveFile(filename);
@@ -301,24 +302,43 @@ export function SkillDetailPage({ skillId, onGeneratePrompt }: SkillDetailPagePr
     <div className="flex-1 flex flex-col h-full min-w-0 bg-white relative">
       <div className="h-12 px-6 border-b border-[var(--color-border)] shrink-0 flex items-center justify-between gap-3 bg-white">
         <div className="flex items-center space-x-2.5 min-w-0 flex-1">
-          <div className={`shrink-0 w-7 h-7 rounded-lg flex items-center justify-center ${skill.source_type === 'github' ? 'bg-[#024ad8]/10 text-[#024ad8]' : 'bg-fuchsia-500/10 text-fuchsia-600'}`}>
-            {skill.source_type === 'github' ? <FolderGit2 className="w-4 h-4" /> : <HardDrive className="w-4 h-4" />}
+          <div className={`shrink-0 w-7 h-7 rounded-lg flex items-center justify-center ${
+            skill.source_type === 'online'
+              ? 'bg-emerald-500/10 text-emerald-600'
+              : skill.source_type === 'github'
+                ? 'bg-[#0066FF]/10 text-[#0066FF]'
+                : 'bg-[#86868B]/10 text-[#86868B]'
+          }`}>
+            {skill.source_type === 'online' ? <Globe className="w-4 h-4" /> : <FileCode className="w-4 h-4" />}
           </div>
           <div className="flex items-center gap-1.5 min-w-0 py-0.5">
             <h2 className="text-[16px] font-semibold text-[var(--foreground)] leading-normal truncate">{skill.name}</h2>
-            <button
-              onClick={async () => {
-                try {
-                  await invoke("toggle_skill_favorite", { id: skill.id });
-                  setSkill({ ...skill, is_favorite: !skill.is_favorite });
-                } catch (e) {
-                  showToast(`操作失败: ${e}`, "error");
-                }
-              }}
-              className={`p-0.5 rounded-md transition-colors ${skill.is_favorite ? 'text-yellow-500' : 'text-[var(--color-muted)] hover:text-yellow-500 hover:bg-yellow-50'}`}
-            >
-              <Star className={`w-3.5 h-3.5 ${skill.is_favorite ? 'fill-current' : ''}`} />
-            </button>
+            <Tooltip content={skill.is_favorite ? "取消星标" : "星标"}>
+              <button
+                type="button"
+                onClick={async () => {
+                  const prevVal = skill.is_favorite;
+                  const nextVal = !prevVal;
+                  // 立即乐观更新详情页与全局列表星标状态
+                  setSkill(prev => prev ? { ...prev, is_favorite: nextVal } : prev);
+                  onFavoriteChange?.(skill.id, nextVal);
+                  try {
+                    await invoke("toggle_skill_favorite", { id: skill.id });
+                  } catch (e) {
+                    setSkill(prev => prev ? { ...prev, is_favorite: prevVal } : prev);
+                    onFavoriteChange?.(skill.id, prevVal);
+                    showToast(`操作失败: ${e}`, "error");
+                  }
+                }}
+                className={`w-7 h-7 flex items-center justify-center rounded-lg shrink-0 transition-[transform,background-color] duration-150 active:scale-90 cursor-pointer ${
+                  skill.is_favorite
+                    ? 'text-amber-500 hover:bg-amber-50'
+                    : 'text-[var(--color-muted)] hover:text-amber-500 hover:bg-amber-50'
+                }`}
+              >
+                <Star className={`w-4 h-4 ${skill.is_favorite ? 'fill-amber-500 text-amber-500' : ''}`} />
+              </button>
+            </Tooltip>
           </div>
         </div>
         <div className="flex items-center shrink-0 gap-1">

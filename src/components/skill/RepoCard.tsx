@@ -1,19 +1,23 @@
 import React from 'react';
-import { FileCode } from 'lucide-react';
+import { FileCode, Package, Globe, Star } from 'lucide-react';
 import { GroupedRepo, SyncRecord, AgentConfig } from '../../types';
 import { Tooltip } from '../ui/Tooltip';
+import { isRepoStarred } from '../../utils/favoriteStore';
 
 export interface RepoCardProps {
   repo: GroupedRepo;
   syncRecords: SyncRecord[];
   agents: AgentConfig[];
   isSelected?: boolean;
+  /** 外部显式传入星标状态，未传时自动按类型读取独立单技能 / 技能包星标状态 */
+  isFavorite?: boolean;
   onClick: (e: React.MouseEvent) => void;
   onDoubleClick: (e: React.MouseEvent) => void;
   onAuxClick?: (e: React.MouseEvent) => void;
   onContextMenu: (e: React.MouseEvent) => void;
   onUpdateRepo: (e: React.MouseEvent, repo: GroupedRepo) => void;
   onDeleteRepo: (e: React.MouseEvent, repo: GroupedRepo) => void;
+  onFavoriteToggle?: (e: React.MouseEvent, repo: GroupedRepo) => void;
 }
 
 export const RepoCard: React.FC<RepoCardProps> = ({
@@ -21,13 +25,20 @@ export const RepoCard: React.FC<RepoCardProps> = ({
   syncRecords,
   agents,
   isSelected = false,
+  isFavorite,
   onClick,
   onDoubleClick,
   onAuxClick,
   onContextMenu,
+  onFavoriteToggle,
 }) => {
   const repoSyncs = syncRecords.filter(r => repo.skills.some(s => s.id === r.skill_id));
   const syncedAgents = agents.filter(a => repoSyncs.some(r => r.agent_id === a.id));
+  const isSingle = repo.repo_type !== 'collection' && repo.skills.length === 1;
+  const primarySkill = isSingle ? repo.skills[0] : undefined;
+  const isStarred = isFavorite !== undefined
+    ? isFavorite
+    : (isSingle ? Boolean(primarySkill?.is_favorite) : isRepoStarred(repo.id));
 
   return (
     <div 
@@ -43,7 +54,7 @@ export const RepoCard: React.FC<RepoCardProps> = ({
           : 'border-black/5 hover:border-black/10 hover:shadow-sm'
       } ${repo.is_missing && repo.source_type !== 'online' ? 'opacity-60 grayscale-[50%]' : ''}`}
     >
-      {/* 顶部：图标 + 名称 + 技能数/标签 */}
+      {/* 顶部：图标 + 名称 + 技能数/来源 */}
       <div className="flex items-center space-x-2.5">
         <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 relative ${
           repo.source_type === 'online'
@@ -52,23 +63,45 @@ export const RepoCard: React.FC<RepoCardProps> = ({
               ? 'bg-[#0066FF]/10 text-[#0066FF]'
               : 'bg-[#86868B]/10 text-[#86868B]'
         }`}>
-          <FileCode className="w-4 h-4" />
+          {repo.source_type === 'online' ? (
+            <Globe className="w-4 h-4" />
+          ) : !isSingle ? (
+            <Package className="w-4 h-4" />
+          ) : (
+            <FileCode className="w-4 h-4" />
+          )}
           {repo.is_missing && repo.source_type !== 'online' && (
             <div className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-red-500 rounded-full flex items-center justify-center text-white text-[8px] font-bold border border-white">!</div>
           )}
         </div>
-        <div className="min-w-0 flex-1">
+        <div className={`min-w-0 flex-1 ${onFavoriteToggle && isStarred ? 'pr-7' : 'pr-2'}`}>
           <Tooltip content={repo.name}>
             <h3 className="font-semibold text-[13px] text-[var(--foreground)] mask-fade-x leading-tight cursor-default">{repo.name}</h3>
           </Tooltip>
           <div className="flex items-center space-x-1.5 mt-0.5 min-w-0">
-            <span className="text-[10px] text-[var(--color-muted)] shrink-0">
-              {repo.source_type === 'online' ? '线上技能' : `${repo.skills.length} 个技能`}
-            </span>
-            {repo.author && (
+            {repo.source_type === 'online' ? (
+              <span className="text-[10px] text-[var(--color-muted)] shrink-0">线上技能</span>
+            ) : !isSingle ? (
               <>
-                <span className={`w-1 h-1 rounded-full shrink-0 ${
-                  repo.source_type === 'online' ? 'bg-emerald-500' :
+                <span className="text-[10px] text-[var(--color-muted)] shrink-0">
+                  {repo.skills.length} 个技能
+                </span>
+                {repo.author && (
+                  <>
+                    <span className={`w-1 h-1 rounded-full shrink-0 ${
+                      repo.source_type === 'github' ? 'bg-[#0066FF]' : 'bg-[#86868B]'
+                    }`} />
+                    <Tooltip content={`@${repo.author}`}>
+                      <span className="text-[10px] text-[var(--color-muted)] min-w-0 flex-1 mask-fade-x leading-none cursor-default">
+                        @{repo.author}
+                      </span>
+                    </Tooltip>
+                  </>
+                )}
+              </>
+            ) : repo.author ? (
+              <div className="flex items-center space-x-1.5 min-w-0 flex-1">
+                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
                   repo.source_type === 'github' ? 'bg-[#0066FF]' : 'bg-[#86868B]'
                 }`} />
                 <Tooltip content={`@${repo.author}`}>
@@ -76,11 +109,37 @@ export const RepoCard: React.FC<RepoCardProps> = ({
                     @{repo.author}
                   </span>
                 </Tooltip>
-              </>
+              </div>
+            ) : (
+              <span className="text-[10px] text-[var(--color-muted)] shrink-0">
+                {repo.source_type === 'github' ? 'GitHub 技能' : '本地技能'}
+              </span>
             )}
           </div>
         </div>
       </div>
+
+      {/* 悬浮星标按钮（同时支持独立单技能与技能包） */}
+      {onFavoriteToggle && (
+        <Tooltip content={isStarred ? '取消星标' : '星标'}>
+          <button
+            type="button"
+            onMouseDown={(e) => e.stopPropagation()}
+            onDoubleClick={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onFavoriteToggle(e, repo);
+            }}
+            className={`absolute top-1.5 right-1.5 w-8 h-8 flex items-center justify-center rounded-lg transition-[opacity,transform,background-color] duration-150 active:scale-90 z-10 cursor-pointer ${
+              isStarred
+                ? 'opacity-100 text-amber-500 bg-white/90 dark:bg-black/60 hover:bg-amber-50/90 dark:hover:bg-amber-950/40'
+                : 'opacity-0 group-hover:opacity-100 text-[var(--color-muted)] hover:text-amber-500 bg-white/95 dark:bg-black/60 hover:bg-amber-50/90 dark:hover:bg-amber-950/40 shadow-xs backdrop-blur-xs'
+            }`}
+          >
+            <Star className={`w-4 h-4 ${isStarred ? 'fill-amber-500 text-amber-500' : ''}`} />
+          </button>
+        </Tooltip>
+      )}
 
       {/* 底部：同步 Agent 指示器 */}
       {syncedAgents.length > 0 && (

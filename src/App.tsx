@@ -2,9 +2,9 @@ import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { SelectionArea, SelectionEvent } from '@viselect/react';
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { listen, UnlistenFn } from "@tauri-apps/api/event";
+import { listen, emit, UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { HardDrive, Settings, Search, Plus, RefreshCw, ChevronRight, X, LayoutGrid, Sparkles, Globe, FolderX, FolderSearch, Trash2, Info, Folder, FolderPlus, Copy, Link as LinkIcon, Check, Download, FileArchive, MessageSquareQuote, Store, FileCode, CheckSquare, Star, Clock, Tag, ExternalLink, Users } from "lucide-react";
+import { HardDrive, Settings, Search, Plus, RefreshCw, ChevronRight, ChevronDown, X, LayoutGrid, Rows3, Grip, Sparkles, Globe, FolderX, FolderSearch, Trash2, Info, Folder, FolderPlus, Copy, Link as LinkIcon, Check, Minus, Download, FileArchive, MessageSquareQuote, Store, FileCode, CheckSquare, Star, Clock, Tag, ExternalLink, Users, SlidersHorizontal, Edit2 } from "lucide-react";
 import { open } from '@tauri-apps/plugin-dialog';
 import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import { AddRepositoryDialog } from "./components/library/AddRepositoryDialog";
@@ -31,6 +31,28 @@ import { QuickLookModal } from "./components/ui/QuickLookModal";
 import { InspectorPanel } from "./components/inspector/InspectorPanel";
 import { ContextMenu, useContextMenu } from "./components/ui/ContextMenu";
 import type { ContextMenuItem } from "./components/ui/ContextMenu";
+import { TagManagerModal } from "./components/ui/TagManagerModal";
+import {
+  computeTagStats,
+  parseTags,
+  serializeTags,
+  toggleStarTag,
+  recordRecentTag,
+  removeTagFromMeta,
+  renameTagInMeta,
+  getRepoEffectiveTags,
+  setRepoTags,
+  renameRepoTagInStore,
+  deleteRepoTagsInStore,
+  collectSkillModuleTagItems,
+  isCollectionRepo,
+  type TagStatItem,
+} from "./utils/tagStore";
+import {
+  isRepoItemStarred,
+  setReposStarredBatch,
+  toggleRepoStarred,
+} from "./utils/favoriteStore";
 import { getNextElement } from "./utils/navigation";
 import { Skill, SourceDirectory, AgentConfig, SyncRecord, GroupedRepo, PromptGroup, Prompt, CloningRepo } from "./types";
 import { PromptModule, PromptSidebarNav, PromptFilter } from "./PromptModule";
@@ -63,7 +85,7 @@ function App() {
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(() => {
     return localStorage.getItem("skillhub_selected_workspace");
   });
-  
+
   const selectedWorkspaceIdRef = useRef<string | null>(selectedWorkspaceId);
   useEffect(() => {
     selectedWorkspaceIdRef.current = selectedWorkspaceId;
@@ -75,7 +97,7 @@ function App() {
   }, [selectedWorkspaceId]);
 
   const { tabs, activeTabId, activeTab: currentTab, openTab, closeTab, switchTab, navigateTo, goBack: tabGoBack, goForward: tabGoForward, canGoBack, canGoForward, updateActiveTab } = useTabs(selectedWorkspaceId || undefined);
-  
+
   const currentTabRef = useRef<typeof currentTab>(currentTab);
   useEffect(() => {
     currentTabRef.current = currentTab;
@@ -92,7 +114,7 @@ function App() {
   const [activeModule, setActiveModuleState] = useState<AppModule>('skills');
   const [isUnderConstructionOpen, setIsUnderConstructionOpen] = useState(false);
   const currentTabModule = getTabModule(currentTab);
-  
+
   // 记录各模块最近一次激活的有效标签页 ID，以便切回时精准恢复上下文
   const lastActiveTabByModule = useRef<Record<AppModule, string>>({
     skills: '',
@@ -107,7 +129,7 @@ function App() {
       setActiveModuleState(mod);
     }
   }, [currentTab?.id, currentTab?.type, getTabModule]);
-  
+
   const isSidebarMatch = activeModule === currentTabModule;
   const activeTab = currentTab?.context?.filter || "all";
 
@@ -198,7 +220,7 @@ function App() {
       lastActiveTabByModule.current[mod] = newId;
     }
   }, [currentTab, navigateTo, openTab, selectedWorkspaceId]);
-  
+
   const handleSidebarNav = (type: TabType, title: string, updates: Partial<import('./types/tabs').TabContext>, icon?: string, e?: React.MouseEvent) => {
     if (e && (e.button === 1 || e.metaKey || e.ctrlKey)) {
       e.preventDefault();
@@ -213,12 +235,13 @@ function App() {
   const setSelectedTag = (tag: string, e?: React.MouseEvent) => handleSidebarNav('skill-home', '技能库', { selectedTag: tag, activeView: "all", repoId: undefined }, 'Tag', e);
   const activeView = (currentTab?.context?.activeView as "all" | "starred" | "recent" | "untagged") || "all";
   const setActiveView = (view: "all" | "starred" | "recent" | "untagged", _title: string = "全部技能", icon: string = "LayoutGrid", e?: React.MouseEvent) => handleSidebarNav('skill-home', '技能库', { activeView: view, selectedTag: "all", repoId: undefined }, icon, e);
-  const isFlatView = activeView !== "all" || selectedTag !== "all";
+  // 「星标」视图保留双层层级（技能包与独立单技能继续展示，包内星标子技能收敛至「技能」分组），仅「最近使用」保持平铺
+  const isFlatView = activeView === "recent";
   const [skills, setSkills] = useState<Skill[]>([]);
   const [directories, setDirectories] = useState<SourceDirectory[]>([]);
   const [agents, setAgents] = useState<AgentConfig[]>([]);
   const [syncRecords, setSyncRecords] = useState<SyncRecord[]>([]);
-  const [openWithApps, setOpenWithApps] = useState<{name: string, path: string, icon_base64?: string}[]>([]);
+  const [openWithApps, setOpenWithApps] = useState<{ name: string, path: string, icon_base64?: string }[]>([]);
   const [groupedRepos, setGroupedRepos] = useState<GroupedRepo[]>([]);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(true);
@@ -377,6 +400,7 @@ function App() {
   }, [isAppStarting]);
 
   const currentSyncRunId = useRef<number>(0);
+  const syncLogsHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleWorkspaceSelect = (id: string | null) => {
     setSelectedWorkspaceId(id);
@@ -387,6 +411,7 @@ function App() {
       localStorage.removeItem("skillhub_selected_workspace");
       invoke("refresh_app_menu", { selectedId: null }).catch(console.error);
     }
+    emit("skillhub:workspace-changed", { id }).catch(() => {});
     navigateTo('skill-home', '技能库', { ...currentTab?.context, filter: 'all', selectedTag: 'all', activeView: 'all', repoId: undefined });
   };
 
@@ -409,14 +434,14 @@ function App() {
       setGroupedRepos(fetchedRepos);
       setAgents(fetchedAgents);
       setSyncRecords(allSyncs.flat());
-      
+
       // 获取当前可用的关联应用
       if (fetchedSkills.length > 0 && openWithApps.length === 0) {
-        invoke<{name: string, path: string, icon_base64?: string}[]>('get_open_with_apps', { path: fetchedSkills[0].local_path })
+        invoke<{ name: string, path: string, icon_base64?: string }[]>('get_open_with_apps', { path: fetchedSkills[0].local_path })
           .then(apps => setOpenWithApps(apps))
           .catch(console.error);
       }
-      
+
       return fetchedDirs;
     } catch (e) {
       console.error("Failed to load data", e);
@@ -492,7 +517,7 @@ function App() {
       }
     }).then(un => unlisten = un);
 
-    
+
     const isPointInMainDropZone = (pos: { x: number; y: number }) => {
       if (!mainContentRef.current) return false;
       // 在 macOS Cocoa (WKWebView) 下，Tauri/wry 返回的 draggingLocation 已经是 points (CSS 逻辑像素)，绝对不应除以 devicePixelRatio
@@ -528,51 +553,51 @@ function App() {
           const paths = event.payload.paths;
           const targetWorkspaceId = selectedWorkspaceIdRef.current || localStorage.getItem("skillhub_selected_workspace");
           // Validate and copy
-            setLoadingText("正在导入...");
-            setIsAppStarting(true);
-            invoke("get_source_directories").then((dirs: any) => {
-              if (dirs.length === 0) {
-                showToast("你还没有技能库，请先创建", "error");
-                setIsAppStarting(false);
-                return;
-              }
-              const effectiveWorkspaceId = (!targetWorkspaceId || targetWorkspaceId === "all") && dirs.length === 1
-                ? dirs[0].id
-                : targetWorkspaceId;
+          setLoadingText("正在导入...");
+          setIsAppStarting(true);
+          invoke("get_source_directories").then((dirs: any) => {
+            if (dirs.length === 0) {
+              showToast("你还没有技能库，请先创建", "error");
+              setIsAppStarting(false);
+              return;
+            }
+            const effectiveWorkspaceId = (!targetWorkspaceId || targetWorkspaceId === "all") && dirs.length === 1
+              ? dirs[0].id
+              : targetWorkspaceId;
 
-              if (!effectiveWorkspaceId || effectiveWorkspaceId === "all") {
-                showToast("请先在左侧选择一个具体的目标资源库再进行拖入", "error");
+            if (!effectiveWorkspaceId || effectiveWorkspaceId === "all") {
+              showToast("请先在左侧选择一个具体的目标资源库再进行拖入", "error");
+              setIsAppStarting(false);
+              return;
+            }
+            const targetWorkspaceDir = dirs.find((d: any) => d.id === effectiveWorkspaceId)?.path;
+            if (targetWorkspaceDir) {
+              invoke("validate_and_copy_dropped_folders", {
+                paths,
+                targetWorkspacePath: targetWorkspaceDir
+              }).then((msg) => {
+                return invoke("rescan_directory", { path: targetWorkspaceDir }).then(() => {
+                  return fetchData().then(() => {
+                    // 自动确保切到当前目标技能库，并重置筛选为全部，确保新技能立刻展现在屏幕正中
+                    if (selectedWorkspaceIdRef.current !== effectiveWorkspaceId) {
+                      handleWorkspaceSelect(effectiveWorkspaceId);
+                    } else {
+                      navigateTo('skill-home', '技能库', { ...currentTabRef.current?.context, filter: 'all', selectedTag: 'all', activeView: 'all', repoId: undefined });
+                    }
+                    showToast(msg as string, "success");
+                  });
+                });
+              }).catch((err) => {
+                showToast(err as string, "error");
+              }).finally(() => {
                 setIsAppStarting(false);
-                return;
-              }
-              const targetWorkspaceDir = dirs.find((d: any) => d.id === effectiveWorkspaceId)?.path;
-              if (targetWorkspaceDir) {
-                 invoke("validate_and_copy_dropped_folders", {
-                   paths,
-                   targetWorkspacePath: targetWorkspaceDir
-                 }).then((msg) => {
-                   return invoke("rescan_directory", { path: targetWorkspaceDir }).then(() => {
-                     return fetchData().then(() => {
-                       // 自动确保切到当前目标技能库，并重置筛选为全部，确保新技能立刻展现在屏幕正中
-                       if (selectedWorkspaceIdRef.current !== effectiveWorkspaceId) {
-                         handleWorkspaceSelect(effectiveWorkspaceId);
-                       } else {
-                         navigateTo('skill-home', '技能库', { ...currentTabRef.current?.context, filter: 'all', selectedTag: 'all', activeView: 'all', repoId: undefined });
-                       }
-                       showToast(msg as string, "success");
-                     });
-                   });
-                 }).catch((err) => {
-                   showToast(err as string, "error");
-                 }).finally(() => {
-                   setIsAppStarting(false);
-                 });
-              } else {
-                 showToast("目标资源库路径不存在", "error");
-                 setIsAppStarting(false);
-              }
-            });
-          }
+              });
+            } else {
+              showToast("目标资源库路径不存在", "error");
+              setIsAppStarting(false);
+            }
+          });
+        }
       } else {
         setIsFileDraggingOver(false);
       }
@@ -655,17 +680,50 @@ function App() {
   const handleUpdateRepos = async (e: React.MouseEvent, repos: GroupedRepo[]) => {
     e.stopPropagation();
     if (repos.length === 0) return;
-    setSyncLogs(repos.map(r => ({ id: r.path, label: r.name, status: 'pending', message: '' })));
-    setIsSyncPopupMinimized(false);
+    if (syncLogsHideTimerRef.current) {
+      clearTimeout(syncLogsHideTimerRef.current);
+      syncLogsHideTimerRef.current = null;
+    }
 
-    let totalLogs: { id: string, label: string, status: 'pending' | 'success' | 'error' | 'skipped', message?: string }[] = repos.map(r => ({ id: r.path, label: r.name, status: 'pending', message: '' }));
+    setIsSyncPopupMinimized(false);
+    let totalLogs: { id: string, label: string, status: 'pending' | 'success' | 'error' | 'skipped', message?: string }[] =
+      repos.map(r => ({ id: r.path, label: r.name, status: 'pending', message: '' }));
+    setSyncLogs(totalLogs);
+
+    const resolveDirPath = (repo: GroupedRepo) =>
+      directories.find(d => d.id === repo.source_dir_id)?.path ||
+      directories.find(d => repo.path.startsWith(d.path))?.path ||
+      null;
+
+    const dirsToRescan = new Set<string>();
+    let hasLocalRefreshed = false;
 
     for (const repo of repos) {
-      if (repo.source_type !== 'github') {
-        totalLogs = totalLogs.map(l => l.id === repo.path ? { ...l, status: 'skipped', message: '本地跳过' } : l);
+      if (repo.source_type === 'online') {
+        totalLogs = totalLogs.map(l => l.id === repo.path ? { ...l, status: 'skipped', message: '线上跳过' } : l);
         setSyncLogs([...totalLogs]);
         continue;
       }
+
+      const dirPath = resolveDirPath(repo);
+
+      if (repo.source_type !== 'github') {
+        // 单独针对本地仓库点击“重新扫描目录”时刷新索引；批量混合更新时跳过 Git 拉取
+        if (repos.length === 1 && dirPath) {
+          try {
+            await invoke("rescan_directory", { path: dirPath });
+            hasLocalRefreshed = true;
+            totalLogs = totalLogs.map(l => l.id === repo.path ? { ...l, status: 'success', message: '已刷新' } : l);
+          } catch (err) {
+            totalLogs = totalLogs.map(l => l.id === repo.path ? { ...l, status: 'error', message: String(err) } : l);
+          }
+        } else {
+          totalLogs = totalLogs.map(l => l.id === repo.path ? { ...l, status: 'skipped', message: '本地跳过' } : l);
+        }
+        setSyncLogs([...totalLogs]);
+        continue;
+      }
+
       try {
         const msg = await invoke<string>("pull_single_repo", { path: repo.path });
         if (msg === '已是最新') {
@@ -673,15 +731,28 @@ function App() {
         } else {
           totalLogs = totalLogs.map(l => l.id === repo.path ? { ...l, status: 'success', message: msg } : l);
         }
+        if (dirPath) dirsToRescan.add(dirPath);
         setSyncLogs([...totalLogs]);
-        await invoke("rescan_directory", { path: repo.source_dir_id! });
-        await fetchData();
       } catch (err) {
         totalLogs = totalLogs.map(l => l.id === repo.path ? { ...l, status: 'error', message: String(err) } : l);
         setSyncLogs([...totalLogs]);
       }
     }
-    setTimeout(() => setSyncLogs([]), 5000);
+
+    // 所有拉取完成后统一按真实目录路径 rescan，避免重复扫描或把目录查找报错误记为更新失败
+    if (dirsToRescan.size > 0) {
+      for (const dirPath of dirsToRescan) {
+        await invoke("rescan_directory", { path: dirPath }).catch(console.error);
+      }
+      await fetchData();
+    } else if (hasLocalRefreshed) {
+      await fetchData();
+    }
+
+    syncLogsHideTimerRef.current = setTimeout(() => {
+      setSyncLogs([]);
+      syncLogsHideTimerRef.current = null;
+    }, 5000);
   };
 
   const handleDeleteRepos = async (e: React.MouseEvent, repos: GroupedRepo[]) => {
@@ -874,6 +945,10 @@ function App() {
     setIsSyncingAll(true);
 
     if (isManual) {
+      if (syncLogsHideTimerRef.current) {
+        clearTimeout(syncLogsHideTimerRef.current);
+        syncLogsHideTimerRef.current = null;
+      }
       setSyncLogs([]);
       setIsSyncPopupMinimized(true); // 手动同步时默认最小化
     }
@@ -927,16 +1002,51 @@ function App() {
       setIsSyncingAll(false);
 
       if (isManual) {
-        setTimeout(() => {
+        syncLogsHideTimerRef.current = setTimeout(() => {
           if (currentSyncRunId.current === runId) {
             setSyncLogs([]);
           }
+          syncLogsHideTimerRef.current = null;
         }, 5000); // 同步完默认5秒自动隐藏
       }
     }
   };
 
-  const filteredGroupedRepos = useMemo(() => {
+  // 标签管理状态与统计（接入统一 tagStore，支持技能包/技能双层独立打标、计数、常用星标置顶、重命名合并、批量操作）
+  const [isSkillTagManagerOpen, setIsSkillTagManagerOpen] = useState(false);
+  const [skillTagManagerEditTarget, setSkillTagManagerEditTarget] = useState<string | null>(null);
+  const [skillTagMetaVersion, setSkillTagMetaVersion] = useState(0);
+  const [repoFavoriteVersion, setRepoFavoriteVersion] = useState(0);
+  const [isSkillTagsExpanded, setIsSkillTagsExpanded] = useState(false);
+  const [openTagPopoverSignal, setOpenTagPopoverSignal] = useState(0);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (!detail || detail.module === 'skills') {
+        setSkillTagMetaVersion(v => v + 1);
+      }
+    };
+    window.addEventListener('skillhub:tag-meta-changed', handler);
+    return () => window.removeEventListener('skillhub:tag-meta-changed', handler);
+  }, []);
+
+  useEffect(() => {
+    const handleFavoriteChanged = () => setRepoFavoriteVersion(v => v + 1);
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === 'skillhub_repo_favorites_set') {
+        setRepoFavoriteVersion(v => v + 1);
+      }
+    };
+    window.addEventListener('skillhub:repo-favorites-changed', handleFavoriteChanged);
+    window.addEventListener('storage', handleStorage);
+    return () => {
+      window.removeEventListener('skillhub:repo-favorites-changed', handleFavoriteChanged);
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, []);
+
+  const baseScopedRepos = useMemo(() => {
     let result = groupedRepos.filter(repo => repo.skills.length > 0);
     if (selectedWorkspaceId !== "all") {
       result = result.filter(repo => repo.source_dir_id === selectedWorkspaceId);
@@ -944,50 +1054,344 @@ function App() {
     if (activeTab !== "all") {
       result = result.filter(r => r.source_type === activeTab);
     }
-    if (activeView !== "all") {
+    return result;
+  }, [groupedRepos, selectedWorkspaceId, activeTab]);
+
+  const filteredGroupedRepos = useMemo(() => {
+    let result = baseScopedRepos;
+    if (activeView === "starred") {
+      if (!selectedRepoId) {
+        // 一级视图保留双层层级：技能包按包自身星标判定，独立单技能按其技能星标判定
+        result = result.filter(repo => isRepoItemStarred(repo));
+      }
+    } else if (activeView === "recent") {
       result = result.map(repo => {
-        let matchingSkills = repo.skills;
-        if (activeView === "starred") {
-          matchingSkills = matchingSkills.filter(s => s.is_favorite);
-        } else if (activeView === "recent") {
-          matchingSkills = matchingSkills.filter(s => s.use_count && s.use_count > 0).sort((a, b) => (b.use_count || 0) - (a.use_count || 0));
-        } else if (activeView === "untagged") {
-          matchingSkills = matchingSkills.filter(s => !s.tags || s.tags.trim() === "");
-        }
-        if (matchingSkills.length > 0) {
-          return { ...repo, skills: matchingSkills };
-        }
-        return null;
+        const matchingSkills = repo.skills.filter(s => s.use_count && s.use_count > 0).sort((a, b) => (b.use_count || 0) - (a.use_count || 0));
+        return matchingSkills.length > 0 ? { ...repo, skills: matchingSkills } : null;
       }).filter(Boolean) as GroupedRepo[];
+    } else if (activeView === "untagged") {
+      if (selectedRepoId) {
+        result = result.map(repo => {
+          const matchingSkills = repo.skills.filter(s => parseTags(s.tags).length === 0);
+          return matchingSkills.length > 0 ? { ...repo, skills: matchingSkills } : null;
+        }).filter(Boolean) as GroupedRepo[];
+      } else {
+        // 一级视图保持层级：技能包按包自身标签判定，单技能按其技能标签判定
+        result = result.filter(repo => parseTags(getRepoEffectiveTags(repo)).length === 0);
+      }
     }
+
     if (selectedTag !== "all") {
-      result = result.map(repo => {
-        const matchingSkills = repo.skills.filter(s => s.tags?.split(',').map(t=>t.trim()).includes(selectedTag));
-        if (matchingSkills.length > 0) {
-          return { ...repo, skills: matchingSkills };
-        }
-        return null;
-      }).filter(Boolean) as GroupedRepo[];
+      result = result.filter(repo => parseTags(getRepoEffectiveTags(repo)).includes(selectedTag));
     }
     return result;
-  }, [groupedRepos, selectedWorkspaceId, activeTab, selectedTag, activeView]);
+  }, [baseScopedRepos, activeView, selectedTag, selectedRepoId, skillTagMetaVersion, repoFavoriteVersion]);
 
-  const allTags = useMemo(() => {
-    const tags = new Set<string>();
-    groupedRepos.forEach(repo => {
-      if (selectedWorkspaceId !== "all" && repo.source_dir_id !== selectedWorkspaceId) return;
-      if (activeTab !== "all" && repo.source_type !== activeTab) return;
-      repo.skills.forEach(skill => {
-        if (skill.tags) {
-          skill.tags.split(",").forEach(t => {
-            const tr = t.trim();
-            if (tr) tags.add(tr);
-          });
+  // 按标签或「星标」筛选时，额外收集属于各技能包且单独命中的子技能（不拆散整包）
+  const matchedExtraSubSkills = useMemo(() => {
+    if (selectedRepoId || isFlatView) return [];
+    if (selectedTag === "all" && activeView !== "starred") return [];
+    const list: { skill: Skill; repo: GroupedRepo }[] = [];
+    for (const repo of baseScopedRepos) {
+      if (!isCollectionRepo(repo)) continue;
+      for (const skill of repo.skills) {
+        const matchTag = selectedTag === "all" || parseTags(skill.tags).includes(selectedTag);
+        const matchStar = activeView !== "starred" || skill.is_favorite;
+        if (matchTag && matchStar) {
+          list.push({ skill, repo });
         }
-      });
-    });
-    return Array.from(tags).sort();
-  }, [groupedRepos, selectedWorkspaceId, activeTab]);
+      }
+    }
+    return list;
+  }, [baseScopedRepos, selectedTag, activeView, selectedRepoId, isFlatView]);
+
+  const allLibrarySkills = useMemo(() => groupedRepos.flatMap(r => r.skills), [groupedRepos]);
+  const allLibraryTagItems = useMemo(
+    () => collectSkillModuleTagItems(groupedRepos),
+    [groupedRepos, skillTagMetaVersion]
+  );
+
+  const scopedTagItemsForSidebar = useMemo(() => {
+    return collectSkillModuleTagItems(baseScopedRepos);
+  }, [baseScopedRepos, skillTagMetaVersion]);
+
+  // 侧边栏展示的标签列表：常用星标标签置顶，右侧附带技能包/技能双层引用总计数
+  const skillTagStats = useMemo(() => {
+    const stats = computeTagStats('skills', scopedTagItemsForSidebar);
+    const starred = stats.filter(s => s.isStarred);
+    const others = stats.filter(s => !s.isStarred);
+    return [...starred, ...others];
+  }, [scopedTagItemsForSidebar, skillTagMetaVersion]);
+
+  const handleBatchToggleSkillTags = useCallback(async (targetSkills: Skill[], tagName: string, shouldAdd: boolean) => {
+    const clean = tagName.trim().replace(/[,，]/g, '');
+    if (!clean || targetSkills.length === 0) return;
+
+    const tasks: Promise<unknown>[] = [];
+    let changedCount = 0;
+
+    for (const s of targetSkills) {
+      const currentList = parseTags(s.tags);
+      const exists = currentList.includes(clean);
+      if (shouldAdd && exists) continue;
+      if (!shouldAdd && !exists) continue;
+      const nextList = shouldAdd ? [...currentList, clean] : currentList.filter(t => t !== clean);
+      const nextStr = serializeTags(nextList);
+      changedCount++;
+      tasks.push(invoke('update_skill_tags', { id: s.id, tags: nextStr || null }));
+    }
+
+    if (changedCount === 0) return;
+    if (shouldAdd) recordRecentTag('skills', clean);
+
+    try {
+      await Promise.all(tasks);
+      await fetchData();
+      showToast(
+        changedCount > 1
+          ? `已为 ${changedCount} 个技能${shouldAdd ? '添加' : '移除'}标签 #${clean}`
+          : `已${shouldAdd ? '添加' : '移除'}标签 #${clean}`,
+        'success'
+      );
+    } catch (e) {
+      showToast(`更新标签失败: ${e}`, 'error');
+    }
+  }, [fetchData]);
+
+  // 为一级卡片（技能包或独立单技能，支持混合多选）添加/移除标签：技能包仅打在包自身，单技能打在技能实体
+  const handleBatchToggleRepoItemsTags = useCallback(async (targetRepos: GroupedRepo[], tagName: string, shouldAdd: boolean) => {
+    const clean = tagName.trim().replace(/[,，]/g, '');
+    if (!clean || targetRepos.length === 0) return;
+
+    const singleSkillTasks: Promise<unknown>[] = [];
+    let changedCount = 0;
+
+    for (const repo of targetRepos) {
+      const currentList = parseTags(getRepoEffectiveTags(repo));
+      const exists = currentList.includes(clean);
+      if (shouldAdd && exists) continue;
+      if (!shouldAdd && !exists) continue;
+
+      const nextList = shouldAdd ? [...currentList, clean] : currentList.filter(t => t !== clean);
+      const nextStr = serializeTags(nextList);
+      changedCount++;
+
+      if (isCollectionRepo(repo)) {
+        setRepoTags(repo.id, nextStr);
+      } else if (repo.skills[0]) {
+        singleSkillTasks.push(invoke('update_skill_tags', { id: repo.skills[0].id, tags: nextStr || null }));
+      }
+    }
+
+    if (changedCount === 0) return;
+    if (shouldAdd) recordRecentTag('skills', clean);
+
+    try {
+      if (singleSkillTasks.length > 0) {
+        await Promise.all(singleSkillTasks);
+        await fetchData();
+      }
+      showToast(
+        changedCount > 1
+          ? `已为 ${changedCount} 项${shouldAdd ? '添加' : '移除'}标签 #${clean}`
+          : `已${shouldAdd ? '添加' : '移除'}标签 #${clean}`,
+        'success'
+      );
+    } catch (e) {
+      showToast(`更新标签失败: ${e}`, 'error');
+    }
+  }, [fetchData]);
+
+  const handleRenameSkillTag = useCallback(async (oldName: string, newName: string) => {
+    const cleanOld = oldName.trim();
+    const cleanNew = newName.trim().replace(/[,，]/g, '');
+    if (!cleanOld || !cleanNew || cleanOld === cleanNew) return;
+
+    const affected = allLibrarySkills.filter(s => parseTags(s.tags).includes(cleanOld));
+    await Promise.all(
+      affected.map(s => {
+        const nextList = parseTags(s.tags).map(t => (t === cleanOld ? cleanNew : t));
+        const nextStr = serializeTags(nextList);
+        return invoke('update_skill_tags', { id: s.id, tags: nextStr || null });
+      })
+    );
+
+    renameRepoTagInStore(cleanOld, cleanNew);
+    renameTagInMeta('skills', cleanOld, cleanNew);
+    if (selectedTag === cleanOld) {
+      setSelectedTag(cleanNew);
+    }
+    await fetchData();
+  }, [allLibrarySkills, fetchData, selectedTag]);
+
+  const handleDeleteSkillTags = useCallback(async (tagNames: string[]) => {
+    if (tagNames.length === 0) return;
+    const targetSet = new Set(tagNames);
+    const affected = allLibrarySkills.filter(s => parseTags(s.tags).some(t => targetSet.has(t)));
+
+    await Promise.all(
+      affected.map(s => {
+        const nextList = parseTags(s.tags).filter(t => !targetSet.has(t));
+        const nextStr = serializeTags(nextList);
+        return invoke('update_skill_tags', { id: s.id, tags: nextStr || null });
+      })
+    );
+
+    deleteRepoTagsInStore(tagNames);
+    tagNames.forEach(name => removeTagFromMeta('skills', name));
+    if (targetSet.has(selectedTag)) {
+      setActiveView('all', '全部技能', 'LayoutGrid');
+    }
+    await fetchData();
+  }, [allLibrarySkills, fetchData, selectedTag]);
+
+  // 构建一级仓库/单技能卡片的右键标签子菜单
+  const buildRepoTagSubmenu = useCallback((targetRepos: GroupedRepo[]): ContextMenuItem => {
+    const quickTags = skillTagStats.slice(0, 10);
+    return {
+      id: 'set_tags',
+      label: targetRepos.length > 1 ? `设置标签 (${targetRepos.length} 项)` : '设置标签',
+      icon: <Tag size={14} />,
+      children: [
+        {
+          id: 'open_tag_popover',
+          label: '打开标签面板...',
+          icon: <Tag size={14} />,
+          onClick: () => {
+            setIsInspectorOpen(true);
+            setOpenTagPopoverSignal(n => n + 1);
+          },
+        },
+        ...(quickTags.length > 0 ? [{ id: 'tag_quick_sep', label: '', separator: true }] : []),
+        ...quickTags.map(t => {
+          const ownedCount = targetRepos.filter(r => parseTags(getRepoEffectiveTags(r)).includes(t.name)).length;
+          const allHave = targetRepos.length > 0 && ownedCount === targetRepos.length;
+          const someHave = ownedCount > 0 && ownedCount < targetRepos.length;
+          return {
+            id: `quick_repo_tag_${t.name}`,
+            label: `#${t.name}`,
+            icon: allHave
+              ? <Check size={14} className="text-[var(--color-primary)]" />
+              : someHave
+                ? <Minus size={14} className="text-amber-500" />
+                : t.isStarred
+                  ? <Star size={14} className="fill-amber-400 text-amber-400" />
+                  : undefined,
+            onClick: () => handleBatchToggleRepoItemsTags(targetRepos, t.name, !allHave),
+          };
+        }),
+        { id: 'tag_manage_sep', label: '', separator: true },
+        {
+          id: 'manage_all_tags',
+          label: '管理全部标签...',
+          icon: <SlidersHorizontal size={14} />,
+          onClick: () => {
+            setSkillTagManagerEditTarget(null);
+            setIsSkillTagManagerOpen(true);
+          },
+        },
+      ],
+    };
+  }, [skillTagStats, handleBatchToggleRepoItemsTags]);
+
+  // 共用右键子菜单：快速勾选/移除常用标签 + 打开 Eagle 风格悬浮面板 + 管理面板
+  const buildSkillTagSubmenu = useCallback((targetSkills: Skill[]): ContextMenuItem => {
+    const quickTags = skillTagStats.slice(0, 10);
+    return {
+      id: 'set_tags',
+      label: targetSkills.length > 1 ? `设置标签 (${targetSkills.length} 个技能)` : '设置标签',
+      icon: <Tag size={14} />,
+      children: [
+        {
+          id: 'open_tag_popover',
+          label: '打开标签面板...',
+          icon: <Tag size={14} />,
+          onClick: () => {
+            setIsInspectorOpen(true);
+            setOpenTagPopoverSignal(n => n + 1);
+          },
+        },
+        ...(quickTags.length > 0 ? [{ id: 'tag_quick_sep', label: '', separator: true }] : []),
+        ...quickTags.map(t => {
+          const ownedCount = targetSkills.filter(s => parseTags(s.tags).includes(t.name)).length;
+          const allHave = targetSkills.length > 0 && ownedCount === targetSkills.length;
+          const someHave = ownedCount > 0 && ownedCount < targetSkills.length;
+          return {
+            id: `quick_tag_${t.name}`,
+            label: `#${t.name}`,
+            icon: allHave
+              ? <Check size={14} className="text-[var(--color-primary)]" />
+              : someHave
+                ? <Minus size={14} className="text-amber-500" />
+                : t.isStarred
+                  ? <Star size={14} className="fill-amber-400 text-amber-400" />
+                  : undefined,
+            onClick: () => handleBatchToggleSkillTags(targetSkills, t.name, !allHave),
+          };
+        }),
+        { id: 'tag_manage_sep', label: '', separator: true },
+        {
+          id: 'manage_all_tags',
+          label: '管理全部标签...',
+          icon: <SlidersHorizontal size={14} />,
+          onClick: () => {
+            setSkillTagManagerEditTarget(null);
+            setIsSkillTagManagerOpen(true);
+          },
+        },
+      ],
+    };
+  }, [skillTagStats, handleBatchToggleSkillTags]);
+
+  const buildSidebarTagContextMenu = useCallback((tagStat: TagStatItem): ContextMenuItem[] => [
+    {
+      id: 'toggle_star_tag',
+      label: tagStat.isStarred ? '取消常用' : '设为常用',
+      icon: <Star size={14} className={tagStat.isStarred ? 'fill-amber-400 text-amber-400' : ''} />,
+      onClick: () => {
+        toggleStarTag('skills', tagStat.name);
+        showToast(tagStat.isStarred ? `已取消常用 #${tagStat.name}` : `已设为常用标签 #${tagStat.name}`);
+      },
+    },
+    {
+      id: 'rename_tag',
+      label: '重命名标签...',
+      icon: <Edit2 size={14} />,
+      onClick: () => {
+        setSkillTagManagerEditTarget(tagStat.name);
+        setIsSkillTagManagerOpen(true);
+      },
+    },
+    {
+      id: 'open_tag_manager',
+      label: '打开标签管理面板',
+      icon: <SlidersHorizontal size={14} />,
+      onClick: () => {
+        setSkillTagManagerEditTarget(null);
+        setIsSkillTagManagerOpen(true);
+      },
+    },
+    { id: 'sep_sidebar_tag', label: '', separator: true },
+    {
+      id: 'delete_sidebar_tag',
+      label: '删除标签',
+      icon: <Trash2 size={14} />,
+      danger: true,
+      onClick: async () => {
+        if (tagStat.count > 0) {
+          const ok = await waitConfirm(
+            `确认删除标签“${tagStat.name}”吗？\n将从 ${tagStat.count} 个技能中移除该标签，不会删除技能本身。`,
+            '删除标签',
+            true,
+            '确认删除'
+          );
+          if (!ok) return;
+        }
+        await handleDeleteSkillTags([tagStat.name]);
+        showToast(`已删除标签 #${tagStat.name}`, 'success');
+      },
+    },
+  ], [handleDeleteSkillTags, waitConfirm]);
 
 
   // 清除检查器选中（当过滤条件变化时）
@@ -1053,13 +1457,18 @@ function App() {
     setInspectorSelectedType('skill');
     setSelectedRepoIds(new Set());
 
-    let visibleSkills = isFlatView 
+    let visibleSkills = isFlatView
       ? filteredGroupedRepos.flatMap(r => r.skills)
-      : filteredGroupedRepos.find(r => r.id === selectedRepoId)?.skills || [];
-      
-    if (viewMode === 'grid') {
-      const collections = filteredGroupedRepos.filter(r => r.repo_type === 'collection');
-      visibleSkills = collections.flatMap(r => r.skills);
+      : selectedRepoId
+        ? (filteredGroupedRepos.find(r => r.id === selectedRepoId)?.skills || [])
+        : matchedExtraSubSkills.length > 0
+          ? matchedExtraSubSkills.map(m => m.skill)
+          : baseScopedRepos.filter(isCollectionRepo).flatMap(r => r.skills);
+
+    if (viewMode === 'grid' && !isFlatView && !selectedRepoId) {
+      visibleSkills = matchedExtraSubSkills.length > 0
+        ? matchedExtraSubSkills.map(m => m.skill)
+        : baseScopedRepos.filter(isCollectionRepo).flatMap(r => r.skills);
     }
 
     setSelectedSkillIds(prev => {
@@ -1091,17 +1500,83 @@ function App() {
     if (!e?.shiftKey) {
       setLastSelectedSkillId(skill.id);
     }
-  }, [filteredGroupedRepos, selectedRepoId, isFlatView, viewMode, lastSelectedSkillId]);
+  }, [filteredGroupedRepos, baseScopedRepos, matchedExtraSubSkills, selectedRepoId, isFlatView, viewMode, lastSelectedSkillId]);
 
-  // 返回上一级
-  const handleToggleFavorite = async (id: string) => {
+  // 立即更新前端技能星标状态（支撑 0ms 乐观响应与详情页双向同步）
+  const applySkillsFavoriteState = useCallback((skillIds: string[], isFavorite: boolean) => {
+    const idSet = new Set(skillIds);
+    setSkills(prev => prev.map(s => idSet.has(s.id) ? { ...s, is_favorite: isFavorite } : s));
+    setGroupedRepos(prev =>
+      prev.map(r =>
+        r.skills.some(s => idSet.has(s.id))
+          ? { ...r, skills: r.skills.map(s => idSet.has(s.id) ? { ...s, is_favorite: isFavorite } : s) }
+          : r
+      )
+    );
+  }, []);
+
+  const handleToggleFavorite = useCallback(async (id: string) => {
+    const currentSkill =
+      skills.find(s => s.id === id) ||
+      groupedRepos.flatMap(r => r.skills).find(s => s.id === id);
+    const prevFavorite = currentSkill?.is_favorite ?? false;
+    const nextFavorite = !prevFavorite;
+
+    // 先做乐观更新，避免等待后端/全量刷新导致星星延迟亮灭
+    applySkillsFavoriteState([id], nextFavorite);
     try {
       await invoke("toggle_skill_favorite", { id });
-      fetchData();
     } catch (e) {
+      applySkillsFavoriteState([id], prevFavorite);
       showToast(`操作失败: ${e}`, "error");
     }
-  };
+  }, [skills, groupedRepos, applySkillsFavoriteState]);
+
+  const handleSetSkillsFavoriteBatch = useCallback(async (skillIds: string[], targetState: boolean) => {
+    const allCurrentSkills = groupedRepos.flatMap(r => r.skills);
+    const idsToToggle = skillIds.filter(id => {
+      const s = allCurrentSkills.find(item => item.id === id) || skills.find(item => item.id === id);
+      return s ? s.is_favorite !== targetState : true;
+    });
+    if (idsToToggle.length === 0) return;
+
+    applySkillsFavoriteState(idsToToggle, targetState);
+    try {
+      await Promise.all(idsToToggle.map(id => invoke("toggle_skill_favorite", { id })));
+    } catch (e) {
+      fetchData();
+      showToast(`操作失败: ${e}`, "error");
+    }
+  }, [skills, groupedRepos, applySkillsFavoriteState]);
+
+  // 切换顶层卡片星标状态（技能包写入本地 favoriteStore 独立记录，独立单技能同步后端并乐观更新）
+  const handleToggleRepoFavorite = useCallback(async (repo: GroupedRepo) => {
+    if (isCollectionRepo(repo)) {
+      toggleRepoStarred(repo.id);
+      setRepoFavoriteVersion(v => v + 1);
+      return;
+    }
+    const singleSkill = repo.skills[0];
+    if (singleSkill) {
+      await handleToggleFavorite(singleSkill.id);
+    }
+  }, [handleToggleFavorite]);
+
+  // 批量设置顶层卡片星标状态（兼容技能包、独立单技能及混合多选）
+  const handleSetReposFavoriteBatch = useCallback(async (targetRepos: GroupedRepo[], targetState: boolean) => {
+    const collectionRepoIds = targetRepos.filter(isCollectionRepo).map(r => r.id);
+    const singleSkillIds = targetRepos
+      .filter(r => !isCollectionRepo(r) && r.skills.length === 1)
+      .map(r => r.skills[0].id);
+
+    if (collectionRepoIds.length > 0) {
+      setReposStarredBatch(collectionRepoIds, targetState);
+      setRepoFavoriteVersion(v => v + 1);
+    }
+    if (singleSkillIds.length > 0) {
+      await handleSetSkillsFavoriteBatch(singleSkillIds, targetState);
+    }
+  }, [handleSetSkillsFavoriteBatch]);
 
   const handleGoBack = useCallback((e?: React.MouseEvent) => {
     if (e && (e.button === 1 || e.metaKey || e.ctrlKey)) {
@@ -1143,76 +1618,116 @@ function App() {
     const isMulti = selectedRepoIds.has(repo.id) && selectedRepoIds.size > 1;
     const targetRepos = isMulti ? filteredGroupedRepos.filter(r => selectedRepoIds.has(r.id)) : [repo];
     const storeRes = !isMulti ? findStoreResourceForRepo(repo, registryData.resources as ResourceItem[]) : undefined;
+    const isSingle = !isMulti && repo.repo_type !== 'collection' && repo.skills.length === 1;
+    const singleSkill = isSingle ? repo.skills[0] : null;
+    const isSingleOnline = isSingle && repo.source_type === 'online';
 
     return [
       {
-        id: 'open_current_tab', label: isMulti ? `无法批量打开` : `打开`, icon: <ChevronRight size={14} />, onClick: () => {
+        id: 'open_current_tab', label: isMulti ? `无法批量打开` : isSingleOnline ? `打开链接` : isSingle ? `查看文档` : `打开`, icon: <ChevronRight size={14} />, onClick: () => {
           if (!isMulti) {
-            setSelectedRepoId(repo.id);
-            setInspectorSelectedType('repo');
-            setSelectedRepoIds(new Set([repo.id]));
-            setSelectedSkillIds(new Set());
+            if (isSingle && singleSkill) {
+              if (isSingleOnline) {
+                const url = singleSkill.online_url || singleSkill.local_path;
+                import('@tauri-apps/plugin-opener').then(m => m.openUrl(url).catch(console.error));
+              } else {
+                navigateTo('skill-detail', singleSkill.name, { ...currentTab?.context, skillId: singleSkill.id }, 'FileText');
+              }
+            } else {
+              setSelectedRepoId(repo.id);
+              setInspectorSelectedType('repo');
+              setSelectedRepoIds(new Set([repo.id]));
+              setSelectedSkillIds(new Set());
+            }
           }
         }
       },
       {
         id: 'open_new_tab', label: isMulti ? `在 ${targetRepos.length} 个新标签页中打开` : `在新标签页中打开`, icon: <Plus size={14} />, onClick: () => {
-          targetRepos.forEach(r => openTab('skill-repo', r.name, { repoId: r.id }));
+          targetRepos.forEach(r => {
+            if (r.repo_type !== 'collection' && r.skills.length === 1) {
+              const s = r.skills[0];
+              if (r.source_type === 'online') {
+                import('@tauri-apps/plugin-opener').then(m => m.openUrl(s.online_url || s.local_path).catch(console.error));
+              } else {
+                openTab('skill-detail', s.name, { ...currentTab?.context, skillId: s.id }, 'FileText');
+              }
+            } else {
+              openTab('skill-repo', r.name, { repoId: r.id });
+            }
+          });
         }
       },
+      ...(isSingle && singleSkill ? [{
+        id: 'generate_prompt',
+        label: '智能引用提示词',
+        icon: <Sparkles size={14} />,
+        onClick: () => handleGeneratePrompt(singleSkill)
+      }] : []),
       ...(storeRes ? [{
         id: 'view_in_store',
         label: '在资源社区中查看',
         icon: <Globe size={14} />,
         onClick: () => handleViewInStore(storeRes)
       }] : []),
-      {
+      ...(!isSingleOnline ? [{
         id: 'open_folder', label: isMulti ? `在${fileManagerName}中打开` : `在${fileManagerName}中打开`, icon: <Folder size={14} />, onClick: () => {
           targetRepos.forEach(r => invoke('open_local_folder', { path: r.path }).catch(console.error));
         }
-      },
+      }] : []),
       {
-        id: 'copy_path', label: isMulti ? `复制 ${targetRepos.length} 个路径` : '复制路径', icon: <Copy size={14} />, onClick: () => {
-          navigator.clipboard.writeText(targetRepos.map(r => r.path).join('\n'));
-          showToast(isMulti ? '多个路径已复制' : '路径已复制');
+        id: 'copy_path', label: isMulti ? `复制 ${targetRepos.length} 个路径` : isSingleOnline ? '复制链接' : '复制路径', icon: <Copy size={14} />, onClick: () => {
+          navigator.clipboard.writeText(targetRepos.map(r => r.source_type === 'online' ? (r.skills[0]?.online_url || r.path) : r.path).join('\n'));
+          showToast(isMulti ? '多个路径已复制' : isSingleOnline ? '链接已复制' : '路径已复制');
         }
       },
+      { id: 'sep_repo_tag', label: '', separator: true },
+      ...(() => {
+        const allStarred = targetRepos.length > 0 && targetRepos.every(isRepoItemStarred);
+        return [{
+          id: 'favorite',
+          label: isMulti ? (allStarred ? '批量取消星标' : '批量星标') : (allStarred ? '取消星标' : '星标'),
+          icon: <Star size={14} className={allStarred ? 'fill-amber-400 text-amber-500' : ''} />,
+          onClick: () => handleSetReposFavoriteBatch(targetRepos, !allStarred),
+        }];
+      })(),
+      buildRepoTagSubmenu(targetRepos),
       ...(agents.length > 0 ? [
         { id: 'sep1', label: '', separator: true },
         {
           id: 'sync_to_agent',
           label: isMulti ? `将 ${targetRepos.length} 个仓库同步至 Agent` : '同步至 AI Agent',
           icon: <LinkIcon size={14} />,
-        children: agents.map(agent => {
-          const syncedCount = targetRepos.flatMap(r => r.skills).filter(skill => syncRecords.some(sr => sr.skill_id === skill.id && sr.agent_id === agent.id)).length;
-          return {
-            id: `sync_${agent.id}`,
-            label: agent.display_name,
-            icon: syncedCount > 0 ? <Check size={14} className="text-[var(--color-primary)]" /> : undefined,
-            onClick: async () => {
-              try {
-                if (syncedCount > 0) {
-                  for (const r of targetRepos) {
-                    for (const skill of r.skills) {
-                      await invoke('unsync_skill', { skillId: skill.id, agentId: agent.id });
+          children: agents.map(agent => {
+            const syncedCount = targetRepos.flatMap(r => r.skills).filter(skill => syncRecords.some(sr => sr.skill_id === skill.id && sr.agent_id === agent.id)).length;
+            return {
+              id: `sync_${agent.id}`,
+              label: agent.display_name,
+              icon: syncedCount > 0 ? <Check size={14} className="text-[var(--color-primary)]" /> : undefined,
+              onClick: async () => {
+                try {
+                  if (syncedCount > 0) {
+                    for (const r of targetRepos) {
+                      for (const skill of r.skills) {
+                        await invoke('unsync_skill', { skillId: skill.id, agentId: agent.id });
+                      }
                     }
-                  }
-                  showToast(isMulti ? `已批量取消同步至 ${agent.display_name}` : `已取消同步 "${repo.name}" 至 ${agent.display_name}`);
-                } else {
-                  for (const r of targetRepos) {
-                    for (const skill of r.skills) {
-                      const isAlreadySynced = syncRecords.some(sr => sr.skill_id === skill.id && sr.agent_id === agent.id);
-                      if (!isAlreadySynced) await invoke('sync_skill', { skillId: skill.id, agentId: agent.id });
+                    showToast(isMulti ? `已批量取消同步至 ${agent.display_name}` : `已取消同步 "${repo.name}" 至 ${agent.display_name}`);
+                  } else {
+                    for (const r of targetRepos) {
+                      for (const skill of r.skills) {
+                        const isAlreadySynced = syncRecords.some(sr => sr.skill_id === skill.id && sr.agent_id === agent.id);
+                        if (!isAlreadySynced) await invoke('sync_skill', { skillId: skill.id, agentId: agent.id });
+                      }
                     }
+                    showToast(isMulti ? `已批量同步至 ${agent.display_name}` : `已同步 "${repo.name}" 至 ${agent.display_name}`);
                   }
-                  showToast(isMulti ? `已批量同步至 ${agent.display_name}` : `已同步 "${repo.name}" 至 ${agent.display_name}`);
-                }
-                fetchData();
-              } catch (e) { showToast(`操作失败: ${e}`, 'error'); }
-            }
-          };
-        })
-      }] : []),
+                  fetchData();
+                } catch (e) { showToast(`操作失败: ${e}`, 'error'); }
+              }
+            };
+          })
+        }] : []),
       { id: 'sep2', label: '', separator: true },
       {
         id: 'export',
@@ -1295,7 +1810,7 @@ function App() {
       { id: 'sep4', label: '', separator: true },
       { id: 'delete', label: isMulti ? `批量删除` : '删除', icon: <Trash2 size={14} />, danger: true, onClick: (e?: any) => handleDeleteRepos(e || ({ stopPropagation: () => { } } as any), targetRepos) },
     ];
-  }, [agents, syncRecords, selectedRepoIds, filteredGroupedRepos, waitConfirm, handleViewInStore]);
+  }, [agents, syncRecords, selectedRepoIds, filteredGroupedRepos, waitConfirm, handleViewInStore, buildRepoTagSubmenu, handleSetReposFavoriteBatch, repoFavoriteVersion]);
 
   // 智能引用提示词：打开预览弹窗并生成内容
   const handleGeneratePrompt = useCallback(async (skill: Skill) => {
@@ -1311,10 +1826,14 @@ function App() {
   const buildSkillContextMenu = useCallback((skill: Skill): ContextMenuItem[] => {
     const isMulti = selectedSkillIds.has(skill.id) && selectedSkillIds.size > 1;
 
-    // 从所有可见的 skill 中筛选出当前选中的 skills
-    const visibleSkills = filteredGroupedRepos.find(r => r.id === selectedRepoId)?.skills || [];
+    // 从当前可见列表或所属库中筛选出当前选中的 skills（兼容平铺与按标签/星标命中子技能）
+    const visibleSkills = selectedRepoId
+      ? (filteredGroupedRepos.find(r => r.id === selectedRepoId)?.skills || [])
+      : matchedExtraSubSkills.length > 0
+        ? matchedExtraSubSkills.map(m => m.skill)
+        : baseScopedRepos.flatMap(r => r.skills);
     const targetSkills = isMulti ? visibleSkills.filter(s => selectedSkillIds.has(s.id)) : [skill];
-    const storeRes = !isMulti ? findStoreResourceForSkill(skill, registryData.resources as ResourceItem[], filteredGroupedRepos) : undefined;
+    const storeRes = !isMulti ? findStoreResourceForSkill(skill, registryData.resources as ResourceItem[], baseScopedRepos) : undefined;
 
     return [
       { id: 'open_in_current_tab', label: isMulti ? `无法批量打开` : '打开', icon: <ChevronRight size={14} />, onClick: () => { if (!isMulti) { navigateTo('skill-detail', skill.name, { ...currentTab?.context, skillId: skill.id }, 'FileText'); } } },
@@ -1358,6 +1877,14 @@ function App() {
           showToast(isMulti ? '多个路径已复制' : '路径已复制');
         }
       },
+      { id: 'sep_skill_tag', label: '', separator: true },
+      {
+        id: 'favorite',
+        label: isMulti ? (targetSkills.every(s => s.is_favorite) ? '批量取消星标' : '批量星标') : (skill.is_favorite ? '取消星标' : '星标'),
+        icon: <Star size={14} className={targetSkills.every(s => s.is_favorite) ? 'fill-amber-400 text-amber-500' : ''} />,
+        onClick: () => handleSetSkillsFavoriteBatch(targetSkills.map(s => s.id), !targetSkills.every(s => s.is_favorite)),
+      },
+      buildSkillTagSubmenu(targetSkills),
       ...(agents.length > 0 ? [
         { id: 'sep1', label: '', separator: true },
         {
@@ -1392,7 +1919,7 @@ function App() {
         }
       ] : []),
     ];
-  }, [agents, selectedSkillIds, filteredGroupedRepos, selectedRepoId, syncRecords, handleViewInStore]);
+  }, [agents, selectedSkillIds, filteredGroupedRepos, baseScopedRepos, matchedExtraSubSkills, selectedRepoId, syncRecords, handleViewInStore, buildSkillTagSubmenu, handleSetSkillsFavoriteBatch]);
 
   const selectedWorkspaceDir = directories.find(d => d.id === selectedWorkspaceId);
 
@@ -1517,9 +2044,9 @@ function App() {
           setQuickLookOpen(false);
         } else {
           if (inspectorSelectedType === 'skill' && selectedSkillIds.size > 0) {
-             setQuickLookOpen(true);
+            setQuickLookOpen(true);
           } else if (inspectorSelectedType === 'repo' && selectedRepoIds.size > 0) {
-             setQuickLookOpen(true);
+            setQuickLookOpen(true);
           }
         }
         return;
@@ -1537,7 +2064,7 @@ function App() {
             if (nextEl) {
               const nextId = nextEl.getAttribute('data-id');
               if (nextId) {
-                const nextSkill = filteredGroupedRepos.flatMap(r => r.skills).find(s => s.id === nextId);
+                const nextSkill = baseScopedRepos.flatMap(r => r.skills).find(s => s.id === nextId);
                 if (nextSkill) {
                   setSelectedSkillIds(new Set([nextId]));
                   setLastSelectedSkillId(nextId);
@@ -1577,22 +2104,31 @@ function App() {
         }
         if (!isAddDialogOpen && !isSettingsOpen && !isSearchModalOpen && !isInput) {
           if (inspectorSelectedType === 'skill' && selectedSkillIds.size === 1) {
-             e.preventDefault();
-             const currentId = Array.from(selectedSkillIds)[0];
-             const skill = filteredGroupedRepos.flatMap(r => r.skills).find(s => s.id === currentId);
-             if (skill) {
-               navigateTo('skill-detail', skill.name, { ...currentTab?.context, skillId: skill.id }, 'FileText');
-             }
+            e.preventDefault();
+            const currentId = Array.from(selectedSkillIds)[0];
+            const skill = baseScopedRepos.flatMap(r => r.skills).find(s => s.id === currentId);
+            if (skill) {
+              navigateTo('skill-detail', skill.name, { ...currentTab?.context, skillId: skill.id }, 'FileText');
+            }
           } else if (inspectorSelectedType === 'repo' && selectedRepoIds.size === 1) {
-             e.preventDefault();
-             const currentId = Array.from(selectedRepoIds)[0];
-             const repo = filteredGroupedRepos.find(r => r.id === currentId);
-             if (repo) {
-               setSelectedRepoId(repo.id);
-               setInspectorSelectedType('repo');
-               setSelectedRepoIds(new Set([repo.id]));
-               setSelectedSkillIds(new Set());
-             }
+            e.preventDefault();
+            const currentId = Array.from(selectedRepoIds)[0];
+            const repo = filteredGroupedRepos.find(r => r.id === currentId);
+            if (repo) {
+              if (repo.repo_type !== 'collection' && repo.skills.length === 1) {
+                const s = repo.skills[0];
+                if (repo.source_type === 'online') {
+                  import('@tauri-apps/plugin-opener').then(m => m.openUrl(s.online_url || s.local_path).catch(console.error));
+                } else {
+                  navigateTo('skill-detail', s.name, { ...currentTab?.context, skillId: s.id }, 'FileText');
+                }
+              } else {
+                setSelectedRepoId(repo.id);
+                setInspectorSelectedType('repo');
+                setSelectedRepoIds(new Set([repo.id]));
+                setSelectedSkillIds(new Set());
+              }
+            }
           }
         }
       }
@@ -1603,12 +2139,12 @@ function App() {
           if (selectedRepoIds.size > 0 && inspectorSelectedType === 'repo') {
             e.preventDefault();
             const reposToDelete = filteredGroupedRepos.filter(r => selectedRepoIds.has(r.id));
-            handleDeleteRepos({ stopPropagation: () => {} } as any, reposToDelete);
+            handleDeleteRepos({ stopPropagation: () => { } } as any, reposToDelete);
           } else if (selectedRepoId && !inspectorSelectedType) {
             e.preventDefault();
             const repoToDelete = filteredGroupedRepos.find(r => r.id === selectedRepoId);
             if (repoToDelete) {
-              handleDeleteRepos({ stopPropagation: () => {} } as any, [repoToDelete]);
+              handleDeleteRepos({ stopPropagation: () => { } } as any, [repoToDelete]);
             }
           }
         }
@@ -1623,7 +2159,7 @@ function App() {
         const dirs = await invoke<SourceDirectory[]>("get_source_directories");
         if (dirs && dirs.length > 0) {
           for (const d of dirs) {
-            await invoke("rescan_directory", { path: d.path }).catch(() => {});
+            await invoke("rescan_directory", { path: d.path }).catch(() => { });
           }
         }
         await fetchData();
@@ -1642,12 +2178,13 @@ function App() {
       window.removeEventListener('focus', handleFocus);
     };
   }, [
-    inspectorSelectedType, 
-    selectedRepoId, 
-    isAddDialogOpen, isSettingsOpen, isSearchModalOpen, 
+    inspectorSelectedType,
+    selectedRepoId,
+    isAddDialogOpen, isSettingsOpen, isSearchModalOpen,
     handleDeselectAll,
     selectedRepoIds,
     filteredGroupedRepos,
+    baseScopedRepos,
     deleteConfirmRepos,
     confirmDeleteRepos,
     selectedSkillIds,
@@ -1667,24 +2204,21 @@ function App() {
 
 
   const getHeaderTitleStr = useCallback(() => {
-    if (isFlatView) {
-      if (selectedTag !== "all") return `标签: ${selectedTag}`;
-      if (activeView === "starred") return "星标技能";
-      if (activeView === "recent") return "最近使用";
-      if (activeView === "untagged") return "未标签技能";
-      return "全部技能";
-    }
-    if (!selectedRepoId) {
-       if (currentTab?.context?.filter === 'local') return '本地技能';
-       if (currentTab?.context?.filter === 'github') return 'Github技能';
-       if (currentTab?.context?.filter === 'all') return '所有技能';
-       if (activeView === 'all' && selectedTag === 'all') return '全部技能';
-    }
-    const wsLabel = directories.find(d => d.id === selectedWorkspaceId)?.label || "未知技能库";
     if (selectedRepoId && !isFlatView) {
+      const wsLabel = directories.find(d => d.id === selectedWorkspaceId)?.label || "未知技能库";
       return filteredGroupedRepos.find(r => r.id === selectedRepoId)?.name || wsLabel;
     }
-    return wsLabel;
+    if (selectedTag !== "all") return `标签: ${selectedTag}`;
+    if (activeView === "starred") return "星标";
+    if (activeView === "recent") return "最近使用";
+    if (activeView === "untagged") return "未标签技能";
+    if (!selectedRepoId) {
+      if (currentTab?.context?.filter === 'local') return '本地技能';
+      if (currentTab?.context?.filter === 'github') return 'Github技能';
+      if (currentTab?.context?.filter === 'all') return '所有技能';
+      if (activeView === 'all' && selectedTag === 'all') return '全部技能';
+    }
+    return directories.find(d => d.id === selectedWorkspaceId)?.label || "未知技能库";
   }, [isFlatView, selectedTag, activeView, selectedRepoId, filteredGroupedRepos, directories, selectedWorkspaceId, currentTab?.context?.filter]);
 
   const getHeaderCount = useCallback(() => {
@@ -1694,22 +2228,29 @@ function App() {
     if (selectedRepoId) {
       return filteredGroupedRepos.find(r => r.id === selectedRepoId)?.skills?.length || 0;
     }
+    if (selectedTag !== "all" || activeView === "starred") {
+      return filteredGroupedRepos.length + matchedExtraSubSkills.length;
+    }
     return filteredGroupedRepos.length;
-  }, [isFlatView, filteredGroupedRepos, selectedRepoId]);
+  }, [isFlatView, filteredGroupedRepos, selectedRepoId, selectedTag, activeView, matchedExtraSubSkills.length]);
 
   const getHeaderIconStr = useCallback(() => {
-    if (isFlatView) {
-      if (selectedTag !== "all") return 'Tag';
-      if (activeView === "starred") return 'Star';
-      if (activeView === "recent") return 'Clock';
-      if (activeView === "untagged") return 'Tag';
-      return 'LayoutGrid';
+    if (selectedRepoId && !isFlatView) {
+      const repo = filteredGroupedRepos.find(r => r.id === selectedRepoId);
+      if (repo) {
+        return repo.source_type === 'online' ? 'Github' : 'Folder';
+      }
+      return 'Folder';
     }
+    if (selectedTag !== "all") return 'Tag';
+    if (activeView === "starred") return 'Star';
+    if (activeView === "recent") return 'Clock';
+    if (activeView === "untagged") return 'Tag';
     if (!selectedRepoId) {
-       if (currentTab?.context?.filter === 'local') return 'HardDrive';
-       if (currentTab?.context?.filter === 'github') return 'Github';
-       if (currentTab?.context?.filter === 'all') return 'FolderSearch';
-       if (activeView === 'all' && selectedTag === 'all') return 'LayoutGrid';
+      if (currentTab?.context?.filter === 'local') return 'HardDrive';
+      if (currentTab?.context?.filter === 'github') return 'Github';
+      if (currentTab?.context?.filter === 'all') return 'FolderSearch';
+      if (activeView === 'all' && selectedTag === 'all') return 'LayoutGrid';
     }
     if (selectedRepoId) {
       const repo = filteredGroupedRepos.find(r => r.id === selectedRepoId);
@@ -1733,28 +2274,26 @@ function App() {
   const getHeaderTitle = () => {
     const countBadge = <span className="bg-black/5 text-[var(--color-muted)] text-[11px] px-2 py-0.5 rounded-full font-medium ml-2">{getHeaderCount()}</span>;
     if (isFlatView) {
-      const title = selectedTag !== "all" ? `标签: ${selectedTag}`
-                  : activeView === "starred" ? "星标技能"
-                  : activeView === "recent" ? "最近使用"
-                  : activeView === "untagged" ? "未标签技能"
-                  : "全部技能";
-      return <>{title}{countBadge}</>;
+      return <>最近使用{countBadge}</>;
     }
     const wsLabel = directories.find(d => d.id === selectedWorkspaceId)?.label || "未知技能库";
     if (selectedRepoId && !isFlatView) {
       return (
         <>
-          <span className="text-[var(--color-muted)] cursor-pointer hover:text-[var(--foreground)] transition-colors" 
+          <span className="text-[var(--color-muted)] cursor-pointer hover:text-[var(--foreground)] transition-colors"
             onClick={(e) => handleGoBack(e)}
             onAuxClick={(e) => { if (e.button === 1) handleGoBack(e); }}
           >
-            {wsLabel}
+            {activeView === "starred" ? "星标" : wsLabel}
           </span>
           <ChevronRight className="w-4 h-4 mx-2 text-[var(--color-muted)] opacity-50" />
           <span>{filteredGroupedRepos.find(r => r.id === selectedRepoId)?.name}</span>
           {countBadge}
         </>
       );
+    }
+    if (activeView === "starred") {
+      return <>星标{countBadge}</>;
     }
     return <>{wsLabel}{countBadge}</>;
   };
@@ -1763,331 +2302,380 @@ function App() {
     <div className="flex h-screen w-full bg-[var(--color-background)] text-[var(--foreground)] overflow-hidden font-sans">
 
       {isLeftSidebarOpen && (
-      <div 
-        className="w-64 bg-transparent flex flex-col h-full shrink-0 relative z-20 text-[13px] border-r border-[var(--color-border)] sidebar-container"
-      >
-        {/* 侧边栏顶部拖拽区域：左侧 72px 专供 macOS 原生红绿灯按钮，设置 no-drag 避免抢占最小化/关闭点击 */}
-        <div className="h-10 w-full shrink-0 flex items-center">
-          <div 
-            className="w-[72px] h-full shrink-0" 
-            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties} 
-          />
-          <div 
-            data-tauri-drag-region 
-            className="flex-1 h-full"
-            style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
-            onPointerDown={(e) => { if (e.target === e.currentTarget) getCurrentWindow().startDragging(); }}
-            onDoubleClick={(e) => { if (e.target === e.currentTarget) getCurrentWindow().toggleMaximize(); }}
-          />
-        </div>
+        <div
+          className="w-64 bg-transparent flex flex-col h-full shrink-0 relative z-20 text-[13px] border-r border-[var(--color-border)] sidebar-container"
+        >
+          {/* 侧边栏顶部拖拽区域：左侧 72px 专供 macOS 原生红绿灯按钮，设置 no-drag 避免抢占最小化/关闭点击 */}
+          <div className="h-10 w-full shrink-0 flex items-center">
+            <div
+              className="w-[72px] h-full shrink-0"
+              style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+            />
+            <div
+              data-tauri-drag-region
+              className="flex-1 h-full"
+              style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+              onPointerDown={(e) => { if (e.target === e.currentTarget) getCurrentWindow().startDragging(); }}
+              onDoubleClick={(e) => { if (e.target === e.currentTarget) getCurrentWindow().toggleMaximize(); }}
+            />
+          </div>
 
-        {/* 模块 Tab 导航与全局搜索 */}
-        <div className="px-3 pb-3 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1">
-            {([
-              { id: 'skills' as AppModule, label: '技能', icon: FileCode },
-              { id: 'prompts' as AppModule, label: '提示词', icon: MessageSquareQuote },
-              { id: 'resources' as AppModule, label: '资源', icon: Store },
-            ]).map(tab => (
-              <button
-                key={tab.id}
-                onClick={(e) => handleSwitchModule(tab.id, e)}
-                onAuxClick={(e) => {
-                  if (e.button === 1) handleSwitchModule(tab.id, e);
-                }}
-                className={`flex items-center justify-center transition-colors duration-300 outline-none select-none rounded-md h-[32px] ${
-                  activeModule === tab.id
+          {/* 模块 Tab 导航与全局搜索 */}
+          <div className="px-3 pb-3 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1">
+              {([
+                { id: 'skills' as AppModule, label: '技能', icon: FileCode },
+                { id: 'prompts' as AppModule, label: '提示词', icon: MessageSquareQuote },
+                { id: 'resources' as AppModule, label: '资源', icon: Store },
+              ]).map(tab => (
+                <button
+                  key={tab.id}
+                  onClick={(e) => handleSwitchModule(tab.id, e)}
+                  onAuxClick={(e) => {
+                    if (e.button === 1) handleSwitchModule(tab.id, e);
+                  }}
+                  className={`flex items-center justify-center transition-colors duration-300 outline-none select-none rounded-md h-[32px] ${activeModule === tab.id
                     ? 'bg-black/[0.05] text-[var(--foreground)] font-medium px-2.5'
                     : 'text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/[0.04] px-2.5'
-                }`}
+                    }`}
+                >
+                  <tab.icon className="w-4 h-4 shrink-0" />
+                  <div
+                    className="grid transition-all duration-300 ease-in-out ml-1"
+                    style={{ gridTemplateColumns: activeModule === tab.id ? '1fr' : '0fr' }}
+                  >
+                    <span className={`overflow-hidden text-[14px] truncate leading-none transition-all duration-300 ${activeModule === tab.id ? 'opacity-100 pl-1' : 'opacity-0 pl-0'}`}>
+                      {tab.label}
+                    </span>
+                  </div>
+                </button>
+              ))}
+            </div>
+            <Tooltip content="全局搜索 (⌘K)">
+              <button
+                onClick={() => setIsSearchModalOpen(true)}
+                className="p-2 rounded-lg text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/[0.06] transition-colors shrink-0"
               >
-                <tab.icon className="w-4 h-4 shrink-0" />
-                <div 
-                  className="grid transition-all duration-300 ease-in-out ml-1"
-                  style={{ gridTemplateColumns: activeModule === tab.id ? '1fr' : '0fr' }}
-                >
-                  <span className={`overflow-hidden text-[14px] truncate leading-none transition-all duration-300 ${activeModule === tab.id ? 'opacity-100 pl-1' : 'opacity-0 pl-0'}`}>
-                    {tab.label}
-                  </span>
-                </div>
+                <Search className="w-4 h-4" />
               </button>
-            ))}
+            </Tooltip>
           </div>
-          <Tooltip content="全局搜索 (⌘K)">
-            <button
-              onClick={() => setIsSearchModalOpen(true)}
-              className="p-2 rounded-lg text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/[0.06] transition-colors shrink-0"
-            >
-              <Search className="w-4 h-4" />
-            </button>
-          </Tooltip>
-        </div>
 
-        {activeModule === 'skills' ? (
-          <>
-            {/* Workspace Switcher */}
-            <SkillLibrarySelector
-              ref={skillLibrarySelectorRef}
-              directories={directories}
-              selectedId={selectedWorkspaceId}
-              onSelect={handleWorkspaceSelect}
-              onDirectoriesChange={fetchData}
-              onCreateLibrary={() => setIsCreateModalOpen(true)}
-              onOpenLibrary={() => setIsOpenModalOpen(true)}
-              onMergeLibrary={() => setIsMergeModalOpen(true)}
-            />
+          {activeModule === 'skills' ? (
+            <>
+              {/* Workspace Switcher */}
+              <SkillLibrarySelector
+                ref={skillLibrarySelectorRef}
+                directories={directories}
+                selectedId={selectedWorkspaceId}
+                onSelect={handleWorkspaceSelect}
+                onDirectoriesChange={fetchData}
+                onCreateLibrary={() => setIsCreateModalOpen(true)}
+                onOpenLibrary={() => setIsOpenModalOpen(true)}
+                onMergeLibrary={() => setIsMergeModalOpen(true)}
+              />
 
 
-            <div className="flex-1 min-h-0 overflow-y-auto sidebar-scroll-area">
-              <div className="px-3 mt-1 mb-5 space-y-0.5">
-                <h3 className="text-[11px] font-semibold text-[var(--color-muted)]/60 mb-1 px-2 uppercase tracking-wide">
-                  快捷筛选
-                </h3>
-                <button
-                  onClick={(e) => setActiveView("all", "全部技能", "LayoutGrid", e)}
-                  onAuxClick={(e) => { if (e.button === 1) setActiveView("all", "全部技能", "LayoutGrid", e); }}
-                  className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none ${isSidebarMatch && activeView === "all" && selectedTag === "all" ? "bg-black/5 text-[var(--foreground)] font-semibold" : "text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] font-medium"}`}
-                >
-                  <LayoutGrid className="w-4 h-4" />
-                  <span>全部技能</span>
-                </button>
-                <button
-                  onClick={(e) => setActiveView("starred", "星标", "Star", e)}
-                  onAuxClick={(e) => { if (e.button === 1) setActiveView("starred", "星标", "Star", e); }}
-                  className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none ${isSidebarMatch && activeView === "starred" ? "bg-black/5 text-[var(--foreground)] font-semibold" : "text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] font-medium"}`}
-                >
-                  <Star className="w-4 h-4" />
-                  <span>星标</span>
-                </button>
-                <button
-                  onClick={(e) => setActiveView("recent", "最近使用", "Clock", e)}
-                  onAuxClick={(e) => { if (e.button === 1) setActiveView("recent", "最近使用", "Clock", e); }}
-                  className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none ${isSidebarMatch && activeView === "recent" ? "bg-black/5 text-[var(--foreground)] font-semibold" : "text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] font-medium"}`}
-                >
-                  <Clock className="w-4 h-4" />
-                  <span>最近使用</span>
-                </button>
-                <button
-                  onClick={(e) => setActiveView("untagged", "未标签", "Tag", e)}
-                  onAuxClick={(e) => { if (e.button === 1) setActiveView("untagged", "未标签", "Tag", e); }}
-                  className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none ${isSidebarMatch && activeView === "untagged" ? "bg-black/5 text-[var(--foreground)] font-semibold" : "text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] font-medium"}`}
-                >
-                  <Tag className="w-4 h-4" />
-                  <span>未标签</span>
-                </button>
-              </div>
+              <div className="flex-1 min-h-0 overflow-y-auto sidebar-scroll-area">
+                <div className="px-3 mt-1 mb-5 space-y-0.5">
+                  <h3 className="text-[11px] font-semibold text-[var(--color-muted)]/60 mb-1 px-2 uppercase tracking-wide">
+                    快捷筛选
+                  </h3>
+                  <button
+                    onClick={(e) => setActiveView("all", "全部技能", "LayoutGrid", e)}
+                    onAuxClick={(e) => { if (e.button === 1) setActiveView("all", "全部技能", "LayoutGrid", e); }}
+                    className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none ${isSidebarMatch && activeView === "all" && selectedTag === "all" ? "bg-black/5 text-[var(--foreground)] font-semibold" : "text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] font-medium"}`}
+                  >
+                    <LayoutGrid className="w-4 h-4" />
+                    <span>全部技能</span>
+                  </button>
+                  <button
+                    onClick={(e) => setActiveView("starred", "星标", "Star", e)}
+                    onAuxClick={(e) => { if (e.button === 1) setActiveView("starred", "星标", "Star", e); }}
+                    className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none ${isSidebarMatch && activeView === "starred" ? "bg-black/5 text-[var(--foreground)] font-semibold" : "text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] font-medium"}`}
+                  >
+                    <Star className="w-4 h-4" />
+                    <span>星标</span>
+                  </button>
+                  <button
+                    onClick={(e) => setActiveView("recent", "最近使用", "Clock", e)}
+                    onAuxClick={(e) => { if (e.button === 1) setActiveView("recent", "最近使用", "Clock", e); }}
+                    className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none ${isSidebarMatch && activeView === "recent" ? "bg-black/5 text-[var(--foreground)] font-semibold" : "text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] font-medium"}`}
+                  >
+                    <Clock className="w-4 h-4" />
+                    <span>最近使用</span>
+                  </button>
+                  <button
+                    onClick={(e) => setActiveView("untagged", "未标签", "Tag", e)}
+                    onAuxClick={(e) => { if (e.button === 1) setActiveView("untagged", "未标签", "Tag", e); }}
+                    className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none ${isSidebarMatch && activeView === "untagged" ? "bg-black/5 text-[var(--foreground)] font-semibold" : "text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] font-medium"}`}
+                  >
+                    <Tag className="w-4 h-4" />
+                    <span>未标签</span>
+                  </button>
+                </div>
 
-              <div className="px-3 mb-5">
-                <h3 className="text-[11px] font-semibold text-[var(--color-muted)]/60 mb-1 px-2">
-                  标签
-                </h3>
-                <div className="space-y-0.5">
-                  {allTags.map(tag => (
+                <div className="px-3 mb-5">
+                  <div className="flex items-center justify-between mb-1 px-2">
+                    <h3 className="text-[11px] font-semibold text-[var(--color-muted)]/60 uppercase tracking-wide">
+                      标签
+                    </h3>
+                    <Tooltip content="管理标签">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSkillTagManagerEditTarget(null);
+                          setIsSkillTagManagerOpen(true);
+                        }}
+                        className="p-0.5 rounded text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-colors"
+                      >
+                        <SlidersHorizontal className="w-3.5 h-3.5" />
+                      </button>
+                    </Tooltip>
+                  </div>
+                  <div className="space-y-0.5">
+                    {(() => {
+                      const visibleTags = isSkillTagsExpanded
+                        ? skillTagStats
+                        : skillTagStats.slice(0, 10);
+                      return (
+                        <>
+                          {visibleTags.map(tagStat => (
+                            <button
+                              key={tagStat.name}
+                              onClick={(e) => setSelectedTag(tagStat.name, e)}
+                              onAuxClick={(e) => { if (e.button === 1) setSelectedTag(tagStat.name, e); }}
+                              onContextMenu={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                showContextMenu(e, { type: 'sidebar-tag', data: tagStat });
+                              }}
+                              className={`w-full flex items-center justify-between px-2 py-1 rounded-md transition-colors outline-none select-none ${
+                                isSidebarMatch && selectedTag === tagStat.name && activeView === "all"
+                                  ? "bg-black/5 text-[var(--foreground)] font-semibold"
+                                  : "text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] font-medium"
+                              }`}
+                            >
+                              <span className="flex items-center gap-1.5 truncate min-w-0">
+                                {tagStat.isStarred ? (
+                                  <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400 shrink-0" />
+                                ) : (
+                                  <Tag className="w-3.5 h-3.5 opacity-70 shrink-0" />
+                                )}
+                                <span className="truncate">{tagStat.name}</span>
+                              </span>
+                              <span className="text-[11px] text-[var(--color-muted)] shrink-0 ml-1">{tagStat.count}</span>
+                            </button>
+                          ))}
+                          {skillTagStats.length > 10 && (
+                            <button
+                              type="button"
+                              onClick={() => setIsSkillTagsExpanded(prev => !prev)}
+                              className="w-full flex items-center gap-1 px-2 py-1 text-[11.5px] text-[var(--color-muted)] hover:text-[var(--foreground)] rounded-md hover:bg-black/5 transition-colors"
+                            >
+                              {isSkillTagsExpanded ? (
+                                <>
+                                  <ChevronDown className="w-3 h-3" />
+                                  <span>收起标签</span>
+                                </>
+                              ) : (
+                                <>
+                                  <ChevronRight className="w-3 h-3" />
+                                  <span>显示全部 ({skillTagStats.length})</span>
+                                </>
+                              )}
+                            </button>
+                          )}
+                          {skillTagStats.length === 0 && (
+                            <div className="text-[11px] text-[var(--color-muted)]/50 px-2 py-1">暂无标签</div>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </div>
+                </div>
+
+                <div className="px-3 mb-5">
+                  <h3 className="text-[11px] font-semibold text-[var(--color-muted)]/60 mb-1 px-2">
+                    数据源
+                  </h3>
+                  <div className="space-y-0.5">
                     <button
-                      key={tag}
-                      onClick={(e) => setSelectedTag(tag, e)}
-                      onAuxClick={(e) => { if (e.button === 1) setSelectedTag(tag, e); }}
-                      className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none ${isSidebarMatch && selectedTag === tag && activeView === "all"
-                          ? "bg-black/5 text-[var(--foreground)] font-semibold"
-                          : "text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] font-medium"
+                      className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none ${activeTab === "all" ? "bg-black/5 text-[var(--foreground)] font-semibold" : "text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 font-medium"
                         }`}
+                      onClick={() => handleSidebarNav('skill-home', '技能库', { filter: 'all', repoId: undefined }, 'FolderSearch')}
                     >
-                      <Tag className="w-3.5 h-3.5 opacity-70" />
-                      <span className="truncate">{tag}</span>
+                      <FolderSearch className="w-4 h-4" />
+                      <span>所有技能</span>
                     </button>
-                  ))}
-                  {allTags.length === 0 && (
-                    <div className="text-[11px] text-[var(--color-muted)]/50 px-2 py-1">暂无标签</div>
-                  )}
+                    <button
+                      className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none ${activeTab === "local" ? "bg-black/5 text-[var(--foreground)] font-semibold" : "text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 font-medium"
+                        }`}
+                      onClick={() => handleSidebarNav('skill-home', '技能库', { filter: 'local', repoId: undefined }, 'HardDrive')}
+                    >
+                      <HardDrive className="w-4 h-4" />
+                      <span>本地技能</span>
+                    </button>
+                    <button
+                      className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none ${activeTab === "github" ? "bg-black/5 text-[var(--foreground)] font-semibold" : "text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 font-medium"
+                        }`}
+                      onClick={() => handleSidebarNav('skill-home', '技能库', { filter: 'github', repoId: undefined }, 'Github')}
+                    >
+                      <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M15 22v-4a4.8 4.8 0 0 0-1-3.24c3-.3 6-1.5 6-6.76a5.5 5.5 0 0 0-1.5-3.8 5.1 5.1 0 0 0-.1-3.8s-1.2-.4-3.9 1.4a13.4 13.4 0 0 0-7 0C6.3 2.4 5.1 2.8 5.1 2.8a5.1 5.1 0 0 0-.1 3.8 5.5 5.5 0 0 0-1.5 3.8c0 5.2 3 6.4 6 6.76a4.8 4.8 0 0 0-1 3.24v4" />
+                      </svg>
+                      <span>Github技能</span>
+                    </button>
+                    <button
+                      className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none ${activeTab === "online" ? "bg-black/5 text-[var(--foreground)] font-semibold" : "text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 font-medium"
+                        }`}
+                      onClick={() => handleSidebarNav('skill-home', '技能库', { filter: 'online', repoId: undefined }, 'Globe')}
+                    >
+                      <Globe className="w-4 h-4" />
+                      <span>线上技能</span>
+                    </button>
+                  </div>
                 </div>
               </div>
+            </>
+          ) : activeModule === 'prompts' ? (
+            <div className="flex-1 min-h-0 overflow-y-auto px-0 sidebar-scroll-area">
+              <PromptSidebarNav
+                filter={isSidebarMatch ? promptFilter : null as any}
+                groups={promptGroups}
+                onFilterChange={setPromptFilter}
+                onCreateGroup={() => setIsCreateGroupOpen(true)}
+                isCreateGroupOpen={isCreateGroupOpen}
+                onCreateGroupClose={() => setIsCreateGroupOpen(false)}
+                onGroupSaved={() => setPromptRefreshKey(k => k + 1)}
+              />
+            </div>
+          ) : (
+            /* 资源社区侧边栏 */
+            <div className="flex-1 min-h-0 overflow-y-auto sidebar-scroll-area">
+              {(() => {
+                const activeResCat = currentTab?.context?.resourceCategory || (currentTab?.type === 'resource-home' ? 'all' : undefined);
+                return (
+                  <>
+                    <div className="px-3 mt-1 mb-5 space-y-0.5">
+                      <h3 className="text-[11px] font-semibold text-[var(--color-muted)]/60 mb-1 px-2 uppercase tracking-wide">
+                        浏览
+                      </h3>
+                      <button
+                        onClick={() => navigateTo('resource-home', '发现', { resourceCategory: 'all' }, 'Store')}
+                        className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none ${activeResCat === 'all'
+                          ? 'bg-black/5 text-[var(--foreground)] font-semibold'
+                          : 'text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] font-medium'
+                          }`}
+                      >
+                        <Sparkles className="w-4 h-4" />
+                        <span>发现</span>
+                      </button>
+                      <button
+                        onClick={() => navigateTo('resource-home', '技能', { resourceCategory: 'all-skills' }, 'Store')}
+                        className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none ${activeResCat === 'all-skills'
+                          ? 'bg-black/5 text-[var(--foreground)] font-semibold'
+                          : 'text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] font-medium'
+                          }`}
+                      >
+                        <FileCode className="w-4 h-4" />
+                        <span>技能</span>
+                      </button>
+                      <button
+                        onClick={() => navigateTo('resource-home', '提示词', { resourceCategory: 'all-prompts' }, 'Store')}
+                        className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none ${activeResCat === 'all-prompts'
+                          ? 'bg-black/5 text-[var(--foreground)] font-semibold'
+                          : 'text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] font-medium'
+                          }`}
+                      >
+                        <MessageSquareQuote className="w-4 h-4" />
+                        <span>提示词</span>
+                      </button>
+                    </div>
 
-              <div className="px-3 mb-5">
-                <h3 className="text-[11px] font-semibold text-[var(--color-muted)]/60 mb-1 px-2">
-                  数据源
-                </h3>
-                <div className="space-y-0.5">
-                  <button
-                    className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none ${activeTab === "all" ? "bg-black/5 text-[var(--foreground)] font-semibold" : "text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 font-medium"
-                      }`}
-                    onClick={() => handleSidebarNav('skill-home', '技能库', { filter: 'all', repoId: undefined }, 'FolderSearch')}
-                  >
-                    <FolderSearch className="w-4 h-4" />
-                    <span>所有技能</span>
-                  </button>
-                  <button
-                    className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none ${activeTab === "local" ? "bg-black/5 text-[var(--foreground)] font-semibold" : "text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 font-medium"
-                      }`}
-                    onClick={() => handleSidebarNav('skill-home', '技能库', { filter: 'local', repoId: undefined }, 'HardDrive')}
-                  >
-                    <HardDrive className="w-4 h-4" />
-                    <span>本地技能</span>
-                  </button>
-                  <button
-                    className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none ${activeTab === "github" ? "bg-black/5 text-[var(--foreground)] font-semibold" : "text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 font-medium"
-                      }`}
-                    onClick={() => handleSidebarNav('skill-home', '技能库', { filter: 'github', repoId: undefined }, 'Github')}
-                  >
-                    <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M15 22v-4a4.8 4.8 0 0 0-1-3.24c3-.3 6-1.5 6-6.76a5.5 5.5 0 0 0-1.5-3.8 5.1 5.1 0 0 0-.1-3.8s-1.2-.4-3.9 1.4a13.4 13.4 0 0 0-7 0C6.3 2.4 5.1 2.8 5.1 2.8a5.1 5.1 0 0 0-.1 3.8 5.5 5.5 0 0 0-1.5 3.8c0 5.2 3 6.4 6 6.76a4.8 4.8 0 0 0-1 3.24v4" />
-                    </svg>
-                    <span>Github技能</span>
-                  </button>
-                  <button
-                    className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none ${activeTab === "online" ? "bg-black/5 text-[var(--foreground)] font-semibold" : "text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 font-medium"
-                      }`}
-                    onClick={() => handleSidebarNav('skill-home', '技能库', { filter: 'online', repoId: undefined }, 'Globe')}
-                  >
-                    <Globe className="w-4 h-4" />
-                    <span>线上技能</span>
-                  </button>
-                </div>
+                    <div className="px-3 mb-5">
+                      <h3 className="text-[11px] font-semibold text-[var(--color-muted)]/60 mb-1 px-2 uppercase tracking-wide">
+                        分类
+                      </h3>
+                      <div className="space-y-0.5">
+                        {registryData.categories.map(cat => (
+                          <button
+                            key={cat.id}
+                            onClick={() => navigateTo('resource-home', cat.name, { resourceCategory: cat.id }, 'Store')}
+                            className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none text-[13px] ${activeResCat === cat.id
+                              ? 'bg-black/5 text-[var(--foreground)] font-semibold'
+                              : 'text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] font-medium'
+                              }`}
+                          >
+                            <ResourceIcon name={cat.icon} className="w-4 h-4 shrink-0" />
+                            <span>{cat.name}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="px-3 mb-5">
+                      <h3 className="text-[11px] font-semibold text-[var(--color-muted)]/60 mb-1 px-2 uppercase tracking-wide">
+                        技能合辑
+                      </h3>
+                      <div className="space-y-0.5">
+                        {registryData.collections.map(col => (
+                          <button
+                            key={col.id}
+                            onClick={() => navigateTo('resource-home', col.name, { resourceCategory: `collection:${col.id}` }, 'Store')}
+                            className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none text-[13px] ${activeResCat === `collection:${col.id}`
+                              ? 'bg-black/5 text-[var(--foreground)] font-semibold'
+                              : 'text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] font-medium'
+                              }`}
+                          >
+                            <ResourceIcon name={col.icon} className="w-4 h-4 shrink-0" />
+                            <span className="truncate">{col.name}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+          )}
+
+          <div className="p-2 border-t border-[var(--color-border)]/50 mt-auto flex items-center justify-between gap-1.5">
+            <button
+              onClick={() => {
+                setCommunityDefaultTab("qq");
+                setIsCommunityOpen(true);
+              }}
+              className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-[var(--foreground)] hover:bg-black/5 dark:hover:bg-white/5 transition-colors outline-none select-none active:scale-[0.98] group"
+            >
+              <div className="w-5 h-5 rounded-md bg-blue-500/[0.08] dark:bg-blue-400/[0.14] text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 group-hover:bg-blue-500/[0.14] transition-all">
+                <Users className="w-3.5 h-3.5" strokeWidth={2} />
               </div>
+              <span className="text-[12.5px] font-medium tracking-tight truncate">加入用户社群</span>
+              <ChevronRight className="w-3.5 h-3.5 text-[var(--foreground)]/40 group-hover:text-[var(--foreground)]/80 group-hover:translate-x-0.5 transition-all shrink-0 -ml-0.5" />
+            </button>
+            <div className="flex items-center gap-0.5 shrink-0">
+              <Tooltip content="设置">
+                <button
+                  onClick={() => setIsSettingsOpen(true)}
+                  className="p-1.5 rounded-md text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-colors outline-none select-none active:scale-[0.98]"
+                  aria-label="设置"
+                >
+                  <Settings className="w-4 h-4" />
+                </button>
+              </Tooltip>
+              <Tooltip content="关于 SkillHub">
+                <button
+                  onClick={() => setIsAboutOpen(true)}
+                  className="p-1.5 rounded-md text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-colors outline-none select-none active:scale-[0.98]"
+                  aria-label="关于"
+                >
+                  <Info className="w-4 h-4" />
+                </button>
+              </Tooltip>
             </div>
-          </>
-        ) : activeModule === 'prompts' ? (
-          <div className="flex-1 min-h-0 overflow-y-auto px-0 sidebar-scroll-area">
-            <PromptSidebarNav
-              filter={isSidebarMatch ? promptFilter : null as any}
-              groups={promptGroups}
-              onFilterChange={setPromptFilter}
-              onCreateGroup={() => setIsCreateGroupOpen(true)}
-              isCreateGroupOpen={isCreateGroupOpen}
-              onCreateGroupClose={() => setIsCreateGroupOpen(false)}
-              onGroupSaved={() => setPromptRefreshKey(k => k + 1)}
-            />
-          </div>
-        ) : (
-          /* 资源社区侧边栏 */
-          <div className="flex-1 min-h-0 overflow-y-auto sidebar-scroll-area">
-            {(() => {
-              const activeResCat = currentTab?.context?.resourceCategory || (currentTab?.type === 'resource-home' ? 'all' : undefined);
-              return (
-                <>
-                  <div className="px-3 mt-1 mb-5 space-y-0.5">
-                    <h3 className="text-[11px] font-semibold text-[var(--color-muted)]/60 mb-1 px-2 uppercase tracking-wide">
-                      浏览
-                    </h3>
-                    <button
-                      onClick={() => navigateTo('resource-home', '发现', { resourceCategory: 'all' }, 'Store')}
-                      className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none ${
-                        activeResCat === 'all'
-                          ? 'bg-black/5 text-[var(--foreground)] font-semibold'
-                          : 'text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] font-medium'
-                      }`}
-                    >
-                      <Sparkles className="w-4 h-4" />
-                      <span>发现</span>
-                    </button>
-                    <button
-                      onClick={() => navigateTo('resource-home', '技能', { resourceCategory: 'all-skills' }, 'Store')}
-                      className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none ${
-                        activeResCat === 'all-skills'
-                          ? 'bg-black/5 text-[var(--foreground)] font-semibold'
-                          : 'text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] font-medium'
-                      }`}
-                    >
-                      <FileCode className="w-4 h-4" />
-                      <span>技能</span>
-                    </button>
-                    <button
-                      onClick={() => navigateTo('resource-home', '提示词', { resourceCategory: 'all-prompts' }, 'Store')}
-                      className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none ${
-                        activeResCat === 'all-prompts'
-                          ? 'bg-black/5 text-[var(--foreground)] font-semibold'
-                          : 'text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] font-medium'
-                      }`}
-                    >
-                      <MessageSquareQuote className="w-4 h-4" />
-                      <span>提示词</span>
-                    </button>
-                  </div>
-
-                  <div className="px-3 mb-5">
-                    <h3 className="text-[11px] font-semibold text-[var(--color-muted)]/60 mb-1 px-2 uppercase tracking-wide">
-                      分类
-                    </h3>
-                    <div className="space-y-0.5">
-                      {registryData.categories.map(cat => (
-                        <button
-                          key={cat.id}
-                          onClick={() => navigateTo('resource-home', cat.name, { resourceCategory: cat.id }, 'Store')}
-                          className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none text-[13px] ${
-                            activeResCat === cat.id
-                              ? 'bg-black/5 text-[var(--foreground)] font-semibold'
-                              : 'text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] font-medium'
-                          }`}
-                        >
-                          <ResourceIcon name={cat.icon} className="w-4 h-4 shrink-0" />
-                          <span>{cat.name}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="px-3 mb-5">
-                    <h3 className="text-[11px] font-semibold text-[var(--color-muted)]/60 mb-1 px-2 uppercase tracking-wide">
-                      技能合辑
-                    </h3>
-                    <div className="space-y-0.5">
-                      {registryData.collections.map(col => (
-                        <button
-                          key={col.id}
-                          onClick={() => navigateTo('resource-home', col.name, { resourceCategory: `collection:${col.id}` }, 'Store')}
-                          className={`w-full flex items-center space-x-2 px-2 py-1 rounded-md transition-colors outline-none select-none text-[13px] ${
-                            activeResCat === `collection:${col.id}`
-                              ? 'bg-black/5 text-[var(--foreground)] font-semibold'
-                              : 'text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] font-medium'
-                          }`}
-                        >
-                          <ResourceIcon name={col.icon} className="w-4 h-4 shrink-0" />
-                          <span className="truncate">{col.name}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </>
-              );
-            })()}
-          </div>
-        )}
-
-        <div className="p-2 border-t border-[var(--color-border)]/50 mt-auto flex items-center justify-between gap-1.5">
-          <button
-            onClick={() => {
-              setCommunityDefaultTab("qq");
-              setIsCommunityOpen(true);
-            }}
-            className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-[var(--foreground)] hover:bg-black/5 dark:hover:bg-white/5 transition-colors outline-none select-none active:scale-[0.98] group"
-          >
-            <div className="w-5 h-5 rounded-md bg-blue-500/[0.08] dark:bg-blue-400/[0.14] text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 group-hover:bg-blue-500/[0.14] transition-all">
-              <Users className="w-3.5 h-3.5" strokeWidth={2} />
-            </div>
-            <span className="text-[12.5px] font-medium tracking-tight truncate">加入用户社群</span>
-            <ChevronRight className="w-3.5 h-3.5 text-[var(--foreground)]/40 group-hover:text-[var(--foreground)]/80 group-hover:translate-x-0.5 transition-all shrink-0 -ml-0.5" />
-          </button>
-          <div className="flex items-center gap-0.5 shrink-0">
-            <Tooltip content="设置">
-              <button
-                onClick={() => setIsSettingsOpen(true)}
-                className="p-1.5 rounded-md text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-colors outline-none select-none active:scale-[0.98]"
-                aria-label="设置"
-              >
-                <Settings className="w-4 h-4" />
-              </button>
-            </Tooltip>
-            <Tooltip content="关于 SkillHub">
-              <button
-                onClick={() => setIsAboutOpen(true)}
-                className="p-1.5 rounded-md text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-colors outline-none select-none active:scale-[0.98]"
-                aria-label="关于"
-              >
-                <Info className="w-4 h-4" />
-              </button>
-            </Tooltip>
           </div>
         </div>
-      </div>
       )}
 
       <div className="flex-1 flex flex-row h-full min-w-0 bg-[var(--color-background)] relative">
@@ -2116,641 +2704,719 @@ function App() {
             onToggleRightSidebar={['skills', 'prompts'].includes(currentTabModule) ? () => setIsInspectorOpen(prev => !prev) : undefined}
           />
           <div className="flex-1 flex flex-row min-h-0 relative">
-          {currentTabModule === 'skills' ? (
-            currentTab?.type === 'skill-detail' && currentTab.context.skillId ? (
-              <SkillDetailPage skillId={currentTab.context.skillId} onGeneratePrompt={handleGeneratePrompt} />
-            ) : (
-            <div className="flex-1 flex flex-col h-full min-w-0 bg-[var(--color-background)] relative">
-          {directories.length > 0 && (
-            <div className="pt-5 pb-3 px-6 bg-white flex items-center justify-between shrink-0 relative z-0">
-              <div className="flex items-center space-x-3">
-
-                <h1 className="text-[15px] font-medium tracking-tight text-[var(--foreground)] flex items-center">
-                  {getHeaderTitle()}
-                </h1>
-              </div>
-              <div className="flex items-center space-x-3">
-                {!selectedRepoId && !isFlatView && (
-                  <div className="flex bg-black/5 rounded-lg p-0.5 mr-2">
-                    <button
-                      onClick={() => setViewMode('categorized')}
-                      className={`px-3 py-1 rounded-md text-[12px] font-medium transition-all ${
-                        viewMode === 'categorized' 
-                          ? 'bg-white shadow-sm text-[var(--foreground)]' 
-                          : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'
-                      }`}
-                    >
-                      分类
-                    </button>
-                    <button
-                      onClick={() => setViewMode('grid')}
-                      className={`px-3 py-1 rounded-md text-[12px] font-medium transition-all ${
-                        viewMode === 'grid' 
-                          ? 'bg-white shadow-sm text-[var(--foreground)]' 
-                          : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'
-                      }`}
-                    >
-                      平铺
-                    </button>
-                  </div>
-                )}
-                <button onClick={() => handleSyncAll(true, directories.filter(d => d.id === selectedWorkspaceId))} disabled={isSyncingAll} className="flex items-center space-x-1 px-2 py-1 rounded-md font-medium text-[12px] text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-all disabled:opacity-50">
-                  <RefreshCw className={`w-3.5 h-3.5 ${isSyncingAll ? 'animate-spin text-[var(--color-primary)]' : ''}`} />
-                  <span>{isSyncingAll ? '正在同步...' : '同步当前库'}</span>
-                </button>
-                <button onClick={handleAddRepo} className="flex items-center space-x-1 bg-blue-500 text-white px-2.5 py-1 rounded-md text-[12px] font-medium hover:bg-blue-600 shadow-sm shadow-blue-500/20 transition-all ml-1">
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>添加技能</span>
-                </button>
-              </div>
-            </div>
-          )}
-
-          <div 
-            ref={mainContentRef}
-            className="flex-1 overflow-y-auto hover-scroll relative z-0 bg-white flex flex-col"
-            onClick={() => { if (!isDraggingRef.current) handleDeselectAll(); }}
-            onContextMenu={(e) => {
-              // Because cards call stopPropagation(), this only fires for blank space
-              showContextMenu(e, { type: 'empty', data: null });
-            }}
-          >
-            <div className="min-h-full w-full flex flex-col">
-              <SelectionArea 
-                onBeforeStart={({ event }: SelectionEvent) => {
-                if ((event?.target as Element)?.closest?.('[data-id]')) return false;
-                
-                // Smart scrollbar detection (works for both Windows physical and Mac overlay scrollbars)
-                if (event instanceof MouseEvent && mainContentRef.current) {
-                  const el = mainContentRef.current;
-                  const rect = el.getBoundingClientRect();
-                  // Calculate the exact left position of the vertical scrollbar
-                  const scrollbarLeftEdge = rect.left + el.clientLeft + el.clientWidth;
-                  // If the click is on or to the right of the scrollbar edge, ignore it
-                  if (event.clientX > scrollbarLeftEdge) {
-                    return false;
-                  }
-                }
-                
-                return true;
-              }}
-              onStart={({ event, selection }: SelectionEvent) => {
-                // Fix z-index for the clipping container (viselect sets inline z-index:1)
-                const area = selection.getSelectionArea();
-                if (area?.parentElement) {
-                  area.parentElement.style.zIndex = '10000';
-                }
-                if (!event?.ctrlKey && !event?.metaKey && !event?.shiftKey) {
-                  selection.clearSelection();
-                  setSelectedRepoIds(new Set());
-                  setSelectedSkillIds(new Set());
-                }
-              }}
-              onMove={({ store: { changed: { added, removed } } }: SelectionEvent) => {
-                isDraggingRef.current = true;
-                let lastAddedType: 'repo' | 'skill' | null = null;
-                
-                // Determine what was added in this exact move event synchronously
-                added.forEach((el: Element) => {
-                  const type = el.getAttribute('data-type');
-                  if (type === 'repo' || type === 'skill') {
-                    lastAddedType = type;
-                  }
-                });
-
-                setSelectedRepoIds(prev => {
-                  const next = new Set(prev);
-                  added.forEach((el: Element) => {
-                    const id = el.getAttribute('data-id');
-                    if (id && el.getAttribute('data-type') === 'repo') {
-                      next.add(id);
-                    }
-                  });
-                  removed.forEach((el: Element) => {
-                    const id = el.getAttribute('data-id');
-                    if (id && el.getAttribute('data-type') === 'repo') next.delete(id);
-                  });
-                  return next;
-                });
-                
-                setSelectedSkillIds(prev => {
-                  const next = new Set(prev);
-                  added.forEach((el: Element) => {
-                    const id = el.getAttribute('data-id');
-                    if (id && el.getAttribute('data-type') === 'skill') {
-                      next.add(id);
-                    }
-                  });
-                  removed.forEach((el: Element) => {
-                    const id = el.getAttribute('data-id');
-                    if (id && el.getAttribute('data-type') === 'skill') next.delete(id);
-                  });
-                  return next;
-                });
-                
-                if (lastAddedType) {
-                  setInspectorSelectedType(lastAddedType);
-                }
-              }}
-              onStop={() => { setTimeout(() => { isDraggingRef.current = false; }, 100); }}
-              selectables="[data-id]"
-              features={{ touch: false, range: true, singleTap: { allow: false } }}
-              className="flex-1 flex flex-col min-h-0"
-            >
-
-              {isFileDraggingOver && (
-              <div className="absolute inset-0 z-50 m-6 flex flex-col items-center justify-end pb-10 bg-[var(--color-primary)]/5 border-4 border-dashed border-[var(--color-primary)] rounded-xl pointer-events-none transition-all duration-200 backdrop-blur-[2px]">
-                 <div className="bg-[var(--color-primary)] text-white px-6 py-3 rounded-full font-medium shadow-lg flex items-center space-x-2 animate-bounce">
-                    <Folder className="w-5 h-5" />
-                    <span>将文件拖放到这里进行添加</span>
-                 </div>
-              </div>
-            )}
-
-            {selectedWorkspaceDir?.is_missing ? (
-              <div className="flex flex-col items-center justify-center h-full text-[var(--color-muted)] animate-in fade-in duration-500 p-6">
-                <div className="w-32 h-32 mb-6 relative group">
-                  <div className="relative bg-white/60 backdrop-blur-xl rounded-3xl p-8 flex items-center justify-center">
-                    <FolderX className="w-12 h-12 text-red-500 drop-shadow-sm relative z-10" />
-                  </div>
-                </div>
-                <h2 className="text-xl font-semibold text-[var(--foreground)] mb-2 tracking-tight">无法载入当前资源库</h2>
-                <p className="text-sm text-[var(--color-muted)] mb-4 text-center whitespace-nowrap overflow-hidden text-ellipsis">
-                  找不到资源库的路径，可能已被移动、重命名或从磁盘中删除。
-                </p>
-                <div className="text-[13px] text-[var(--color-muted)] font-mono bg-black/5 px-3 py-1.5 rounded mb-8 truncate max-w-[400px] w-full text-center">
-                  {selectedWorkspaceDir.path}
-                </div>
-                <div className="flex flex-col items-center gap-3 w-full max-w-[280px]">
-                  <button
-                    onClick={async () => {
-                      setIsRetryingMissing(true);
-                      await fetchData();
-                      setTimeout(() => setIsRetryingMissing(false), 500);
-                    }}
-                    disabled={isRetryingMissing}
-                    className="flex items-center justify-center gap-2 w-full px-6 py-2.5 bg-white border border-[var(--color-border)] hover:bg-black/5 text-[var(--foreground)] font-medium rounded-lg transition-colors shadow-sm disabled:opacity-70"
-                  >
-                    <RefreshCw className={`w-4 h-4 ${isRetryingMissing ? 'animate-spin' : ''}`} />
-                    {isRetryingMissing ? '正在检测...' : '再试一次'}
-                  </button>
-                  <button
-                    onClick={() => skillLibrarySelectorRef.current?.openDropdown()}
-                    className="flex items-center justify-center gap-2 px-6 py-2.5 bg-blue-500 text-white rounded-lg font-medium hover:bg-blue-600 transition-colors w-full shadow-sm"
-                  >
-                    <FolderSearch className="w-4 h-4" />
-                    切换其他资源库
-                  </button>
-                  <button
-                    onClick={async () => {
-                      try {
-                        await invoke('remove_source_directory', { id: selectedWorkspaceDir.id, deleteLocal: false });
-                        const nextDir = directories.find(d => d.id !== selectedWorkspaceDir.id && !d.is_missing) || directories.find(d => d.id !== selectedWorkspaceDir.id);
-                        handleWorkspaceSelect(nextDir ? nextDir.id : null);
-                        await fetchData();
-                      } catch (e) { console.error(e); }
-                    }}
-                    className="flex items-center justify-center gap-2 w-full px-6 py-2.5 bg-transparent hover:bg-red-50 text-red-500 font-medium rounded-lg transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                    移除记录
-                  </button>
-                </div>
-              </div>
-            ) : directories.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-[var(--color-muted)] animate-in fade-in duration-500 p-6">
-                <div className="w-32 h-32 mb-6 relative group">
-                  <div className="relative bg-white/60 backdrop-blur-xl rounded-3xl p-8 flex items-center justify-center shadow-sm">
-                    <FolderPlus className="w-12 h-12 text-blue-400 drop-shadow-sm relative z-10" />
-                  </div>
-                </div>
-                <h2 className="text-xl font-semibold text-[var(--foreground)] mb-2 tracking-tight">欢迎使用，请先创建技能库</h2>
-                <p className="text-sm text-[var(--color-muted)] mb-8 text-center max-w-sm leading-relaxed">
-                  技能库就像是文件夹，可以帮你把不同类型的 AI 技能分门别类地存放起来。在添加技能前，请先创建你的第一个技能库。
-                </p>
-                <div className="flex flex-col items-center gap-3">
-                  <button 
-                    onClick={() => setIsCreateModalOpen(true)}
-                    className="flex items-center justify-center w-64 px-6 py-2.5 bg-blue-500 text-white rounded-lg font-medium hover:bg-blue-600 transition-colors shadow-sm"
-                  >
-                    <Plus className="w-4 h-4 mr-2" />
-                    创建第一个技能库
-                  </button>
-                  <button
-                    disabled={isLinking}
-                    onClick={async () => {
-                      try {
-                        const { open: openDialog } = await import('@tauri-apps/plugin-dialog');
-                        const selected = await openDialog({ directory: true, multiple: false, title: '选择已有技能文件夹' });
-                        if (selected && typeof selected === 'string') {
-                          setIsLinking(true);
-                          const dirId = await invoke<string>('scan_and_add_source_directory', {
-                            path: selected,
-                            dirType: 'local',
-                            strategy: null,
-                            targetDir: null,
-                          });
-                          await fetchData();
-                          handleWorkspaceSelect(dirId);
-                          showToast('技能库关联成功', 'success');
-                          setIsLinking(false);
-                        }
-                      } catch (e: any) {
-                        console.error(e);
-                        showToast('关联失败：' + (e?.message || String(e)), 'error');
-                        setIsLinking(false);
-                      }
-                    }}
-                    className="flex items-center justify-center w-64 px-6 py-2.5 bg-white border border-[var(--color-border)] text-[var(--foreground)] rounded-lg font-medium hover:border-blue-400 hover:text-blue-500 transition-colors disabled:opacity-70 disabled:pointer-events-none"
-                  >
-                    {isLinking ? (
-                      <RefreshCw className="w-4 h-4 mr-2 text-blue-400 animate-spin" />
-                    ) : (
-                      <Folder className="w-4 h-4 mr-2 text-blue-400" />
-                    )}
-                    {isLinking ? '正在关联...' : '关联现有技能文件夹'}
-                  </button>
-                  <p className="text-xs text-[var(--color-muted)] mt-1 text-center max-w-xs">
-                    已有 GitHub 仓库或本地技能文件夹？直接选择关联进来，不会移动或复制文件。
-                  </p>
-                </div>
-              </div>
-            ) : filteredGroupedRepos.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-[var(--color-muted)] animate-in fade-in duration-500 p-6">
-                <div className="w-32 h-32 mb-6 relative group">
-                  <div className="relative bg-white/60 backdrop-blur-xl rounded-3xl p-8 flex items-center justify-center">
-                    <HardDrive className="w-12 h-12 text-blue-400 drop-shadow-sm relative z-10" />
-                  </div>
-                </div>
-                <h2 className="text-xl font-semibold text-[var(--foreground)] mb-2 tracking-tight">空空如也，拖放技能到这里</h2>
-                <p className="text-sm text-[var(--color-muted)] mb-8 text-center max-w-sm leading-relaxed">
-                  你可以一次拖拽多个文件到这里添加，也可以通过下方按钮导入本地或云端技能库
-                </p>
-                <div className="flex items-center justify-center space-x-4 mt-2">
-                  {/* 本地导入 */}
-                  <button 
-                    onClick={() => openAddDialog("local")}
-                    className="flex items-center px-4 py-1.5 bg-white border border-[var(--color-border)] rounded-lg hover:border-[var(--color-primary)] hover:shadow-sm transition-all group"
-                  >
-                    <HardDrive className="w-4 h-4 text-[var(--color-muted)] group-hover:text-[var(--color-primary)] transition-colors mr-2.5" />
-                    <span className="text-[13px] font-medium text-[var(--foreground)] group-hover:text-[var(--color-primary)] transition-colors">导入本地技能</span>
-                  </button>
-
-                  {/* GitHub 克隆 */}
-                  <button 
-                    onClick={() => openAddDialog("github")}
-                    className="flex items-center px-4 py-1.5 bg-white border border-[var(--color-border)] rounded-lg hover:border-[var(--color-primary)] hover:shadow-sm transition-all group"
-                  >
-                    <svg className="w-4 h-4 text-[var(--color-muted)] group-hover:text-[var(--color-primary)] transition-colors mr-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M15 22v-4a4.8 4.8 0 0 0-1-3.24c3-.3 6-1.5 6-6.76a5.5 5.5 0 0 0-1.5-3.8 5.1 5.1 0 0 0-.1-3.8s-1.2-.4-3.9 1.4a13.4 13.4 0 0 0-7 0C6.3 2.4 5.1 2.8 5.1 2.8a5.1 5.1 0 0 0-.1 3.8 5.5 5.5 0 0 0-1.5 3.8c0 5.2 3 6.4 6 6.76a4.8 4.8 0 0 0-1 3.24v4" />
-                    </svg>
-                    <span className="text-[13px] font-medium text-[var(--foreground)] group-hover:text-[var(--color-primary)] transition-colors">克隆 GitHub 库</span>
-                  </button>
-
-                  {/* 线上地址收藏 */}
-                  <button 
-                    onClick={() => openAddDialog("online")}
-                    className="flex items-center px-4 py-1.5 bg-white border border-[var(--color-border)] rounded-lg hover:border-[var(--color-primary)] hover:shadow-sm transition-all group"
-                  >
-                    <Globe className="w-4 h-4 text-[var(--color-muted)] group-hover:text-[var(--color-primary)] transition-colors mr-2.5" />
-                    <span className="text-[13px] font-medium text-[var(--foreground)] group-hover:text-[var(--color-primary)] transition-colors">收藏线上地址</span>
-                  </button>
-                </div>
-              </div>
-            ) : !selectedRepoId && !isFlatView ? (
-              viewMode === 'categorized' ? (
-                <CategorizedView
-                  repos={filteredGroupedRepos}
-                  cloningRepos={cloningRepos}
-                  selectedRepoIds={selectedRepoIds}
-                  selectedSkillIds={selectedSkillIds}
-                  onSelectRepo={handleSelectRepo}
-                  onSelectSkill={(skill, _repo, e) => {
-                    handleSelectSkill(skill, e);
-                  }}
-                  onDoubleClickRepo={(repoId) => {
-                    setSelectedRepoId(repoId);
-                    setInspectorSelectedType('repo');
-                    setSelectedRepoIds(new Set([repoId]));
-                    setSelectedSkillIds(new Set());
-                  }}
-                  onDoubleClickSkill={(skill, _repo) => {
-                    navigateTo('skill-detail', skill.name, { ...currentTab?.context, skillId: skill.id }, 'FileText');
-                  }}
-                  onContextMenuRepo={(e, repo) => {
-                    if (!selectedRepoIds.has(repo.id)) handleSelectRepo(repo, e);
-                    showContextMenu(e, { type: 'repo', data: repo });
-                  }}
-                  onContextMenuSkill={(e, skill) => {
-                    if (!selectedSkillIds.has(skill.id)) handleSelectSkill(skill, e);
-                    showContextMenu(e, { type: 'skill', data: skill });
-                  }}
-                  onFavoriteToggle={(_e, skill) => handleToggleFavorite(skill.id)}
-                  handleCancelClone={handleCancelClone}
-                  syncRecords={syncRecords}
-                  agents={agents}
-                  onUpdateRepo={(e, r) => handleUpdateRepos(e, [r])}
-                  onDeleteRepo={(e, r) => handleDeleteRepos(e, [r])}
-                  onInspectClone={setInspectingCloneRepo}
+            {currentTabModule === 'skills' ? (
+              currentTab?.type === 'skill-detail' && currentTab.context.skillId ? (
+                <SkillDetailPage
+                  skillId={currentTab.context.skillId}
+                  onGeneratePrompt={handleGeneratePrompt}
+                  onFavoriteChange={(skillId, isFavorite) => applySkillsFavoriteState([skillId], isFavorite)}
                 />
               ) : (
-                <>
-                  <div className="flex-1 grid gap-3 content-start px-6 pt-3 pb-20" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }}>
-                    {cloningRepos.map((repo) => (
-                      <CloningCard
-                        key={repo.path}
-                        name={repo.name}
-                        path={repo.path}
-                        repo={repo}
-                        onCancel={handleCancelClone}
-                        onInspect={setInspectingCloneRepo}
-                      />
-                    ))}
-                  {filteredGroupedRepos.map((repo) => (
-                    <RepoCard
-                      key={repo.id}
-                      repo={repo}
-                      syncRecords={syncRecords}
-                      agents={agents}
-                      isSelected={inspectorSelectedType === 'repo' && selectedRepoIds.has(repo.id)}
-                      onClick={(e) => handleSelectRepo(repo, e)}
-                      onDoubleClick={(e) => {
-                        if (e.metaKey || e.ctrlKey) {
-                          handleSidebarNav('skill-repo', repo.name || '仓库', { repoId: repo.id }, 'Folder', e);
-                          return;
-                        }
-                        setSelectedRepoId(repo.id);
-                        setInspectorSelectedType('repo');
-                        setSelectedRepoIds(new Set([repo.id]));
-                        setSelectedSkillIds(new Set());
-                      }}
-                      onAuxClick={(e) => {
-                        if (e.button === 1) {
-                          e.stopPropagation();
-                          handleSidebarNav('skill-repo', repo.name || '仓库', { repoId: repo.id }, 'Folder', e);
-                        }
-                      }}
-                      onContextMenu={(e) => {
-                        if (!selectedRepoIds.has(repo.id)) handleSelectRepo(repo, e);
-                        showContextMenu(e, { type: 'repo', data: repo });
-                      }}
-                      onUpdateRepo={(e, r) => handleUpdateRepos(e, [r])}
-                      onDeleteRepo={(e, r) => handleDeleteRepos(e, [r])}
-                    />
-                  ))}
-                </div>
-              </>
-              )
-            ) : (
-              <>
-                <div className="flex-1 grid gap-3 content-start px-6 pt-3 pb-20" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))' }}>
-                  {(() => {
-                    const currentRepo = !isFlatView ? filteredGroupedRepos.find(r => r.id === selectedRepoId) : undefined;
-                    const skillsToRender = isFlatView 
-                      ? filteredGroupedRepos.flatMap(r => r.skills)
-                      : currentRepo?.skills || [];
-                    
-                    return skillsToRender.map((skill) => {
-                      const ownerRepo = currentRepo || filteredGroupedRepos.find(r => r.skills.some(s => s.id === skill.id));
-                      const isSub = ownerRepo ? (ownerRepo.repo_type === 'collection' || ownerRepo.skills.length > 1) : false;
+                <div className="flex-1 flex flex-col h-full min-w-0 bg-[var(--color-background)] relative">
+                  {directories.length > 0 && (
+                    <div className="pt-5 pb-3 px-6 bg-white flex items-center justify-between shrink-0 relative z-0">
+                      <div className="flex items-center space-x-3">
 
-                      return (
-                        <SkillCard
-                          key={skill.id}
-                          skill={skill}
-                          isSubSkill={isSub}
-                          parentRepoName={isSub && ownerRepo ? ownerRepo.name : undefined}
-                          syncRecords={syncRecords}
-                          agents={agents}
-                          isSelected={inspectorSelectedType === 'skill' && selectedSkillIds.has(skill.id)}
-                          onClick={(e) => handleSelectSkill(skill, e)}
-                          onDoubleClick={() => { navigateTo('skill-detail', skill.name, { ...currentTab?.context, skillId: skill.id }, 'FileText'); }}
-                          onContextMenu={(e) => {
-                            if (!selectedSkillIds.has(skill.id)) handleSelectSkill(skill, e);
-                            showContextMenu(e, { type: 'skill', data: skill });
-                          }}
-                          onFavoriteToggle={(_, s) => handleToggleFavorite(s.id)}
-                        />
-                      );
-                    });
-                  })()}
-                </div>
-              </>
-            )}
-
-            </SelectionArea>
-            </div>
-
-          </div>
-
-          {/* Sync Progress Panel */}
-          {syncLogs.length > 0 && (
-            <div
-              className={`absolute bottom-8 right-8 bg-white/90 backdrop-blur-xl border border-[var(--color-border)] rounded-2xl shadow-2xl transition-all duration-300 z-50 ${isSyncPopupMinimized ? 'w-auto p-3 flex items-center space-x-3 cursor-pointer hover:bg-white hover:scale-105' : 'w-80 p-4'}`}
-              onClick={() => { if (isSyncPopupMinimized) setIsSyncPopupMinimized(false); }}
-            >
-              {isSyncPopupMinimized ? (
-                <>
-                  <RefreshCw className={`w-5 h-5 ${isSyncingAll ? 'animate-spin text-[var(--color-primary)]' : 'text-green-500'}`} />
-                  <div className="flex flex-col pr-2">
-                    <span className="text-sm font-medium text-[var(--foreground)]">{isSyncingAll ? "正在同步更新..." : "同步完成"}</span>
-                    <span className="text-[10px] text-[var(--color-muted)]">{syncLogs.length} 仓库 ({syncLogs.filter(l => l.status === 'success').length} 同步, {syncLogs.filter(l => l.status === 'error').length} 失败)</span>
-                  </div>
-                  <button onClick={(e) => {
-                    e.stopPropagation();
-                    if (isSyncingAll) {
-                      currentSyncRunId.current = 0;
-                      setIsSyncingAll(false);
-                    }
-                    setSyncLogs([]);
-                  }} className="p-1.5 rounded-lg text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-colors ml-2 border-l border-[var(--color-border)] pl-2">
-                    <X className="w-4 h-4" />
-                  </button>
-                </>
-              ) : (
-                <>
-                  <div className="flex justify-between items-center mb-3 text-sm">
-                    <span className="font-medium text-[var(--foreground)] flex items-center">
-                      <RefreshCw className={`w-4 h-4 mr-2 ${isSyncingAll ? 'animate-spin text-[var(--color-primary)]' : 'text-green-500'}`} />
-                      {isSyncingAll ? "正在同步更新..." : "同步完成"}
-                    </span>
-                    <div className="flex items-center">
-                      <Tooltip content="最小化">
-                        <button onClick={(e) => { e.stopPropagation(); setIsSyncPopupMinimized(true); }} className="p-1.5 rounded-lg text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-colors mr-1">
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                        </button>
-                      </Tooltip>
-                      <Tooltip content="停止/关闭">
-                        <button onClick={(e) => {
-                          e.stopPropagation();
-                          if (isSyncingAll) {
-                            currentSyncRunId.current = 0;
-                            setIsSyncingAll(false);
-                          }
-                          setSyncLogs([]);
-                        }} className="p-1.5 rounded-lg text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-colors">
-                          <X className="w-4 h-4" />
-                        </button>
-                      </Tooltip>
-                    </div>
-                  </div>
-
-                  <div className="text-[10px] text-[var(--color-muted)] mb-3 pb-2 border-b border-[var(--color-border)]">
-                    共 {syncLogs.length} 个 GitHub 仓库 <span className="text-green-500 font-semibold ml-1">同步 {syncLogs.filter(l => l.status === 'success').length}</span> <span className="text-gray-500 font-semibold ml-1">跳过 {syncLogs.filter(l => l.status === 'skipped').length}</span> <span className="text-red-500 font-semibold ml-1">失败 {syncLogs.filter(l => l.status === 'error').length}</span>
-                  </div>
-
-                  <div className="space-y-2 max-h-[300px] overflow-y-auto pr-5 custom-scrollbar">
-                    {syncLogs.map(log => (
-                      <div key={log.id} className="flex items-center justify-between text-xs py-0.5 pr-2">
-                        <Tooltip content={log.label}>
-                          <span className="text-[var(--color-muted)] truncate flex-1 mr-3 cursor-default">{log.label}</span>
-                        </Tooltip>
-                        {log.status === 'pending' && <span className="text-blue-500 font-medium shrink-0 animate-pulse">正在扫描...</span>}
-                        {log.status === 'success' && <span className="text-green-500 font-medium shrink-0 text-right w-16 truncate">{log.message || '更新成功'}</span>}
-                        {log.status === 'skipped' && <span className="text-gray-500 font-medium shrink-0 text-right w-16 truncate">{log.message || '已跳过'}</span>}
-                        {log.status === 'error' && (
-                          <Tooltip content={log.message || '更新失败'}>
-                            <span className="text-red-500 font-medium shrink-0 truncate max-w-[80px] text-right cursor-default">更新失败</span>
-                          </Tooltip>
-                        )}
+                        <h1 className="text-[15px] font-medium tracking-tight text-[var(--foreground)] flex items-center">
+                          {getHeaderTitle()}
+                        </h1>
                       </div>
-                    ))}
+                      <div className="flex items-center gap-2">
+                        {!selectedRepoId && !isFlatView && (
+                          <div className="h-7 box-border flex items-center bg-black/[0.05] border border-black/[0.06] rounded-lg p-[2px]">
+                            <Tooltip content="分组视图" side="bottom">
+                              <button
+                                type="button"
+                                onClick={() => setViewMode('categorized')}
+                                className={`h-full px-2 flex items-center justify-center rounded-[6px] transition-all cursor-pointer ${viewMode === 'categorized'
+                                  ? 'bg-white shadow-xs text-[var(--foreground)]'
+                                  : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'
+                                  }`}
+                              >
+                                <Rows3 className="w-3.5 h-3.5" />
+                              </button>
+                            </Tooltip>
+                            <Tooltip content="平铺视图" side="bottom">
+                              <button
+                                type="button"
+                                onClick={() => setViewMode('grid')}
+                                className={`h-full px-2 flex items-center justify-center rounded-[6px] transition-all cursor-pointer ${viewMode === 'grid'
+                                  ? 'bg-white shadow-xs text-[var(--foreground)]'
+                                  : 'text-[var(--color-muted)] hover:text-[var(--foreground)]'
+                                  }`}
+                              >
+                                <Grip className="w-3.5 h-3.5" />
+                              </button>
+                            </Tooltip>
+                          </div>
+                        )}
+                        <button
+                          onClick={() => handleSyncAll(true, directories.filter(d => d.id === selectedWorkspaceId))}
+                          disabled={isSyncingAll}
+                          className="h-7 box-border inline-flex items-center justify-center gap-1.5 px-2.5 rounded-lg border border-black/[0.08] bg-white hover:bg-black/[0.03] hover:border-black/[0.15] text-[12px] leading-none font-medium text-[var(--foreground)] shadow-xs transition-all cursor-pointer disabled:opacity-50"
+                        >
+                          <RefreshCw className={`w-3.5 h-3.5 ${isSyncingAll ? 'animate-spin text-[var(--color-primary)]' : 'text-[var(--color-muted)]'}`} />
+                          <span>{isSyncingAll ? '正在同步...' : '同步当前库'}</span>
+                        </button>
+                        <button
+                          onClick={handleAddRepo}
+                          className="h-7 box-border inline-flex items-center justify-center gap-1 bg-blue-500 hover:bg-blue-600 text-white px-2.5 rounded-lg text-[12px] leading-none font-medium border border-transparent shadow-xs transition-all cursor-pointer"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>添加技能</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  <div
+                    ref={mainContentRef}
+                    className="flex-1 overflow-y-auto hover-scroll relative z-0 bg-white flex flex-col"
+                    onClick={() => { if (!isDraggingRef.current) handleDeselectAll(); }}
+                    onContextMenu={(e) => {
+                      // Because cards call stopPropagation(), this only fires for blank space
+                      showContextMenu(e, { type: 'empty', data: null });
+                    }}
+                  >
+                    <div className="min-h-full w-full flex flex-col">
+                      <SelectionArea
+                        onBeforeStart={({ event }: SelectionEvent) => {
+                          if ((event?.target as Element)?.closest?.('[data-id]')) return false;
+
+                          // Smart scrollbar detection (works for both Windows physical and Mac overlay scrollbars)
+                          if (event instanceof MouseEvent && mainContentRef.current) {
+                            const el = mainContentRef.current;
+                            const rect = el.getBoundingClientRect();
+                            // Calculate the exact left position of the vertical scrollbar
+                            const scrollbarLeftEdge = rect.left + el.clientLeft + el.clientWidth;
+                            // If the click is on or to the right of the scrollbar edge, ignore it
+                            if (event.clientX > scrollbarLeftEdge) {
+                              return false;
+                            }
+                          }
+
+                          return true;
+                        }}
+                        onStart={({ event, selection }: SelectionEvent) => {
+                          // Fix z-index for the clipping container (viselect sets inline z-index:1)
+                          const area = selection.getSelectionArea();
+                          if (area?.parentElement) {
+                            area.parentElement.style.zIndex = '10000';
+                          }
+                          if (!event?.ctrlKey && !event?.metaKey && !event?.shiftKey) {
+                            selection.clearSelection();
+                            setSelectedRepoIds(new Set());
+                            setSelectedSkillIds(new Set());
+                          }
+                        }}
+                        onMove={({ store: { changed: { added, removed } } }: SelectionEvent) => {
+                          isDraggingRef.current = true;
+                          let lastAddedType: 'repo' | 'skill' | null = null;
+
+                          // Determine what was added in this exact move event synchronously
+                          added.forEach((el: Element) => {
+                            const type = el.getAttribute('data-type');
+                            if (type === 'repo' || type === 'skill') {
+                              lastAddedType = type;
+                            }
+                          });
+
+                          setSelectedRepoIds(prev => {
+                            const next = new Set(prev);
+                            added.forEach((el: Element) => {
+                              const id = el.getAttribute('data-id');
+                              if (id && el.getAttribute('data-type') === 'repo') {
+                                next.add(id);
+                              }
+                            });
+                            removed.forEach((el: Element) => {
+                              const id = el.getAttribute('data-id');
+                              if (id && el.getAttribute('data-type') === 'repo') next.delete(id);
+                            });
+                            return next;
+                          });
+
+                          setSelectedSkillIds(prev => {
+                            const next = new Set(prev);
+                            added.forEach((el: Element) => {
+                              const id = el.getAttribute('data-id');
+                              if (id && el.getAttribute('data-type') === 'skill') {
+                                next.add(id);
+                              }
+                            });
+                            removed.forEach((el: Element) => {
+                              const id = el.getAttribute('data-id');
+                              if (id && el.getAttribute('data-type') === 'skill') next.delete(id);
+                            });
+                            return next;
+                          });
+
+                          if (lastAddedType) {
+                            setInspectorSelectedType(lastAddedType);
+                          }
+                        }}
+                        onStop={() => { setTimeout(() => { isDraggingRef.current = false; }, 100); }}
+                        selectables="[data-id]"
+                        features={{ touch: false, range: true, singleTap: { allow: false } }}
+                        className="flex-1 flex flex-col min-h-0"
+                      >
+
+                        {isFileDraggingOver && (
+                          <div className="absolute inset-0 z-50 m-6 flex flex-col items-center justify-end pb-10 bg-[var(--color-primary)]/5 border-4 border-dashed border-[var(--color-primary)] rounded-xl pointer-events-none transition-all duration-200 backdrop-blur-[2px]">
+                            <div className="bg-[var(--color-primary)] text-white px-6 py-3 rounded-full font-medium shadow-lg flex items-center space-x-2 animate-bounce">
+                              <Folder className="w-5 h-5" />
+                              <span>将文件拖放到这里进行添加</span>
+                            </div>
+                          </div>
+                        )}
+
+                        {selectedWorkspaceDir?.is_missing ? (
+                          <div className="flex flex-col items-center justify-center h-full text-[var(--color-muted)] animate-in fade-in duration-500 p-6">
+                            <div className="w-32 h-32 mb-6 relative group">
+                              <div className="relative bg-white/60 backdrop-blur-xl rounded-3xl p-8 flex items-center justify-center">
+                                <FolderX className="w-12 h-12 text-red-500 drop-shadow-sm relative z-10" />
+                              </div>
+                            </div>
+                            <h2 className="text-xl font-semibold text-[var(--foreground)] mb-2 tracking-tight">无法载入当前资源库</h2>
+                            <p className="text-sm text-[var(--color-muted)] mb-4 text-center whitespace-nowrap overflow-hidden text-ellipsis">
+                              找不到资源库的路径，可能已被移动、重命名或从磁盘中删除。
+                            </p>
+                            <div className="text-[13px] text-[var(--color-muted)] font-mono bg-black/5 px-3 py-1.5 rounded mb-8 truncate max-w-[400px] w-full text-center">
+                              {selectedWorkspaceDir.path}
+                            </div>
+                            <div className="flex flex-col items-center gap-3 w-full max-w-[280px]">
+                              <button
+                                onClick={async () => {
+                                  setIsRetryingMissing(true);
+                                  await fetchData();
+                                  setTimeout(() => setIsRetryingMissing(false), 500);
+                                }}
+                                disabled={isRetryingMissing}
+                                className="flex items-center justify-center gap-2 w-full px-6 py-2.5 bg-white border border-[var(--color-border)] hover:bg-black/5 text-[var(--foreground)] font-medium rounded-lg transition-colors shadow-sm disabled:opacity-70"
+                              >
+                                <RefreshCw className={`w-4 h-4 ${isRetryingMissing ? 'animate-spin' : ''}`} />
+                                {isRetryingMissing ? '正在检测...' : '再试一次'}
+                              </button>
+                              <button
+                                onClick={() => skillLibrarySelectorRef.current?.openDropdown()}
+                                className="flex items-center justify-center gap-2 px-6 py-2.5 bg-blue-500 text-white rounded-lg font-medium hover:bg-blue-600 transition-colors w-full shadow-sm"
+                              >
+                                <FolderSearch className="w-4 h-4" />
+                                切换其他资源库
+                              </button>
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    await invoke('remove_source_directory', { id: selectedWorkspaceDir.id, deleteLocal: false });
+                                    const nextDir = directories.find(d => d.id !== selectedWorkspaceDir.id && !d.is_missing) || directories.find(d => d.id !== selectedWorkspaceDir.id);
+                                    handleWorkspaceSelect(nextDir ? nextDir.id : null);
+                                    await fetchData();
+                                  } catch (e) { console.error(e); }
+                                }}
+                                className="flex items-center justify-center gap-2 w-full px-6 py-2.5 bg-transparent hover:bg-red-50 text-red-500 font-medium rounded-lg transition-colors"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                                移除记录
+                              </button>
+                            </div>
+                          </div>
+                        ) : directories.length === 0 ? (
+                          <div className="flex flex-col items-center justify-center h-full text-[var(--color-muted)] animate-in fade-in duration-500 p-6">
+                            <div className="w-32 h-32 mb-6 relative group">
+                              <div className="relative bg-white/60 backdrop-blur-xl rounded-3xl p-8 flex items-center justify-center shadow-sm">
+                                <FolderPlus className="w-12 h-12 text-blue-400 drop-shadow-sm relative z-10" />
+                              </div>
+                            </div>
+                            <h2 className="text-xl font-semibold text-[var(--foreground)] mb-2 tracking-tight">欢迎使用，请先创建技能库</h2>
+                            <p className="text-sm text-[var(--color-muted)] mb-8 text-center max-w-sm leading-relaxed">
+                              技能库就像是文件夹，可以帮你把不同类型的 AI 技能分门别类地存放起来。在添加技能前，请先创建你的第一个技能库。
+                            </p>
+                            <div className="flex flex-col items-center gap-3">
+                              <button
+                                onClick={() => setIsCreateModalOpen(true)}
+                                className="flex items-center justify-center w-64 px-6 py-2.5 bg-blue-500 text-white rounded-lg font-medium hover:bg-blue-600 transition-colors shadow-sm"
+                              >
+                                <Plus className="w-4 h-4 mr-2" />
+                                创建第一个技能库
+                              </button>
+                              <button
+                                disabled={isLinking}
+                                onClick={async () => {
+                                  try {
+                                    const { open: openDialog } = await import('@tauri-apps/plugin-dialog');
+                                    const selected = await openDialog({ directory: true, multiple: false, title: '选择已有技能文件夹' });
+                                    if (selected && typeof selected === 'string') {
+                                      setIsLinking(true);
+                                      const dirId = await invoke<string>('scan_and_add_source_directory', {
+                                        path: selected,
+                                        dirType: 'local',
+                                        strategy: null,
+                                        targetDir: null,
+                                      });
+                                      await fetchData();
+                                      handleWorkspaceSelect(dirId);
+                                      showToast('技能库关联成功', 'success');
+                                      setIsLinking(false);
+                                    }
+                                  } catch (e: any) {
+                                    console.error(e);
+                                    showToast('关联失败：' + (e?.message || String(e)), 'error');
+                                    setIsLinking(false);
+                                  }
+                                }}
+                                className="flex items-center justify-center w-64 px-6 py-2.5 bg-white border border-[var(--color-border)] text-[var(--foreground)] rounded-lg font-medium hover:border-blue-400 hover:text-blue-500 transition-colors disabled:opacity-70 disabled:pointer-events-none"
+                              >
+                                {isLinking ? (
+                                  <RefreshCw className="w-4 h-4 mr-2 text-blue-400 animate-spin" />
+                                ) : (
+                                  <Folder className="w-4 h-4 mr-2 text-blue-400" />
+                                )}
+                                {isLinking ? '正在关联...' : '关联现有技能文件夹'}
+                              </button>
+                              <p className="text-xs text-[var(--color-muted)] mt-1 text-center max-w-xs">
+                                已有 GitHub 仓库或本地技能文件夹？直接选择关联进来，不会移动或复制文件。
+                              </p>
+                            </div>
+                          </div>
+                        ) : (filteredGroupedRepos.length === 0 && matchedExtraSubSkills.length === 0) ? (
+                          <div className="flex flex-col items-center justify-center h-full text-[var(--color-muted)] animate-in fade-in duration-500 p-6">
+                            <div className="w-32 h-32 mb-6 relative group">
+                              <div className="relative bg-white/60 backdrop-blur-xl rounded-3xl p-8 flex items-center justify-center">
+                                <HardDrive className="w-12 h-12 text-blue-400 drop-shadow-sm relative z-10" />
+                              </div>
+                            </div>
+                            <h2 className="text-xl font-semibold text-[var(--foreground)] mb-2 tracking-tight">空空如也，拖放技能到这里</h2>
+                            <p className="text-sm text-[var(--color-muted)] mb-8 text-center max-w-sm leading-relaxed">
+                              你可以一次拖拽多个文件到这里添加，也可以通过下方按钮导入本地或云端技能库
+                            </p>
+                            <div className="flex items-center justify-center space-x-4 mt-2">
+                              {/* 本地导入 */}
+                              <button
+                                onClick={() => openAddDialog("local")}
+                                className="flex items-center px-4 py-1.5 bg-white border border-[var(--color-border)] rounded-lg hover:border-[var(--color-primary)] hover:shadow-sm transition-all group"
+                              >
+                                <HardDrive className="w-4 h-4 text-[var(--color-muted)] group-hover:text-[var(--color-primary)] transition-colors mr-2.5" />
+                                <span className="text-[13px] font-medium text-[var(--foreground)] group-hover:text-[var(--color-primary)] transition-colors">导入本地技能</span>
+                              </button>
+
+                              {/* GitHub 克隆 */}
+                              <button
+                                onClick={() => openAddDialog("github")}
+                                className="flex items-center px-4 py-1.5 bg-white border border-[var(--color-border)] rounded-lg hover:border-[var(--color-primary)] hover:shadow-sm transition-all group"
+                              >
+                                <svg className="w-4 h-4 text-[var(--color-muted)] group-hover:text-[var(--color-primary)] transition-colors mr-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <path d="M15 22v-4a4.8 4.8 0 0 0-1-3.24c3-.3 6-1.5 6-6.76a5.5 5.5 0 0 0-1.5-3.8 5.1 5.1 0 0 0-.1-3.8s-1.2-.4-3.9 1.4a13.4 13.4 0 0 0-7 0C6.3 2.4 5.1 2.8 5.1 2.8a5.1 5.1 0 0 0-.1 3.8 5.5 5.5 0 0 0-1.5 3.8c0 5.2 3 6.4 6 6.76a4.8 4.8 0 0 0-1 3.24v4" />
+                                </svg>
+                                <span className="text-[13px] font-medium text-[var(--foreground)] group-hover:text-[var(--color-primary)] transition-colors">克隆 GitHub 库</span>
+                              </button>
+
+                              {/* 线上地址收藏 */}
+                              <button
+                                onClick={() => openAddDialog("online")}
+                                className="flex items-center px-4 py-1.5 bg-white border border-[var(--color-border)] rounded-lg hover:border-[var(--color-primary)] hover:shadow-sm transition-all group"
+                              >
+                                <Globe className="w-4 h-4 text-[var(--color-muted)] group-hover:text-[var(--color-primary)] transition-colors mr-2.5" />
+                                <span className="text-[13px] font-medium text-[var(--foreground)] group-hover:text-[var(--color-primary)] transition-colors">收藏线上地址</span>
+                              </button>
+                            </div>
+                          </div>
+                        ) : !selectedRepoId && !isFlatView ? (
+                          viewMode === 'categorized' ? (
+                            <CategorizedView
+                              repos={filteredGroupedRepos}
+                              cloningRepos={cloningRepos}
+                              selectedRepoIds={selectedRepoIds}
+                              selectedSkillIds={selectedSkillIds}
+                              onSelectRepo={handleSelectRepo}
+                              onSelectSkill={(skill, _repo, e) => {
+                                handleSelectSkill(skill, e);
+                              }}
+                              onDoubleClickRepo={(repoId) => {
+                                const targetRepo = filteredGroupedRepos.find(r => r.id === repoId);
+                                if (targetRepo && targetRepo.repo_type !== 'collection' && targetRepo.skills.length === 1) {
+                                  const s = targetRepo.skills[0];
+                                  if (targetRepo.source_type === 'online') {
+                                    import('@tauri-apps/plugin-opener').then(m => m.openUrl(s.online_url || s.local_path).catch(console.error));
+                                  } else {
+                                    navigateTo('skill-detail', s.name, { ...currentTab?.context, skillId: s.id }, 'FileText');
+                                  }
+                                  return;
+                                }
+                                setSelectedRepoId(repoId);
+                                setInspectorSelectedType('repo');
+                                setSelectedRepoIds(new Set([repoId]));
+                                setSelectedSkillIds(new Set());
+                              }}
+                              onDoubleClickSkill={(skill, _repo) => {
+                                navigateTo('skill-detail', skill.name, { ...currentTab?.context, skillId: skill.id }, 'FileText');
+                              }}
+                              onContextMenuRepo={(e, repo) => {
+                                if (!selectedRepoIds.has(repo.id)) handleSelectRepo(repo, e);
+                                showContextMenu(e, { type: 'repo', data: repo });
+                              }}
+                              onContextMenuSkill={(e, skill) => {
+                                if (!selectedSkillIds.has(skill.id)) handleSelectSkill(skill, e);
+                                showContextMenu(e, { type: 'skill', data: skill });
+                              }}
+                              onFavoriteToggle={(_e, skill) => handleToggleFavorite(skill.id)}
+                              onRepoFavoriteToggle={(_e, repo) => handleToggleRepoFavorite(repo)}
+                              repoFavoriteVersion={repoFavoriteVersion}
+                              handleCancelClone={handleCancelClone}
+                              syncRecords={syncRecords}
+                              agents={agents}
+                              onUpdateRepo={(e, r) => handleUpdateRepos(e, [r])}
+                              onDeleteRepo={(e, r) => handleDeleteRepos(e, [r])}
+                              onInspectClone={setInspectingCloneRepo}
+                              extraMatchedSubSkills={(selectedTag !== "all" || activeView === "starred") ? matchedExtraSubSkills : undefined}
+                            />
+                          ) : (
+                            <>
+                              <div className="flex-1 grid gap-3 content-start px-6 pt-3 pb-20" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }}>
+                                {cloningRepos.map((repo) => (
+                                  <CloningCard
+                                    key={repo.path}
+                                    name={repo.name}
+                                    path={repo.path}
+                                    repo={repo}
+                                    onCancel={handleCancelClone}
+                                    onInspect={setInspectingCloneRepo}
+                                  />
+                                ))}
+                                {filteredGroupedRepos.map((repo) => (
+                                  <RepoCard
+                                    key={repo.id}
+                                    repo={repo}
+                                    syncRecords={syncRecords}
+                                    agents={agents}
+                                    isFavorite={isRepoItemStarred(repo)}
+                                    isSelected={inspectorSelectedType === 'repo' && selectedRepoIds.has(repo.id)}
+                                    onClick={(e) => handleSelectRepo(repo, e)}
+                                    onDoubleClick={(e) => {
+                                      const isSingle = repo.repo_type !== 'collection' && repo.skills.length === 1;
+                                      if (isSingle) {
+                                        const s = repo.skills[0];
+                                        if (repo.source_type === 'online') {
+                                          import('@tauri-apps/plugin-opener').then(m => m.openUrl(s.online_url || s.local_path).catch(console.error));
+                                        } else if (e.metaKey || e.ctrlKey) {
+                                          openTab('skill-detail', s.name, { ...currentTab?.context, skillId: s.id }, 'FileText');
+                                        } else {
+                                          navigateTo('skill-detail', s.name, { ...currentTab?.context, skillId: s.id }, 'FileText');
+                                        }
+                                        return;
+                                      }
+                                      if (e.metaKey || e.ctrlKey) {
+                                        handleSidebarNav('skill-repo', repo.name || '仓库', { repoId: repo.id }, 'Folder', e);
+                                        return;
+                                      }
+                                      setSelectedRepoId(repo.id);
+                                      setInspectorSelectedType('repo');
+                                      setSelectedRepoIds(new Set([repo.id]));
+                                      setSelectedSkillIds(new Set());
+                                    }}
+                                    onAuxClick={(e) => {
+                                      if (e.button === 1) {
+                                        e.stopPropagation();
+                                        if (repo.repo_type !== 'collection' && repo.skills.length === 1) {
+                                          const s = repo.skills[0];
+                                          if (repo.source_type === 'online') {
+                                            import('@tauri-apps/plugin-opener').then(m => m.openUrl(s.online_url || s.local_path).catch(console.error));
+                                          } else {
+                                            openTab('skill-detail', s.name, { ...currentTab?.context, skillId: s.id }, 'FileText');
+                                          }
+                                          return;
+                                        }
+                                        handleSidebarNav('skill-repo', repo.name || '仓库', { repoId: repo.id }, 'Folder', e);
+                                      }
+                                    }}
+                                    onContextMenu={(e) => {
+                                      if (!selectedRepoIds.has(repo.id)) handleSelectRepo(repo, e);
+                                      showContextMenu(e, { type: 'repo', data: repo });
+                                    }}
+                                    onUpdateRepo={(e, r) => handleUpdateRepos(e, [r])}
+                                    onDeleteRepo={(e, r) => handleDeleteRepos(e, [r])}
+                                    onFavoriteToggle={(_e, r) => handleToggleRepoFavorite(r)}
+                                  />
+                                ))}
+                                {matchedExtraSubSkills.map(({ skill, repo }) => (
+                                  <SkillCard
+                                    key={skill.id}
+                                    skill={skill}
+                                    isSubSkill={true}
+                                    parentRepoName={repo.name}
+                                    syncRecords={syncRecords}
+                                    agents={agents}
+                                    isSelected={inspectorSelectedType === 'skill' && selectedSkillIds.has(skill.id)}
+                                    onClick={(e) => handleSelectSkill(skill, e)}
+                                    onDoubleClick={() => { navigateTo('skill-detail', skill.name, { ...currentTab?.context, skillId: skill.id }, 'FileText'); }}
+                                    onContextMenu={(e) => {
+                                      if (!selectedSkillIds.has(skill.id)) handleSelectSkill(skill, e);
+                                      showContextMenu(e, { type: 'skill', data: skill });
+                                    }}
+                                    onFavoriteToggle={(_, s) => handleToggleFavorite(s.id)}
+                                  />
+                                ))}
+                              </div>
+                            </>
+                          )
+                        ) : (
+                          <>
+                            <div className="flex-1 grid gap-3 content-start px-6 pt-3 pb-20" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))' }}>
+                              {(() => {
+                                const currentRepo = !isFlatView ? filteredGroupedRepos.find(r => r.id === selectedRepoId) : undefined;
+                                const skillsToRender = isFlatView
+                                  ? filteredGroupedRepos.flatMap(r => r.skills)
+                                  : currentRepo?.skills || [];
+
+                                return skillsToRender.map((skill) => {
+                                  const ownerRepo = currentRepo || filteredGroupedRepos.find(r => r.skills.some(s => s.id === skill.id));
+                                  const isSub = ownerRepo ? (ownerRepo.repo_type === 'collection' || ownerRepo.skills.length > 1) : false;
+
+                                  return (
+                                    <SkillCard
+                                      key={skill.id}
+                                      skill={skill}
+                                      isSubSkill={isSub}
+                                      parentRepoName={isSub && ownerRepo ? ownerRepo.name : undefined}
+                                      syncRecords={syncRecords}
+                                      agents={agents}
+                                      isSelected={inspectorSelectedType === 'skill' && selectedSkillIds.has(skill.id)}
+                                      onClick={(e) => handleSelectSkill(skill, e)}
+                                      onDoubleClick={() => { navigateTo('skill-detail', skill.name, { ...currentTab?.context, skillId: skill.id }, 'FileText'); }}
+                                      onContextMenu={(e) => {
+                                        if (!selectedSkillIds.has(skill.id)) handleSelectSkill(skill, e);
+                                        showContextMenu(e, { type: 'skill', data: skill });
+                                      }}
+                                      onFavoriteToggle={(_, s) => handleToggleFavorite(s.id)}
+                                    />
+                                  );
+                                });
+                              })()}
+                            </div>
+                          </>
+                        )}
+
+                      </SelectionArea>
+                    </div>
+
                   </div>
-                </>
-              )}
-            </div>
-          )}
-        </div>
-        )) : currentTabModule === 'prompts' ? (
-            /* 提示词管理模块 */
-            <div className="flex-1 flex h-full min-w-0 overflow-hidden relative">
-              {currentTab?.type === 'prompt-detail' && (
-                <div className="absolute inset-0 z-10 bg-[var(--color-background)]">
-                  <PromptDetailPage 
-                    promptId={currentTab.context?.promptId} 
-                    isEditingInit={currentTab.context?.isEditing} 
-                    onSaveSuccess={() => {
-                      // Trigger a refresh of the prompts list if needed
-                      setPromptRefreshKey(prev => prev + 1);
-                      if (!currentTab.context?.promptId) {
-                        if (canGoBack) tabGoBack(); else closeTab(currentTab.id);
-                      }
-                    }}
-                    onCancelNew={() => {
-                      if (!currentTab.context?.promptId) {
-                        if (canGoBack) tabGoBack(); else closeTab(currentTab.id);
-                      }
-                    }}
-                  />
+
+                  {/* Sync Progress Panel */}
+                  {syncLogs.length > 0 && (
+                    <div
+                      className={`absolute bottom-8 right-8 bg-white/90 backdrop-blur-xl border border-[var(--color-border)] rounded-2xl shadow-2xl transition-all duration-300 z-50 ${isSyncPopupMinimized ? 'w-auto p-3 flex items-center space-x-3 cursor-pointer hover:bg-white hover:scale-105' : 'w-80 p-4'}`}
+                      onClick={() => { if (isSyncPopupMinimized) setIsSyncPopupMinimized(false); }}
+                    >
+                      {isSyncPopupMinimized ? (
+                        <>
+                          <RefreshCw className={`w-5 h-5 ${(isSyncingAll || syncLogs.some(l => l.status === 'pending')) ? 'animate-spin text-[var(--color-primary)]' : 'text-green-500'}`} />
+                          <div className="flex flex-col pr-2">
+                            <span className="text-sm font-medium text-[var(--foreground)]">{(isSyncingAll || syncLogs.some(l => l.status === 'pending')) ? "正在同步更新..." : "同步完成"}</span>
+                            <span className="text-[10px] text-[var(--color-muted)]">{syncLogs.length} 仓库 ({syncLogs.filter(l => l.status === 'success').length} 同步, {syncLogs.filter(l => l.status === 'error').length} 失败)</span>
+                          </div>
+                          <button onClick={(e) => {
+                            e.stopPropagation();
+                            if (syncLogsHideTimerRef.current) {
+                              clearTimeout(syncLogsHideTimerRef.current);
+                              syncLogsHideTimerRef.current = null;
+                            }
+                            if (isSyncingAll) {
+                              currentSyncRunId.current = 0;
+                              setIsSyncingAll(false);
+                            }
+                            setSyncLogs([]);
+                          }} className="p-1.5 rounded-lg text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-colors ml-2 border-l border-[var(--color-border)] pl-2">
+                            <X className="w-4 h-4" />
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <div className="flex justify-between items-center mb-3 text-sm">
+                            <span className="font-medium text-[var(--foreground)] flex items-center">
+                              <RefreshCw className={`w-4 h-4 mr-2 ${(isSyncingAll || syncLogs.some(l => l.status === 'pending')) ? 'animate-spin text-[var(--color-primary)]' : 'text-green-500'}`} />
+                              {(isSyncingAll || syncLogs.some(l => l.status === 'pending')) ? "正在同步更新..." : "同步完成"}
+                            </span>
+                            <div className="flex items-center">
+                              <Tooltip content="最小化">
+                                <button onClick={(e) => { e.stopPropagation(); setIsSyncPopupMinimized(true); }} className="p-1.5 rounded-lg text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-colors mr-1">
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                                </button>
+                              </Tooltip>
+                              <Tooltip content="停止/关闭">
+                                <button onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (syncLogsHideTimerRef.current) {
+                                    clearTimeout(syncLogsHideTimerRef.current);
+                                    syncLogsHideTimerRef.current = null;
+                                  }
+                                  if (isSyncingAll) {
+                                    currentSyncRunId.current = 0;
+                                    setIsSyncingAll(false);
+                                  }
+                                  setSyncLogs([]);
+                                }} className="p-1.5 rounded-lg text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 transition-colors">
+                                  <X className="w-4 h-4" />
+                                </button>
+                              </Tooltip>
+                            </div>
+                          </div>
+
+                          <div className="text-[10px] text-[var(--color-muted)] mb-3 pb-2 border-b border-[var(--color-border)]">
+                            共 {syncLogs.length} 个 GitHub 仓库 <span className="text-green-500 font-semibold ml-1">同步 {syncLogs.filter(l => l.status === 'success').length}</span> <span className="text-gray-500 font-semibold ml-1">跳过 {syncLogs.filter(l => l.status === 'skipped').length}</span> <span className="text-red-500 font-semibold ml-1">失败 {syncLogs.filter(l => l.status === 'error').length}</span>
+                          </div>
+
+                          <div className="space-y-2 max-h-[300px] overflow-y-auto pr-5 custom-scrollbar">
+                            {syncLogs.map(log => (
+                              <div key={log.id} className="flex items-center justify-between text-xs py-0.5 pr-2">
+                                <Tooltip content={log.label}>
+                                  <span className="text-[var(--color-muted)] truncate flex-1 mr-3 cursor-default">{log.label}</span>
+                                </Tooltip>
+                                {log.status === 'pending' && <span className="text-blue-500 font-medium shrink-0 animate-pulse">正在扫描...</span>}
+                                {log.status === 'success' && <span className="text-green-500 font-medium shrink-0 text-right w-16 truncate">{log.message || '更新成功'}</span>}
+                                {log.status === 'skipped' && <span className="text-gray-500 font-medium shrink-0 text-right w-16 truncate">{log.message || '已跳过'}</span>}
+                                {log.status === 'error' && (
+                                  <Tooltip content={log.message || '更新失败'}>
+                                    <span className="text-red-500 font-medium shrink-0 truncate max-w-[80px] text-right cursor-default">更新失败</span>
+                                  </Tooltip>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
-              )}
-              
-              <div 
-                className="flex-1 flex h-full min-w-0" 
-                style={{ display: currentTab?.type === 'prompt-detail' ? 'none' : 'flex' }}
-              >
-                <PromptModule
-                  refreshKey={promptRefreshKey}
-                  filter={promptFilter}
-                  activePromptId={currentTab?.type === 'prompt-detail' ? currentTab.context?.promptId : undefined}
-                  onGroupsChange={setPromptGroups}
-                  onFilterChange={setPromptFilter}
-                  onTitleChange={(title, icon) => {
-                    if (activeModule === 'prompts' && currentTab?.type === 'prompt-home' && (currentTab?.title !== title || currentTab?.icon !== icon)) {
-                      updateActiveTab({ title, icon });
+              )) : currentTabModule === 'prompts' ? (
+                /* 提示词管理模块 */
+                <div className="flex-1 flex h-full min-w-0 overflow-hidden relative">
+                  {currentTab?.type === 'prompt-detail' && (
+                    <div className="absolute inset-0 z-10 bg-[var(--color-background)]">
+                      <PromptDetailPage
+                        promptId={currentTab.context?.promptId}
+                        isEditingInit={currentTab.context?.isEditing}
+                        onSaveSuccess={() => {
+                          // Trigger a refresh of the prompts list if needed
+                          setPromptRefreshKey(prev => prev + 1);
+                          if (!currentTab.context?.promptId) {
+                            if (canGoBack) tabGoBack(); else closeTab(currentTab.id);
+                          }
+                        }}
+                        onCancelNew={() => {
+                          if (!currentTab.context?.promptId) {
+                            if (canGoBack) tabGoBack(); else closeTab(currentTab.id);
+                          }
+                        }}
+                      />
+                    </div>
+                  )}
+
+                  <div
+                    className="flex-1 flex h-full min-w-0"
+                    style={{ display: currentTab?.type === 'prompt-detail' ? 'none' : 'flex' }}
+                  >
+                    <PromptModule
+                      refreshKey={promptRefreshKey}
+                      filter={promptFilter}
+                      activePromptId={currentTab?.type === 'prompt-detail' ? currentTab.context?.promptId : undefined}
+                      onGroupsChange={setPromptGroups}
+                      onFilterChange={setPromptFilter}
+                      onTitleChange={(title, icon) => {
+                        if (activeModule === 'prompts' && currentTab?.type === 'prompt-home' && (currentTab?.title !== title || currentTab?.icon !== icon)) {
+                          updateActiveTab({ title, icon });
+                        }
+                      }}
+                      onToggleInspector={() => setIsInspectorOpen(!isInspectorOpen)}
+                      onOpenInspector={() => setIsInspectorOpen(true)}
+                      onOpenPromptDetail={(title, promptId, isEditing, newTab) => {
+                        if (newTab) {
+                          openTab('prompt-detail', title, { promptId, isEditing }, 'FileText');
+                        } else {
+                          navigateTo('prompt-detail', title, { promptId, isEditing }, 'FileText');
+                        }
+                      }}
+                      onViewInStore={handleViewInStoreById}
+                    />
+                  </div>
+                </div>
+              ) : (
+              /* 资源社区页面 */
+              <div className="flex-1 flex flex-col h-full min-h-0 min-w-0 bg-[var(--color-background)] relative overflow-hidden">
+                {currentTab?.type === 'resource-detail' && currentTab.context.resourceId ? (
+                  <ResourceDetail
+                    resourceId={currentTab.context.resourceId}
+                    parentCategoryName={currentTab.context.categoryName}
+                    parentCategory={currentTab.context.resourceCategory}
+                    installedResourceIds={installedResourceNames}
+                    isInstalled={
+                      installedResourceNames.has(currentTab.context.resourceId.toLowerCase()) ||
+                      (currentTab.title ? installedResourceNames.has(currentTab.title.toLowerCase()) : false)
                     }
-                  }}
-                  onToggleInspector={() => setIsInspectorOpen(!isInspectorOpen)}
-                  onOpenPromptDetail={(title, promptId, isEditing, newTab) => {
-                    if (newTab) {
-                      openTab('prompt-detail', title, { promptId, isEditing }, 'FileText');
-                    } else {
-                      navigateTo('prompt-detail', title, { promptId, isEditing }, 'FileText');
+                    onBack={() => {
+                      if (canGoBack) {
+                        tabGoBack();
+                      } else {
+                        const cat = currentTab.context?.resourceCategory || 'all';
+                        const catDef = registryData.categories.find(c => c.id === cat);
+                        const catTitle = catDef ? catDef.name : (currentTab.context?.categoryName || '发现');
+                        navigateTo('resource-home', catTitle, { resourceCategory: cat }, 'Store');
+                      }
+                    }}
+                    onSelectSibling={(sibling) => {
+                      navigateTo('resource-detail', sibling.displayName, {
+                        ...currentTab.context,
+                        resourceId: sibling.id,
+                      }, 'Store');
+                    }}
+                    onInstallSkill={requestInstallSkill}
+                    onInstallPrompt={handleInstallPrompt}
+                    onUninstallSkill={handleUninstallSkill}
+                    onUninstallPrompt={handleUninstallPrompt}
+                  />
+                ) : (
+                  <ResourceHome
+                    sidebarCategory={currentTab?.context?.resourceCategory || 'all'}
+                    installedResourceIds={installedResourceNames}
+                    onBackToHome={() =>
+                      navigateTo('resource-home', '发现', { resourceCategory: 'all' }, 'Store')
                     }
-                  }}
-                  onViewInStore={handleViewInStoreById}
-                />
+                    onInstallSkill={requestInstallSkill}
+                    onInstallPrompt={handleInstallPrompt}
+                    onUninstallSkill={handleUninstallSkill}
+                    onUninstallPrompt={handleUninstallPrompt}
+                    onNavigateToDetail={(resourceId, category, categoryName) => {
+                      const res = registryData.resources.find(r => r.id === resourceId);
+                      const title = res?.displayName || '资源详情';
+                      const targetCat = category || currentTab?.context?.resourceCategory || res?.category || 'all';
+                      const targetCatName = categoryName || currentTab?.title || '发现';
+                      navigateTo('resource-detail', title, {
+                        resourceId,
+                        resourceCategory: targetCat,
+                        categoryName: targetCatName,
+                      }, 'Store');
+                    }}
+                    onNavigateToCollection={(collectionId) =>
+                      navigateTo('resource-home', '精选合辑', { resourceCategory: `collection:${collectionId}` }, 'Store')
+                    }
+                  />
+                )}
               </div>
-            </div>
-          ) : (
-          /* 资源社区页面 */
-          <div className="flex-1 flex flex-col h-full min-h-0 min-w-0 bg-[var(--color-background)] relative overflow-hidden">
-            {currentTab?.type === 'resource-detail' && currentTab.context.resourceId ? (
-              <ResourceDetail
-                resourceId={currentTab.context.resourceId}
-                parentCategoryName={currentTab.context.categoryName}
-                parentCategory={currentTab.context.resourceCategory}
-                installedResourceIds={installedResourceNames}
-                isInstalled={
-                  installedResourceNames.has(currentTab.context.resourceId.toLowerCase()) ||
-                  (currentTab.title ? installedResourceNames.has(currentTab.title.toLowerCase()) : false)
-                }
-                onBack={() => {
-                  if (canGoBack) {
-                    tabGoBack();
-                  } else {
-                    const cat = currentTab.context?.resourceCategory || 'all';
-                    const catDef = registryData.categories.find(c => c.id === cat);
-                    const catTitle = catDef ? catDef.name : (currentTab.context?.categoryName || '发现');
-                    navigateTo('resource-home', catTitle, { resourceCategory: cat }, 'Store');
-                  }
-                }}
-                onSelectSibling={(sibling) => {
-                  navigateTo('resource-detail', sibling.displayName, {
-                    ...currentTab.context,
-                    resourceId: sibling.id,
-                  }, 'Store');
-                }}
-                onInstallSkill={requestInstallSkill}
-                onInstallPrompt={handleInstallPrompt}
-                onUninstallSkill={handleUninstallSkill}
-                onUninstallPrompt={handleUninstallPrompt}
-              />
-            ) : (
-              <ResourceHome
-                sidebarCategory={currentTab?.context?.resourceCategory || 'all'}
-                installedResourceIds={installedResourceNames}
-                onBackToHome={() =>
-                  navigateTo('resource-home', '发现', { resourceCategory: 'all' }, 'Store')
-                }
-                onInstallSkill={requestInstallSkill}
-                onInstallPrompt={handleInstallPrompt}
-                onUninstallSkill={handleUninstallSkill}
-                onUninstallPrompt={handleUninstallPrompt}
-                onNavigateToDetail={(resourceId, category, categoryName) => {
-                  const res = registryData.resources.find(r => r.id === resourceId);
-                  const title = res?.displayName || '资源详情';
-                  const targetCat = category || currentTab?.context?.resourceCategory || res?.category || 'all';
-                  const targetCatName = categoryName || currentTab?.title || '发现';
-                  navigateTo('resource-detail', title, {
-                    resourceId,
-                    resourceCategory: targetCat,
-                    categoryName: targetCatName,
-                  }, 'Store');
-                }}
-                onNavigateToCollection={(collectionId) =>
-                  navigateTo('resource-home', '精选合辑', { resourceCategory: `collection:${collectionId}` }, 'Store')
-                }
-              />
             )}
           </div>
-        )}
-        </div>
         </div>
 
         {/* Global Inspector Panel Area (Currently just for skills) */}
         {currentTabModule === 'skills' && (() => {
           const isDetailView = currentTab?.type === 'skill-detail' && currentTab.context.skillId;
           // 核心修复：优先从全局 skills 或 groupedRepos 中查找当前详情技能，绝不能从被筛选器过滤的 filteredGroupedRepos 查找！
-          const detailSkill = isDetailView 
+          const detailSkill = isDetailView
             ? (skills.find(s => s.id === currentTab.context.skillId) || groupedRepos.flatMap(r => r.skills).find(s => s.id === currentTab.context.skillId) || null)
             : null;
-          
+
           return (
             <InspectorPanel
               selectedItemType={isDetailView ? 'skill' : inspectorSelectedType}
               selectedRepos={isDetailView ? [] : filteredGroupedRepos.filter(r => selectedRepoIds.has(r.id))}
-              selectedSkills={isDetailView ? (detailSkill ? [detailSkill] : []) : filteredGroupedRepos.flatMap(r => r.skills).filter(s => selectedSkillIds.has(s.id))}
+              selectedSkills={isDetailView ? (detailSkill ? [detailSkill] : []) : baseScopedRepos.flatMap(r => r.skills).filter(s => selectedSkillIds.has(s.id))}
               agents={agents}
               syncRecords={syncRecords}
               currentLibrary={selectedWorkspaceDir || null}
@@ -2764,6 +3430,16 @@ function App() {
               onToggle={() => setIsInspectorOpen(!isInspectorOpen)}
               onGeneratePrompt={handleGeneratePrompt}
               onViewInStore={handleViewInStore}
+              onSelectTagFilter={(tag) => setSelectedTag(tag)}
+              onOpenTagManager={() => {
+                setSkillTagManagerEditTarget(null);
+                setIsSkillTagManagerOpen(true);
+              }}
+              openTagPopoverSignal={openTagPopoverSignal}
+              onToggleRepoFavorite={handleToggleRepoFavorite}
+              onToggleSkillFavorite={handleToggleFavorite}
+              repoFavoriteVersion={repoFavoriteVersion}
+              isDetailView={Boolean(isDetailView)}
             />
           );
         })()}
@@ -2771,9 +3447,33 @@ function App() {
       </div>
 
       <ContextMenu
-        items={menuTarget?.type === 'repo' ? buildRepoContextMenu(menuTarget.data) : menuTarget?.type === 'skill' ? buildSkillContextMenu(menuTarget.data) : menuTarget?.type === 'empty' ? buildEmptyContextMenu() : []}
+        items={
+          menuTarget?.type === 'repo'
+            ? buildRepoContextMenu(menuTarget.data)
+            : menuTarget?.type === 'skill'
+              ? buildSkillContextMenu(menuTarget.data)
+              : menuTarget?.type === 'sidebar-tag'
+                ? buildSidebarTagContextMenu(menuTarget.data)
+                : menuTarget?.type === 'empty'
+                  ? buildEmptyContextMenu()
+                  : []
+        }
         position={menuPosition}
         onClose={hideContextMenu}
+      />
+
+      <TagManagerModal
+        isOpen={isSkillTagManagerOpen}
+        module="skills"
+        allItems={allLibraryTagItems}
+        initialEditTag={skillTagManagerEditTarget}
+        onClose={() => {
+          setIsSkillTagManagerOpen(false);
+          setSkillTagManagerEditTarget(null);
+        }}
+        onSelectTagFilter={(tagName) => setSelectedTag(tagName)}
+        onRenameTag={handleRenameSkillTag}
+        onDeleteTags={handleDeleteSkillTags}
       />
 
       <AddRepositoryDialog
@@ -2826,24 +3526,38 @@ function App() {
         onCopyPath={handleCopyPath}
         onSelectRepo={(repoId) => {
           const repo = groupedRepos.find(r => r.id === repoId);
+          const targetWsId = repo?.source_dir_id || selectedWorkspaceId || null;
           if (repo && repo.source_dir_id !== selectedWorkspaceId) {
-            handleWorkspaceSelect(repo.source_dir_id || null);
+            setSelectedWorkspaceId(targetWsId);
+            invoke("refresh_app_menu", { selectedId: targetWsId }).catch(console.error);
+            emit("skillhub:workspace-changed", { id: targetWsId }).catch(() => {});
           }
           setActiveModule('skills');
-          if (repo && repo.skills && repo.skills.length > 0) {
-            // 直接打开技能详情页，中间展示 SKILL.md 内容
+          if (repo && !isCollectionRepo(repo) && repo.skills.length === 1) {
             const targetSkill = repo.skills[0];
-            navigateTo('skill-detail', targetSkill.name, { repoId: repo.id, activeView: 'all', selectedTag: 'all', skillId: targetSkill.id }, 'FileText');
+            navigateTo('skill-detail', targetSkill.name, { workspaceId: targetWsId || undefined, activeView: 'all', selectedTag: 'all', skillId: targetSkill.id }, 'FileText');
           } else {
-            handleSidebarNav('skill-repo', repo?.name || '仓库', { repoId, activeView: 'all', selectedTag: 'all' });
+            navigateTo('skill-repo', repo?.name || '技能包', { repoId, workspaceId: targetWsId || undefined, activeView: 'all', selectedTag: 'all' }, 'Folder');
+            setInspectorSelectedType('repo');
+            setSelectedRepoIds(new Set([repoId]));
+            setSelectedSkillIds(new Set());
           }
         }}
         onSelectSkill={(skill, repo) => {
+          const targetWsId = repo?.source_dir_id || selectedWorkspaceId || null;
           if (repo && repo.source_dir_id !== selectedWorkspaceId) {
-            handleWorkspaceSelect(repo.source_dir_id || null);
+            setSelectedWorkspaceId(targetWsId);
+            invoke("refresh_app_menu", { selectedId: targetWsId }).catch(console.error);
+            emit("skillhub:workspace-changed", { id: targetWsId }).catch(() => {});
           }
           setActiveModule('skills');
-          navigateTo('skill-detail', skill.name, { repoId: repo.id, activeView: 'all', selectedTag: 'all', skillId: skill.id }, 'FileText');
+          navigateTo('skill-detail', skill.name, {
+            repoId: repo && isCollectionRepo(repo) ? repo.id : undefined,
+            workspaceId: targetWsId || undefined,
+            activeView: 'all',
+            selectedTag: 'all',
+            skillId: skill.id,
+          }, 'FileText');
         }}
         onSelectPrompt={(prompt) => {
           setActiveModule('prompts');
@@ -2994,86 +3708,89 @@ function App() {
 
       <ToastContainer />
       {confirmData && <ConfirmDialog {...(confirmData as any)} />}
-      
+
       {/* Quick Look Modal */}
-      <QuickLookModal
-        isOpen={quickLookOpen}
-        onClose={() => setQuickLookOpen(false)}
-        previewType={(quickLookOpen && inspectorSelectedType === 'skill' && selectedSkillIds.size > 0) ? 'skill' : (quickLookOpen && inspectorSelectedType === 'repo' && selectedRepoIds.size > 0) ? 'repo' : null}
-        skill={
-            (quickLookOpen && inspectorSelectedType === 'skill' && selectedSkillIds.size > 0) 
-            ? filteredGroupedRepos.flatMap(r => r.skills).find(s => s.id === ((lastSelectedSkillId && selectedSkillIds.has(lastSelectedSkillId)) ? lastSelectedSkillId : Array.from(selectedSkillIds).pop()))
-            : undefined
-        }
-        repo={
-            (quickLookOpen && inspectorSelectedType === 'repo' && selectedRepoIds.size > 0)
-            ? filteredGroupedRepos.find(r => r.id === ((lastSelectedRepoId && selectedRepoIds.has(lastSelectedRepoId)) ? lastSelectedRepoId : Array.from(selectedRepoIds).pop()))
-            : undefined
-        }
-        onOpenDetail={() => {
-            setQuickLookOpen(false);
-            if (inspectorSelectedType === 'skill') {
-                const skillId = (lastSelectedSkillId && selectedSkillIds.has(lastSelectedSkillId)) ? lastSelectedSkillId : Array.from(selectedSkillIds).pop();
-                const skill = filteredGroupedRepos.flatMap(r => r.skills).find(s => s.id === skillId);
-                if (skill) {
-                    navigateTo('skill-detail', skill.name, { ...currentTab?.context, skillId: skill.id }, 'FileText');
+      {(() => {
+        const activeSkillForQuickLook = (quickLookOpen && inspectorSelectedType === 'skill' && selectedSkillIds.size > 0)
+          ? baseScopedRepos.flatMap(r => r.skills).find(s => s.id === ((lastSelectedSkillId && selectedSkillIds.has(lastSelectedSkillId)) ? lastSelectedSkillId : Array.from(selectedSkillIds).pop()))
+          : undefined;
+        const activeRepoForQuickLook = (quickLookOpen && inspectorSelectedType === 'repo' && selectedRepoIds.size > 0)
+          ? filteredGroupedRepos.find(r => r.id === ((lastSelectedRepoId && selectedRepoIds.has(lastSelectedRepoId)) ? lastSelectedRepoId : Array.from(selectedRepoIds).pop()))
+          : undefined;
+        const isSingleRepoForQuickLook = activeRepoForQuickLook && activeRepoForQuickLook.repo_type !== 'collection' && activeRepoForQuickLook.skills.length === 1;
+        const resolvedQuickLookSkill = activeSkillForQuickLook || (isSingleRepoForQuickLook ? activeRepoForQuickLook.skills[0] : undefined);
+        const resolvedPreviewType: 'skill' | 'repo' | null = resolvedQuickLookSkill ? 'skill' : activeRepoForQuickLook ? 'repo' : null;
+
+        return (
+          <QuickLookModal
+            isOpen={quickLookOpen}
+            onClose={() => setQuickLookOpen(false)}
+            previewType={resolvedPreviewType}
+            skill={resolvedQuickLookSkill}
+            repo={!isSingleRepoForQuickLook ? activeRepoForQuickLook : undefined}
+            onOpenDetail={() => {
+              setQuickLookOpen(false);
+              if (resolvedQuickLookSkill) {
+                if (resolvedQuickLookSkill.source_type === 'online') {
+                  const url = resolvedQuickLookSkill.online_url || resolvedQuickLookSkill.local_path;
+                  import('@tauri-apps/plugin-opener').then(m => m.openUrl(url).catch(console.error));
+                } else {
+                  navigateTo('skill-detail', resolvedQuickLookSkill.name, { ...currentTab?.context, skillId: resolvedQuickLookSkill.id }, 'FileText');
                 }
-            } else if (inspectorSelectedType === 'repo') {
-                const repoId = (lastSelectedRepoId && selectedRepoIds.has(lastSelectedRepoId)) ? lastSelectedRepoId : Array.from(selectedRepoIds).pop();
-                const repo = filteredGroupedRepos.find(r => r.id === repoId);
-                if (repo) {
-                    setSelectedRepoId(repo.id);
-                    setInspectorSelectedType('repo');
-                    setSelectedRepoIds(new Set([repo.id]));
-                    setSelectedSkillIds(new Set());
-                }
-            }
-        }}
-        onNavigate={(direction) => {
-            const key = direction === 'up' ? 'ArrowUp' : 'ArrowDown';
-            if (inspectorSelectedType === 'skill') {
+              } else if (activeRepoForQuickLook) {
+                setSelectedRepoId(activeRepoForQuickLook.id);
+                setInspectorSelectedType('repo');
+                setSelectedRepoIds(new Set([activeRepoForQuickLook.id]));
+                setSelectedSkillIds(new Set());
+              }
+            }}
+            onNavigate={(direction) => {
+              const key = direction === 'up' ? 'ArrowUp' : 'ArrowDown';
+              if (inspectorSelectedType === 'skill') {
                 const skillId = (lastSelectedSkillId && selectedSkillIds.has(lastSelectedSkillId)) ? lastSelectedSkillId : Array.from(selectedSkillIds).pop();
                 if (skillId) {
-                    const currentEl = document.querySelector(`[data-id="${skillId}"]`);
-                    if (currentEl) {
-                        const allEls = Array.from(document.querySelectorAll('[data-id]'));
-                        const nextEl = getNextElement(currentEl, key, allEls);
-                        if (nextEl) {
-                            const nextId = nextEl.getAttribute('data-id');
-                            if (nextId) {
-                                const nextSkill = filteredGroupedRepos.flatMap(r => r.skills).find(s => s.id === nextId);
-                                if (nextSkill) {
-                                    setSelectedSkillIds(new Set([nextId]));
-                                    setLastSelectedSkillId(nextId);
-                                    nextEl.scrollIntoView({ block: 'nearest' });
-                                }
-                            }
+                  const currentEl = document.querySelector(`[data-id="${skillId}"]`);
+                  if (currentEl) {
+                    const allEls = Array.from(document.querySelectorAll('[data-id]'));
+                    const nextEl = getNextElement(currentEl, key, allEls);
+                    if (nextEl) {
+                      const nextId = nextEl.getAttribute('data-id');
+                      if (nextId) {
+                        const nextSkill = baseScopedRepos.flatMap(r => r.skills).find(s => s.id === nextId);
+                        if (nextSkill) {
+                          setSelectedSkillIds(new Set([nextId]));
+                          setLastSelectedSkillId(nextId);
+                          nextEl.scrollIntoView({ block: 'nearest' });
                         }
+                      }
                     }
+                  }
                 }
-            } else if (inspectorSelectedType === 'repo') {
+              } else if (inspectorSelectedType === 'repo') {
                 const repoId = (lastSelectedRepoId && selectedRepoIds.has(lastSelectedRepoId)) ? lastSelectedRepoId : Array.from(selectedRepoIds).pop();
                 if (repoId) {
-                    const currentEl = document.querySelector(`[data-id="${repoId}"]`);
-                    if (currentEl) {
-                        const allEls = Array.from(document.querySelectorAll('[data-id]'));
-                        const nextEl = getNextElement(currentEl, key, allEls);
-                        if (nextEl) {
-                            const nextId = nextEl.getAttribute('data-id');
-                            if (nextId) {
-                                const nextRepo = filteredGroupedRepos.find(r => r.id === nextId);
-                                if (nextRepo) {
-                                    setSelectedRepoIds(new Set([nextId]));
-                                    setLastSelectedRepoId(nextId);
-                                    nextEl.scrollIntoView({ block: 'nearest' });
-                                }
-                            }
+                  const currentEl = document.querySelector(`[data-id="${repoId}"]`);
+                  if (currentEl) {
+                    const allEls = Array.from(document.querySelectorAll('[data-id]'));
+                    const nextEl = getNextElement(currentEl, key, allEls);
+                    if (nextEl) {
+                      const nextId = nextEl.getAttribute('data-id');
+                      if (nextId) {
+                        const nextRepo = filteredGroupedRepos.find(r => r.id === nextId);
+                        if (nextRepo) {
+                          setSelectedRepoIds(new Set([nextId]));
+                          setLastSelectedRepoId(nextId);
+                          nextEl.scrollIntoView({ block: 'nearest' });
                         }
+                      }
                     }
+                  }
                 }
-            }
-        }}
-      />
+              }
+            }}
+          />
+        );
+      })()}
       <UpdateNotifier />
     </div>
   );

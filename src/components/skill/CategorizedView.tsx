@@ -4,6 +4,7 @@ import { RepoCard } from './RepoCard';
 import { SkillCard } from './SkillCard';
 import { CloningCard } from './CloningCard';
 import { ChevronDown, ChevronRight, Loader2 } from 'lucide-react';
+import { isRepoItemStarred } from '../../utils/favoriteStore';
 
 interface CategorizedViewProps {
   repos: GroupedRepo[];
@@ -18,11 +19,17 @@ interface CategorizedViewProps {
   onContextMenuSkill: (e: React.MouseEvent, skill: Skill) => void;
   handleCancelClone: (e: React.MouseEvent, path: string) => void;
   onFavoriteToggle: (e: React.MouseEvent, skill: Skill) => void;
+  /** 技能包或独立单技能仓库的统一星标切换回调 */
+  onRepoFavoriteToggle?: (e: React.MouseEvent, repo: GroupedRepo) => void;
+  /** 技能包星标版本戳，用于驱动父组件变更后同步重渲染 */
+  repoFavoriteVersion?: number;
   syncRecords: SyncRecord[];
   agents: AgentConfig[];
   onUpdateRepo: (e: React.MouseEvent, repo: GroupedRepo) => void;
   onDeleteRepo: (e: React.MouseEvent, repo: GroupedRepo) => void;
   onInspectClone?: (repo: CloningRepo) => void;
+  /** 标签或星标筛选模式下额外命中的包内子技能，直接展示在「技能」分组下 */
+  extraMatchedSubSkills?: { skill: Skill; repo: GroupedRepo }[];
 }
 
 export function CategorizedView({
@@ -38,11 +45,13 @@ export function CategorizedView({
   onContextMenuSkill,
   handleCancelClone,
   onFavoriteToggle,
+  onRepoFavoriteToggle,
   syncRecords,
   agents,
   onUpdateRepo,
   onDeleteRepo,
-  onInspectClone
+  onInspectClone,
+  extraMatchedSubSkills,
 }: CategorizedViewProps) {
   // 1. 立即响应的勾选状态（保证勾选框 0 延迟响应，视觉极其跟手）
   const [showSubSkills, setShowSubSkills] = useState(() => {
@@ -84,9 +93,11 @@ export function CategorizedView({
     }
   }, [renderedSubSkills, allSubSkillItems.length]);
 
-  // 统计当前实际展示的技能总数（单技能 + 展开的组合包子技能）
+  // 统计当前实际展示的技能总数（单技能 + 展开的组合包子技能 / 或标签筛选命中的子技能）
+  const isTagMatchedMode = extraMatchedSubSkills !== undefined;
+  const matchedSubSkills = extraMatchedSubSkills || [];
   const subSkillsCount = allSubSkillItems.length;
-  const displayedSkillsCount = singles.length + (showSubSkills ? subSkillsCount : 0);
+  const displayedSkillsCount = singles.length + (isTagMatchedMode ? matchedSubSkills.length : (showSubSkills ? subSkillsCount : 0));
 
   const handleToggleSubSkills = () => {
     const newValue = !showSubSkills;
@@ -99,7 +110,7 @@ export function CategorizedView({
       setRenderedSubSkills(newValue);
     });
   };
-  
+
   const toggleCollections = () => {
     const newValue = !collectionsCollapsed;
     setCollectionsCollapsed(newValue);
@@ -141,22 +152,27 @@ export function CategorizedView({
         </div>
       )}
 
-      {/* 技能组合包分组 */}
+      {/* 技能包分组 */}
       {collections.length > 0 && (
         <div className="mb-4 relative">
-          <div className={`flex items-center sticky top-0 bg-white z-10 pt-3 pb-2 -mx-6 px-6 cursor-pointer select-none group ${collectionsCollapsed ? 'mb-0' : 'mb-4'}`} onClick={toggleCollections}>
-            <h2 className="text-[12px] font-medium text-[var(--color-muted)] group-hover:text-[var(--foreground)] transition-colors">
-              技能组合包 ({collections.length})
-            </h2>
-            {collectionsCollapsed ? (
-              <ChevronRight className="w-4 h-4 ml-1 text-[var(--color-muted)] group-hover:text-[var(--foreground)] transition-colors" />
-            ) : (
-              <ChevronDown className="w-4 h-4 ml-1 text-[var(--color-muted)] group-hover:text-[var(--foreground)] transition-colors" />
-            )}
-            
+          <div className={`flex items-center sticky top-0 bg-white z-10 pt-2 pb-1.5 -mx-6 px-6 ${collectionsCollapsed ? 'mb-0' : 'mb-3'}`}>
+            <div
+              className="inline-flex items-center px-2.5 py-1.5 -ml-2.5 rounded-lg cursor-pointer select-none group hover:bg-black/[0.04] active:bg-black/[0.06] transition-colors"
+              onClick={toggleCollections}
+            >
+              <h2 className="text-[12px] font-medium text-[var(--color-muted)] group-hover:text-[var(--foreground)] transition-colors">
+                技能包 ({collections.length})
+              </h2>
+              {collectionsCollapsed ? (
+                <ChevronRight className="w-4 h-4 ml-1 text-[var(--color-muted)] group-hover:text-[var(--foreground)] transition-colors" />
+              ) : (
+                <ChevronDown className="w-4 h-4 ml-1 text-[var(--color-muted)] group-hover:text-[var(--foreground)] transition-colors" />
+              )}
+            </div>
+
             <div className="flex-1" />
           </div>
-          
+
           {!collectionsCollapsed && (
             <div className="grid gap-3 content-start mb-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }}>
               {collections.map((repo) => (
@@ -164,6 +180,7 @@ export function CategorizedView({
                   key={repo.id}
                   repo={repo}
                   isSelected={selectedRepoIds.has(repo.id)}
+                  isFavorite={isRepoItemStarred(repo)}
                   onClick={(e) => onSelectRepo(repo, e)}
                   onDoubleClick={() => onDoubleClickRepo(repo.id)}
                   onContextMenu={(e) => onContextMenuRepo(e, repo)}
@@ -171,6 +188,7 @@ export function CategorizedView({
                   agents={agents}
                   onUpdateRepo={onUpdateRepo}
                   onDeleteRepo={onDeleteRepo}
+                  onFavoriteToggle={onRepoFavoriteToggle}
                 />
               ))}
             </div>
@@ -178,11 +196,14 @@ export function CategorizedView({
         </div>
       )}
 
-      {/* 技能分组：当有单技能、线上单技能，或有技能组合包时均展示 */}
-      {(singles.length > 0 || onlineSingles.length > 0 || collections.length > 0) && (
+      {/* 技能分组：普通模式下有单技能/包时展示，筛选/星标模式下仅在存在命中的技能时展示 */}
+      {(singles.length > 0 || onlineSingles.length > 0 || matchedSubSkills.length > 0 || (collections.length > 0 && !isTagMatchedMode)) && (
         <div className="relative">
-          <div className={`flex items-center sticky top-0 bg-white z-10 pt-2 pb-2 -mx-6 px-6 ${singlesCollapsed ? 'mb-0' : 'mb-4'}`}>
-            <div className="flex items-center cursor-pointer select-none group" onClick={toggleSingles}>
+          <div className={`flex items-center sticky top-0 bg-white z-10 pt-1.5 pb-1.5 -mx-6 px-6 ${singlesCollapsed ? 'mb-0' : 'mb-3'}`}>
+            <div
+              className="inline-flex items-center px-2.5 py-1.5 -ml-2.5 rounded-lg cursor-pointer select-none group hover:bg-black/[0.04] active:bg-black/[0.06] transition-colors"
+              onClick={toggleSingles}
+            >
               <h2 className="text-[12px] font-medium text-[var(--color-muted)] group-hover:text-[var(--foreground)] transition-colors">
                 技能 ({displayedSkillsCount})
               </h2>
@@ -192,10 +213,10 @@ export function CategorizedView({
                 <ChevronDown className="w-4 h-4 ml-1 text-[var(--color-muted)] group-hover:text-[var(--foreground)] transition-colors" />
               )}
             </div>
-            
+
             <div className="flex-1" />
-            
-            {collections.length > 0 && (
+
+            {collections.length > 0 && !isTagMatchedMode && (
               <div className="flex items-center">
                 {isPending && (
                   <div className="flex items-center text-[var(--color-primary)] mr-2 select-none">
@@ -204,8 +225,8 @@ export function CategorizedView({
                 )}
                 <label className="flex items-center space-x-2 cursor-pointer group select-none">
                   <div className="relative flex items-center justify-center">
-                    <input 
-                      type="checkbox" 
+                    <input
+                      type="checkbox"
                       checked={showSubSkills}
                       onChange={handleToggleSubSkills}
                       className="peer appearance-none w-4 h-4 border border-[var(--color-border)] rounded shadow-sm bg-white checked:bg-[var(--color-primary)] checked:border-[var(--color-primary)] transition-all"
@@ -215,13 +236,13 @@ export function CategorizedView({
                     </svg>
                   </div>
                   <span className="text-[12px] font-medium text-[var(--color-muted)] group-hover:text-[var(--foreground)] transition-colors">
-                    显示组合包中的子技能
+                    显示技能包中的技能
                   </span>
                 </label>
               </div>
             )}
           </div>
-          
+
           {!singlesCollapsed && (
             <div className="grid gap-3 content-start pb-6" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }}>
               {singles.map((repo) => (
@@ -229,6 +250,7 @@ export function CategorizedView({
                   key={repo.id}
                   repo={repo}
                   isSelected={selectedRepoIds.has(repo.id)}
+                  isFavorite={isRepoItemStarred(repo)}
                   onClick={(e) => onSelectRepo(repo, e)}
                   onDoubleClick={() => onDoubleClickRepo(repo.id)}
                   onContextMenu={(e) => onContextMenuRepo(e, repo)}
@@ -236,24 +258,25 @@ export function CategorizedView({
                   agents={agents}
                   onUpdateRepo={onUpdateRepo}
                   onDeleteRepo={onDeleteRepo}
+                  onFavoriteToggle={onRepoFavoriteToggle || ((e, r) => r.skills[0] && onFavoriteToggle(e, r.skills[0]))}
                 />
               ))}
-            {renderedSubSkills && allSubSkillItems.slice(0, renderLimit).map(({ skill, repo }) => (
-              <SkillCard
-                key={skill.id}
-                skill={skill}
-                isSelected={selectedSkillIds.has(skill.id)}
-                onClick={(e) => onSelectSkill(skill, repo, e)}
-                onDoubleClick={() => onDoubleClickSkill(skill, repo)}
-                onContextMenu={(e) => onContextMenuSkill(e, skill)}
-                parentRepoName={repo.name}
-                isSubSkill={true}
-                syncRecords={syncRecords}
-                agents={agents}
-                onFavoriteToggle={onFavoriteToggle}
-              />
-            ))}
-          </div>
+              {(isTagMatchedMode ? matchedSubSkills : (renderedSubSkills ? allSubSkillItems.slice(0, renderLimit) : [])).map(({ skill, repo }) => (
+                <SkillCard
+                  key={skill.id}
+                  skill={skill}
+                  isSelected={selectedSkillIds.has(skill.id)}
+                  onClick={(e) => onSelectSkill(skill, repo, e)}
+                  onDoubleClick={() => onDoubleClickSkill(skill, repo)}
+                  onContextMenu={(e) => onContextMenuSkill(e, skill)}
+                  parentRepoName={repo.name}
+                  isSubSkill={true}
+                  syncRecords={syncRecords}
+                  agents={agents}
+                  onFavoriteToggle={onFavoriteToggle}
+                />
+              ))}
+            </div>
           )}
         </div>
       )}

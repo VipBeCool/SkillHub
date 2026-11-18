@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { X, FileText, FolderGit2, Loader2, Link as LinkIcon, Database } from 'lucide-react';
+import { X, FileCode, Package, Globe, Loader2, Link as LinkIcon, Database } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
@@ -145,8 +145,16 @@ export function QuickLookModal({
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-black/5 dark:border-white/5 bg-black/5 dark:bg-white/5 shrink-0">
           <div className="flex items-center gap-3 overflow-hidden">
-            <div className="w-8 h-8 rounded-lg bg-[var(--color-primary)]/10 text-[var(--color-primary)] flex items-center justify-center shrink-0">
-              {previewType === 'skill' ? <FileText className="w-4 h-4" /> : previewType === 'repo' ? <FolderGit2 className="w-4 h-4" /> : <Database className="w-4 h-4" />}
+            <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+              previewType === 'skill' && skill?.source_type === 'online'
+                ? 'bg-emerald-500/10 text-emerald-600'
+                : 'bg-[var(--color-primary)]/10 text-[var(--color-primary)]'
+            }`}>
+              {previewType === 'skill'
+                ? (skill?.source_type === 'online' ? <Globe className="w-4 h-4" /> : <FileCode className="w-4 h-4" />)
+                : previewType === 'repo'
+                  ? <Package className="w-4 h-4" />
+                  : <Database className="w-4 h-4" />}
             </div>
             <div className="flex flex-col min-w-0">
               <h2 className="text-[15px] font-semibold text-[var(--foreground)] truncate">
@@ -242,7 +250,7 @@ export function QuickLookModal({
           ) : previewType === 'repo' && repo ? (
             <div className="h-full flex flex-col items-center justify-center text-center max-w-[400px] mx-auto">
               <div className="w-16 h-16 bg-[var(--color-primary)]/10 text-[var(--color-primary)] rounded-2xl flex items-center justify-center mb-5">
-                <FolderGit2 className="w-8 h-8" />
+                <Package className="w-8 h-8" />
               </div>
               <h3 className="text-lg font-semibold text-[var(--foreground)] mb-2">{repo.name}</h3>
               <Tooltip content={repo.path}>
@@ -260,7 +268,7 @@ export function QuickLookModal({
                   <span className="text-[13px] font-bold text-[var(--foreground)] mb-1 mt-1 truncate w-full text-center">
                     {repo.category && !["正式技能", "其他", "other", "未分类"].includes(repo.category.toLowerCase().trim())
                       ? repo.category
-                      : repo.repo_type === 'collection' ? '技能组合包' : '单技能'}
+                      : repo.repo_type === 'collection' ? '技能包' : '单技能'}
                   </span>
                   <span className="text-[11px] font-medium text-[var(--color-muted)] uppercase tracking-wider mt-1">类型</span>
                 </div>
