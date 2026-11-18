@@ -17,7 +17,7 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@radix-ui/react-tooltip": "^1.2.16",
     "@tailwindcss/typography": "^0.5.20",
-    "@tauri-apps/api": "^2",
+    "@tauri-apps/api": "^2.12.5",
     "@tauri-apps/plugin-dialog": "^2.7.1",
     "@tauri-apps/plugin-opener": "^2",
     "@tauri-apps/plugin-process": "^2.3.1",
@@ -36,7 +36,7 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.1",
-    "@tauri-apps/cli": "^2",
+    "@tauri-apps/cli": "^2.12.5",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.6.0",
