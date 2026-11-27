@@ -6,7 +6,9 @@ import type { ResourceItem } from '../../types/resource';
 interface InstallTargetModalProps {
   isOpen: boolean;
   onClose: () => void;
-  resource: ResourceItem | null;
+  resource?: ResourceItem | null;
+  targetTitle?: string;
+  targetSubtitle?: string;
   directories: SourceDirectory[];
   defaultSelectedDirId?: string | null;
   onConfirm: (targetDir: SourceDirectory, rememberDefault: boolean) => void;
@@ -16,6 +18,8 @@ export function InstallTargetModal({
   isOpen,
   onClose,
   resource,
+  targetTitle,
+  targetSubtitle,
   directories,
   defaultSelectedDirId,
   onConfirm,
@@ -35,7 +39,8 @@ export function InstallTargetModal({
     }
   }, [isOpen, directories, defaultSelectedDirId]);
 
-  if (!isOpen || !resource) return null;
+  const effectiveTitle = targetTitle || resource?.displayName;
+  if (!isOpen || !effectiveTitle) return null;
 
   const handleConfirm = () => {
     const targetDir = directories.find(d => d.id === selectedDirId);
@@ -56,10 +61,10 @@ export function InstallTargetModal({
       <div className="relative modal-glass rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl border border-black/10 bg-white animate-in zoom-in-95 duration-200 flex flex-col">
         {/* 顶部标题栏 */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--color-border)]/60">
-          <div>
+          <div className="min-w-0 pr-2">
             <h3 className="text-[16px] font-bold text-[var(--foreground)]">选择安装技能库</h3>
-            <p className="text-[12px] text-[var(--color-muted)] mt-0.5">
-              将「{resource.displayName}」安装至以下目标技能库
+            <p className="text-[12px] text-[var(--color-muted)] mt-0.5 truncate">
+              {targetSubtitle || `将「${effectiveTitle}」安装至以下目标技能库`}
             </p>
           </div>
           <button
@@ -141,7 +146,7 @@ export function InstallTargetModal({
               onChange={e => setRememberDefault(e.target.checked)}
               className="w-3.5 h-3.5 rounded border-gray-300 text-[var(--color-primary)] focus:ring-0 cursor-pointer"
             />
-            <span>下次默认安装/克隆到此技能库，不再提示（后续可在设置中修改）</span>
+            <span>下次不再提示（可在设置中修改）</span>
           </label>
 
           <div className="flex items-center gap-2 shrink-0">

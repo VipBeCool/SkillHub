@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Tab, TabType, TabContext, TabHistoryEntry, createDefaultTab } from '../types/tabs';
 
 // Helper to deeply compare two plain objects
@@ -38,14 +38,21 @@ interface UseTabsReturn {
 
 export function useTabs(initialWorkspaceId?: string): UseTabsReturn {
   const [tabs, setTabs] = useState<Tab[]>(() => {
-    // 尝试从 localStorage 恢复
+    // 尝试从 localStorage 恢复合法的标签页（保留技能、提示词、资源中心全部模块标签）
     try {
       const saved = localStorage.getItem('skillhub_tabs');
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          // 资源社区深度升级建设中，自动过滤历史残留的资源标签页
-          const validTabs = parsed.filter((t: Tab) => !t.type.startsWith('resource'));
+          const validTabs = parsed.filter(
+            (t: any): t is Tab =>
+              t &&
+              typeof t.id === 'string' &&
+              t.id.length > 0 &&
+              typeof t.type === 'string' &&
+              Array.isArray(t.historyStack) &&
+              t.historyStack.length > 0
+          );
           if (validTabs.length > 0) return validTabs;
         }
       }
@@ -56,12 +63,29 @@ export function useTabs(initialWorkspaceId?: string): UseTabsReturn {
   const [activeTabId, setActiveTabId] = useState<string>(() => {
     try {
       const saved = localStorage.getItem('skillhub_active_tab');
-      if (saved) return saved;
+      // 仅当持久化 ID 确实存在于已恢复的 tabs 中时才采用，防止出现幽灵 ID 导致所有选项卡均未选中
+      if (saved && tabs.some(t => t.id === saved)) {
+        return saved;
+      }
     } catch { /* 忽略 */ }
     return tabs[0]?.id ?? '';
   });
 
-  const activeTab = tabs.find(t => t.id === activeTabId);
+  // 兜底自愈：保证只要存在标签页，activeTabId 必然指向其中一个有效标签页
+  useEffect(() => {
+    if (tabs.length > 0 && !tabs.some(t => t.id === activeTabId)) {
+      const fallbackId = tabs[0].id;
+      setActiveTabId(fallbackId);
+      try {
+        localStorage.setItem('skillhub_active_tab', fallbackId);
+      } catch { /* 忽略 */ }
+    }
+  }, [tabs, activeTabId]);
+
+  const effectiveActiveTabId = tabs.some(t => t.id === activeTabId)
+    ? activeTabId
+    : (tabs[0]?.id ?? '');
+  const activeTab = tabs.find(t => t.id === effectiveActiveTabId);
 
   // 持久化到 localStorage
   const persist = (newTabs: Tab[], newActiveId: string) => {
@@ -130,7 +154,7 @@ export function useTabs(initialWorkspaceId?: string): UseTabsReturn {
   const navigateTo = useCallback((type: TabType, title: string, context: TabContext, icon?: string) => {
     setTabs(prev => {
       const next = prev.map(tab => {
-        if (tab.id !== activeTabId) return tab;
+        if (tab.id !== effectiveActiveTabId) return tab;
         
         const currentEntry = tab.historyStack[tab.historyIndex];
         const isIdentical = 
@@ -160,16 +184,16 @@ export function useTabs(initialWorkspaceId?: string): UseTabsReturn {
           historyIndex: newStack.length - 1,
         };
       });
-      persist(next, activeTabId);
+      persist(next, effectiveActiveTabId);
       return next;
     });
-  }, [activeTabId]);
+  }, [effectiveActiveTabId]);
 
   // 后退
   const goBack = useCallback(() => {
     setTabs(prev => {
       const next = prev.map(tab => {
-        if (tab.id !== activeTabId) return tab;
+        if (tab.id !== effectiveActiveTabId) return tab;
         const targetIdx = tab.historyIndex - 1;
         if (targetIdx < 0) return tab;
         const entry = tab.historyStack[targetIdx];
@@ -182,16 +206,16 @@ export function useTabs(initialWorkspaceId?: string): UseTabsReturn {
           historyIndex: targetIdx,
         };
       });
-      persist(next, activeTabId);
+      persist(next, effectiveActiveTabId);
       return next;
     });
-  }, [activeTabId]);
+  }, [effectiveActiveTabId]);
 
   // 前进
   const goForward = useCallback(() => {
     setTabs(prev => {
       const next = prev.map(tab => {
-        if (tab.id !== activeTabId) return tab;
+        if (tab.id !== effectiveActiveTabId) return tab;
         const targetIdx = tab.historyIndex + 1;
         if (targetIdx >= tab.historyStack.length) return tab;
         const entry = tab.historyStack[targetIdx];
@@ -204,10 +228,10 @@ export function useTabs(initialWorkspaceId?: string): UseTabsReturn {
           historyIndex: targetIdx,
         };
       });
-      persist(next, activeTabId);
+      persist(next, effectiveActiveTabId);
       return next;
     });
-  }, [activeTabId]);
+  }, [effectiveActiveTabId]);
 
   const canGoBack = (activeTab?.historyIndex ?? 0) > 0;
   const canGoForward = activeTab
@@ -218,16 +242,16 @@ export function useTabs(initialWorkspaceId?: string): UseTabsReturn {
   const updateActiveTab = useCallback((updates: Partial<Pick<Tab, 'title' | 'context' | 'type' | 'icon'>>) => {
     setTabs(prev => {
       const next = prev.map(tab =>
-        tab.id === activeTabId ? { ...tab, ...updates } : tab
+        tab.id === effectiveActiveTabId ? { ...tab, ...updates } : tab
       );
-      persist(next, activeTabId);
+      persist(next, effectiveActiveTabId);
       return next;
     });
-  }, [activeTabId]);
+  }, [effectiveActiveTabId]);
 
   return {
     tabs,
-    activeTabId,
+    activeTabId: effectiveActiveTabId,
     activeTab,
     openTab,
     closeTab,

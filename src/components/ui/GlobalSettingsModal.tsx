@@ -1,12 +1,36 @@
-import { useState, useEffect, type ReactNode } from "react";
+import { useState, useEffect, useMemo, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { save, open } from "@tauri-apps/plugin-dialog";
-import { X, Save, Upload, ShieldCheck, Database, Globe, Sliders, FolderGit2, Monitor, Power, Check, Key, ExternalLink, Sparkles, ChevronDown, Rocket, EyeOff, AppWindow } from "lucide-react";
+import {
+  X,
+  Save,
+  Upload,
+  Database,
+  Globe,
+  Sliders,
+  FolderGit2,
+  Monitor,
+  Power,
+  Check,
+  Key,
+  ExternalLink,
+  Rocket,
+  EyeOff,
+  AppWindow,
+  RefreshCw,
+  Bot,
+} from "lucide-react";
 import { AgentSettingsDialog } from "../agent/AgentSettingsDialog";
+import { FilterSelectPopover, type FilterSelectOption } from "../resource/FilterSelectPopover";
 import { showToast } from "./Toast";
 import type { SourceDirectory } from "../../types";
 import { getDefaultInstallDirId, setDefaultInstallDirId } from "../../utils/storeSettings";
-import { getGeneralSettings, saveGeneralSettings, DEFAULT_GENERAL_SETTINGS, type GeneralSettings } from "../../utils/appSettings";
+import {
+  getGeneralSettings,
+  saveGeneralSettings,
+  DEFAULT_GENERAL_SETTINGS,
+  type GeneralSettings,
+} from "../../utils/appSettings";
 import { getGitHubToken, setGitHubToken } from "../../utils/githubToken";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
@@ -25,6 +49,9 @@ interface SettingSwitchProps {
   ariaLabel: string;
 }
 
+/**
+ * 克制比例的系统风格开关
+ */
 function SettingSwitch({ checked, disabled = false, onChange, ariaLabel }: SettingSwitchProps) {
   return (
     <button
@@ -34,13 +61,13 @@ function SettingSwitch({ checked, disabled = false, onChange, ariaLabel }: Setti
       aria-checked={checked}
       disabled={disabled}
       onClick={onChange}
-      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed ${
-        checked ? 'bg-[var(--color-primary)]' : 'bg-black/20 dark:bg-white/20'
+      className={`relative inline-flex h-[22px] w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed ${
+        checked ? "bg-[var(--color-primary)]" : "bg-black/15 dark:bg-white/20"
       }`}
     >
       <span
-        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-          checked ? 'translate-x-5' : 'translate-x-0'
+        className={`pointer-events-none inline-block h-[18px] w-[18px] transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${
+          checked ? "translate-x-[18px]" : "translate-x-0"
         }`}
       />
     </button>
@@ -49,58 +76,75 @@ function SettingSwitch({ checked, disabled = false, onChange, ariaLabel }: Setti
 
 interface SettingRowProps {
   icon: ReactNode;
-  iconClassName?: string;
   title: string;
-  badge?: ReactNode;
   description: string;
   right: ReactNode;
 }
 
-function SettingRow({ icon, iconClassName = "bg-black/5 dark:bg-white/10 text-[var(--color-muted)]", title, badge, description, right }: SettingRowProps) {
+/**
+ * 统一的设置项单行布局：中性微灰图标 + 单行精简文案 + 右侧控件
+ */
+function SettingRow({ icon, title, description, right }: SettingRowProps) {
   return (
-    <div className="flex items-center justify-between gap-4 p-4">
-      <div className="flex items-start gap-3 flex-1 min-w-0">
-        <div className={`p-2 rounded-lg shrink-0 mt-0.5 ${iconClassName}`}>
+    <div className="flex items-center justify-between gap-4 px-4 py-3.5">
+      <div className="flex items-center gap-3 flex-1 min-w-0">
+        <div className="w-8 h-8 rounded-lg bg-black/[0.04] dark:bg-white/[0.06] text-[var(--foreground)]/70 flex items-center justify-center shrink-0">
           {icon}
         </div>
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 flex-wrap">
-            <h4 className="text-[13.5px] font-semibold text-[var(--foreground)]">{title}</h4>
-            {badge}
-          </div>
-          <p className="text-[12px] text-[var(--color-muted)] mt-1 leading-relaxed">
-            {description}
-          </p>
+          <h4 className="text-[13px] font-medium text-[var(--foreground)] leading-snug">{title}</h4>
+          <p className="text-[12px] text-[var(--color-muted)] mt-0.5 leading-snug">{description}</p>
         </div>
       </div>
-      <div className="shrink-0">
-        {right}
-      </div>
+      <div className="shrink-0">{right}</div>
     </div>
   );
 }
 
-export function GlobalSettingsModal({ isOpen, onClose, defaultTab = "general" }: GlobalSettingsModalProps) {
+export function GlobalSettingsModal({
+  isOpen,
+  onClose,
+  defaultTab = "general",
+}: GlobalSettingsModalProps) {
   const [activeTab, setActiveTab] = useState<"general" | "agent" | "backup" | "store">(defaultTab);
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [isSavingGeneral, setIsSavingGeneral] = useState(false);
   const [directories, setDirectories] = useState<SourceDirectory[]>([]);
-  const [defaultInstallDirId, setLocalDefaultInstallDirId] = useState<string>(() => getDefaultInstallDirId() || "");
+  const [defaultInstallDirId, setLocalDefaultInstallDirId] = useState<string>(
+    () => getDefaultInstallDirId() || ""
+  );
   const [generalSettings, setGeneralSettings] = useState<GeneralSettings>(DEFAULT_GENERAL_SETTINGS);
   const [githubTokenInput, setGithubTokenInput] = useState<string>(() => getGitHubToken());
+  const [savedGithubToken, setSavedGithubToken] = useState<string>(() => getGitHubToken());
 
   useEffect(() => {
     if (isOpen) {
       setActiveTab(defaultTab);
-      invoke<SourceDirectory[]>("get_source_directories").then(dirs => {
-        if (dirs) setDirectories(dirs);
-      }).catch(console.error);
+      invoke<SourceDirectory[]>("get_source_directories")
+        .then(dirs => {
+          if (dirs) setDirectories(dirs);
+        })
+        .catch(console.error);
       setLocalDefaultInstallDirId(getDefaultInstallDirId() || "");
       getGeneralSettings().then(setGeneralSettings).catch(console.error);
-      setGithubTokenInput(getGitHubToken());
+      const token = getGitHubToken();
+      setGithubTokenInput(token);
+      setSavedGithubToken(token);
     }
   }, [isOpen, defaultTab]);
+
+  // 构造默认安装目标技能库下拉选项
+  const installDirOptions = useMemo<FilterSelectOption[]>(
+    () => [
+      { value: "", label: "每次安装时询问" },
+      ...directories.map(d => ({
+        value: d.id,
+        label: d.is_default ? `${d.label} (主库)` : d.label,
+      })),
+    ],
+    [directories]
+  );
 
   const handleUpdateGeneralSettings = async (updates: Partial<GeneralSettings>) => {
     if (isSavingGeneral) return;
@@ -110,11 +154,11 @@ export function GlobalSettingsModal({ isOpen, onClose, defaultTab = "general" }:
     setIsSavingGeneral(true);
     try {
       await saveGeneralSettings(updated);
-      showToast("偏好设置已更新并生效", "success");
+      showToast("设置已保存", "success");
     } catch (err) {
       // 后端写入系统登录项或配置失败时回滚界面开关状态
       setGeneralSettings(prevSettings);
-      showToast(`保存偏好设置失败: ${err}`, "error");
+      showToast(`保存失败: ${err}`, "error");
     } finally {
       setIsSavingGeneral(false);
     }
@@ -124,17 +168,17 @@ export function GlobalSettingsModal({ isOpen, onClose, defaultTab = "general" }:
 
   const handleExport = async () => {
     try {
-      const defaultFilename = `SkillHub_Backup_${new Date().toISOString().split('T')[0]}.zip`;
+      const defaultFilename = `SkillHub_Backup_${new Date().toISOString().split("T")[0]}.zip`;
       const savePath = await save({
         defaultPath: defaultFilename,
-        filters: [{ name: "ZIP Archive", extensions: ["zip"] }]
+        filters: [{ name: "ZIP Archive", extensions: ["zip"] }],
       });
 
       if (!savePath) return;
 
       setIsExporting(true);
       await invoke("export_database", { targetPath: savePath });
-      showToast(`导出成功: 数据已备份至 ${savePath}`, "success");
+      showToast(`已导出备份至 ${savePath}`, "success");
     } catch (e) {
       console.error("Export failed:", e);
       showToast(`导出失败: ${e}`, "error");
@@ -147,25 +191,24 @@ export function GlobalSettingsModal({ isOpen, onClose, defaultTab = "general" }:
     try {
       const selectedPath = await open({
         multiple: false,
-        filters: [{ name: "ZIP Archive", extensions: ["zip"] }]
+        filters: [{ name: "ZIP Archive", extensions: ["zip"] }],
       });
 
-      if (!selectedPath || typeof selectedPath !== 'string') return;
+      if (!selectedPath || typeof selectedPath !== "string") return;
 
       const confirmed = window.confirm(
-        "警告：导入数据将覆盖当前所有的技能库、提示词和配置。\n\n导入前系统会自动创建一个备份以防万一。\n\n确定要继续导入吗？"
+        "导入备份将覆盖当前的技能库、提示词与配置。导入前系统会自动备份当前数据，确定继续吗？"
       );
       if (!confirmed) return;
 
       setIsImporting(true);
       await invoke("import_database", { zipPath: selectedPath });
-      
-      showToast("导入成功: 数据恢复成功，即将重新加载应用...", "success");
-      
+
+      showToast("数据恢复成功，即将重新加载应用...", "success");
+
       setTimeout(() => {
         window.location.reload();
       }, 1500);
-
     } catch (e) {
       console.error("Import failed:", e);
       showToast(`导入失败: ${e}`, "error");
@@ -174,507 +217,486 @@ export function GlobalSettingsModal({ isOpen, onClose, defaultTab = "general" }:
     }
   };
 
-  // 侧边栏Tab按钮样式
+  // 侧边栏导航项样式
   const tabBtnCls = (tab: string) =>
-    `w-full flex items-center px-3 py-2.5 rounded-lg text-[13px] font-medium transition-colors cursor-pointer ${
+    `w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-medium transition-colors cursor-pointer ${
       activeTab === tab
-        ? "bg-black/5 dark:bg-white/10 text-[var(--foreground)] shadow-sm"
-        : "text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 dark:hover:bg-white/5"
+        ? "bg-white dark:bg-white/10 text-[var(--foreground)] shadow-2xs ring-1 ring-black/[0.05] dark:ring-white/[0.08]"
+        : "text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/[0.04] dark:hover:bg-white/[0.05]"
     }`;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop */}
-      <div 
-        className="absolute inset-0 modal-backdrop transition-opacity"
-        onClick={onClose}
-      />
-      
-      {/* Modal */}
-      <div className="relative modal-glass rounded-xl w-full max-w-4xl flex overflow-hidden h-[75vh]">
-        
-        {/* Sidebar */}
-        <div className="w-64 bg-black/[0.02] dark:bg-white/[0.02] border-r border-black/5 dark:border-white/5 flex flex-col">
-          <div className="px-6 py-5 shrink-0">
-            <h2 className="text-xl font-bold text-[var(--foreground)]">设置</h2>
+      {/* 遮罩背景 */}
+      <div className="absolute inset-0 modal-backdrop transition-opacity" onClick={onClose} />
+
+      {/* 弹窗主体 */}
+      <div className="relative modal-glass rounded-2xl w-full max-w-[820px] flex overflow-hidden h-[72vh] min-h-[520px] max-h-[680px]">
+        {/* 左侧导航栏 */}
+        <div className="w-52 shrink-0 bg-[#F7F7F9] dark:bg-white/[0.025] border-r border-black/[0.06] dark:border-white/[0.06] flex flex-col">
+          <div className="px-5 pt-5 pb-3 shrink-0">
+            <h2 className="text-[15px] font-semibold text-[var(--foreground)] tracking-tight">设置</h2>
           </div>
-          
-          <div className="flex-1 overflow-y-auto px-3 py-2 space-y-1">
-            <button
-              onClick={() => setActiveTab("general")}
-              className={tabBtnCls("general")}
-            >
-              <Sliders className={`w-4 h-4 mr-3 ${activeTab === "general" ? "text-[var(--color-primary)]" : "opacity-70"}`} />
-              通用偏好
+
+          <div className="flex-1 overflow-y-auto px-3 py-1 space-y-1">
+            <button onClick={() => setActiveTab("general")} className={tabBtnCls("general")}>
+              <Sliders
+                className={`w-4 h-4 shrink-0 ${
+                  activeTab === "general" ? "text-[var(--color-primary)]" : "opacity-65"
+                }`}
+              />
+              <span>通用</span>
             </button>
-            <button
-              onClick={() => setActiveTab("agent")}
-              className={tabBtnCls("agent")}
-            >
-              <ShieldCheck className={`w-4 h-4 mr-3 ${activeTab === "agent" ? "text-[var(--color-primary)]" : "opacity-70"}`} />
-              Agent 同步配置
+            <button onClick={() => setActiveTab("agent")} className={tabBtnCls("agent")}>
+              <Bot
+                className={`w-4 h-4 shrink-0 ${
+                  activeTab === "agent" ? "text-[var(--color-primary)]" : "opacity-65"
+                }`}
+              />
+              <span>Agent 同步</span>
             </button>
-            <button
-              onClick={() => setActiveTab("store")}
-              className={tabBtnCls("store")}
-            >
-              <Globe className={`w-4 h-4 mr-3 ${activeTab === "store" ? "text-[var(--color-primary)]" : "opacity-70"}`} />
-              资源与安装
+            <button onClick={() => setActiveTab("store")} className={tabBtnCls("store")}>
+              <Globe
+                className={`w-4 h-4 shrink-0 ${
+                  activeTab === "store" ? "text-[var(--color-primary)]" : "opacity-65"
+                }`}
+              />
+              <span>资源与安装</span>
             </button>
-            <button
-              onClick={() => setActiveTab("backup")}
-              className={tabBtnCls("backup")}
-            >
-              <Database className={`w-4 h-4 mr-3 ${activeTab === "backup" ? "text-[var(--color-primary)]" : "opacity-70"}`} />
-              数据与备份
+            <button onClick={() => setActiveTab("backup")} className={tabBtnCls("backup")}>
+              <Database
+                className={`w-4 h-4 shrink-0 ${
+                  activeTab === "backup" ? "text-[var(--color-primary)]" : "opacity-65"
+                }`}
+              />
+              <span>数据与备份</span>
             </button>
           </div>
         </div>
 
-        {/* Content Area */}
-        <div className="flex-1 flex flex-col relative bg-white dark:bg-[#1A1A1A]">
+        {/* 右侧内容区 */}
+        <div className="flex-1 min-w-0 flex flex-col relative bg-white dark:bg-[#1A1A1A]">
           <button
+            type="button"
             onClick={onClose}
-            className="absolute top-4 right-4 p-2 rounded-lg text-[var(--color-muted)] hover:bg-black/5 hover:text-[var(--foreground)] transition-colors z-10 cursor-pointer"
+            aria-label="关闭设置"
+            className="absolute top-4 right-4 p-1.5 rounded-lg text-[var(--color-muted)] hover:bg-black/5 dark:hover:bg-white/10 hover:text-[var(--foreground)] transition-colors z-10 cursor-pointer"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
           </button>
 
-        {/* Content Scroll Area */}
-        <div className="flex-1 overflow-y-auto hover-scroll">
-          {activeTab === "general" && (
-            <div className="px-8 py-6 max-w-3xl mx-auto space-y-6 pb-8">
-              <div>
-                <h3 className="text-xl font-bold text-[var(--foreground)]">通用偏好</h3>
-                <p className="text-[var(--color-muted)] mt-0.5 text-xs">
-                  定制 SkillHub 的开机启动方式、后台常驻行为及窗口关闭策略。
-                </p>
-              </div>
-
-              {/* 选项组 1：开机启动与静默驻留 */}
-              <div className="space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-[var(--color-muted)] uppercase tracking-wider">
-                    启动与登录
-                  </span>
+          <div className="flex-1 overflow-y-auto hover-scroll">
+            {/* Tab 1：通用 */}
+            {activeTab === "general" && (
+              <div className="px-8 py-6 max-w-2xl mx-auto space-y-6 pb-8">
+                <div>
+                  <h3 className="text-[17px] font-semibold text-[var(--foreground)] tracking-tight">
+                    通用
+                  </h3>
+                  <p className="text-[12px] text-[var(--color-muted)] mt-1">
+                    应用启动、窗口关闭与后台同步偏好
+                  </p>
                 </div>
 
-                <div className="rounded-xl border border-black/[0.08] dark:border-white/[0.1] bg-black/[0.015] dark:bg-white/[0.02] divide-y divide-black/[0.06] dark:divide-white/[0.06] overflow-hidden">
-                  <SettingRow
-                    icon={<Rocket className="w-4 h-4" />}
-                    iconClassName={
-                      generalSettings.autostart
-                        ? "bg-blue-500/12 text-blue-600 dark:text-blue-400"
-                        : "bg-black/5 dark:bg-white/10 text-[var(--color-muted)]"
-                    }
-                    title="随系统开机启动"
-                    badge={
-                      generalSettings.autostart ? (
-                        <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200/80 dark:border-emerald-800/60">
-                          已开启
-                        </span>
-                      ) : (
-                        <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-black/[0.04] dark:bg-white/[0.06] text-[var(--color-muted)]">
-                          未开启
-                        </span>
-                      )
-                    }
-                    description="登录系统时自动启动 SkillHub，后台常驻随时响应，随身快捷助手开机即可调用。"
-                    right={
-                      <SettingSwitch
-                        ariaLabel="随系统开机启动"
-                        checked={generalSettings.autostart}
-                        disabled={isSavingGeneral}
-                        onChange={() => handleUpdateGeneralSettings({ autostart: !generalSettings.autostart })}
-                      />
-                    }
-                  />
+                {/* 分组 1：启动与登录 */}
+                <section className="space-y-2">
+                  <h4 className="text-[11.5px] font-medium text-[var(--color-muted)] px-0.5">
+                    启动与登录
+                  </h4>
+                  <div className="rounded-xl border border-black/[0.08] dark:border-white/[0.1] bg-white dark:bg-white/[0.02] divide-y divide-black/[0.06] dark:divide-white/[0.06] overflow-hidden">
+                    <SettingRow
+                      icon={<Rocket className="w-4 h-4" />}
+                      title="开机自动启动"
+                      description="登录系统时自动启动 SkillHub"
+                      right={
+                        <SettingSwitch
+                          ariaLabel="开机自动启动"
+                          checked={generalSettings.autostart}
+                          disabled={isSavingGeneral}
+                          onChange={() =>
+                            handleUpdateGeneralSettings({ autostart: !generalSettings.autostart })
+                          }
+                        />
+                      }
+                    />
 
-                  {generalSettings.autostart && (
-                    <div className="animate-in fade-in slide-in-from-top-1 duration-150 bg-white/50 dark:bg-white/[0.01]">
-                      <SettingRow
-                        icon={<EyeOff className="w-4 h-4" />}
-                        iconClassName={
-                          generalSettings.autostart_silent
-                            ? "bg-cyan-500/12 text-cyan-600 dark:text-cyan-400"
-                            : "bg-black/5 dark:bg-white/10 text-[var(--color-muted)]"
-                        }
-                        title="开机时静默隐藏主窗口"
-                        badge={
-                          <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200/80 dark:border-emerald-800/60">
-                            推荐
+                    {generalSettings.autostart && (
+                      <div className="animate-in fade-in slide-in-from-top-1 duration-150">
+                        <SettingRow
+                          icon={<EyeOff className="w-4 h-4" />}
+                          title="启动时静默隐藏"
+                          description={
+                            isMac
+                              ? "自启后隐藏主窗口至菜单栏，不打断当前工作"
+                              : "自启后隐藏主窗口至系统托盘，不打断当前工作"
+                          }
+                          right={
+                            <SettingSwitch
+                              ariaLabel="启动时静默隐藏"
+                              checked={generalSettings.autostart_silent}
+                              disabled={isSavingGeneral}
+                              onChange={() =>
+                                handleUpdateGeneralSettings({
+                                  autostart_silent: !generalSettings.autostart_silent,
+                                })
+                              }
+                            />
+                          }
+                        />
+                      </div>
+                    )}
+                  </div>
+                </section>
+
+                {/* 分组 2：窗口与托盘 */}
+                <section className="space-y-2.5">
+                  <h4 className="text-[11.5px] font-medium text-[var(--color-muted)] px-0.5">
+                    关闭主窗口时
+                  </h4>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    {/* 选项 A：保持后台运行 */}
+                    <button
+                      type="button"
+                      onClick={() => handleUpdateGeneralSettings({ close_action: "tray" })}
+                      className={`text-left p-3.5 rounded-xl border transition-all cursor-pointer select-none flex flex-col gap-1.5 ${
+                        generalSettings.close_action === "tray"
+                          ? "border-[var(--color-primary)] bg-[var(--color-primary)]/[0.03] dark:bg-[var(--color-primary)]/10 ring-1 ring-[var(--color-primary)]/15"
+                          : "border-black/[0.08] dark:border-white/[0.1] hover:border-black/15 dark:hover:border-white/20 bg-white dark:bg-white/[0.02]"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <Monitor
+                            className={`w-4 h-4 shrink-0 ${
+                              generalSettings.close_action === "tray"
+                                ? "text-[var(--color-primary)]"
+                                : "text-[var(--color-muted)]"
+                            }`}
+                          />
+                          <span className="text-[13px] font-medium text-[var(--foreground)]">
+                            保持后台运行
                           </span>
+                        </div>
+                        <span
+                          className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 transition-colors ${
+                            generalSettings.close_action === "tray"
+                              ? "border-[var(--color-primary)] bg-[var(--color-primary)] text-white"
+                              : "border-black/20 dark:border-white/25"
+                          }`}
+                        >
+                          {generalSettings.close_action === "tray" && (
+                            <Check className="w-2.5 h-2.5 stroke-[3]" />
+                          )}
+                        </span>
+                      </div>
+                      <p className="text-[12px] text-[var(--color-muted)] leading-snug pl-6">
+                        {isMac
+                          ? "隐藏主窗口，点击菜单栏图标可随时唤出"
+                          : "隐藏主窗口，点击托盘图标可随时唤出"}
+                      </p>
+                    </button>
+
+                    {/* 选项 B：直接退出 */}
+                    <button
+                      type="button"
+                      onClick={() => handleUpdateGeneralSettings({ close_action: "quit" })}
+                      className={`text-left p-3.5 rounded-xl border transition-all cursor-pointer select-none flex flex-col gap-1.5 ${
+                        generalSettings.close_action === "quit"
+                          ? "border-[var(--color-primary)] bg-[var(--color-primary)]/[0.03] dark:bg-[var(--color-primary)]/10 ring-1 ring-[var(--color-primary)]/15"
+                          : "border-black/[0.08] dark:border-white/[0.1] hover:border-black/15 dark:hover:border-white/20 bg-white dark:bg-white/[0.02]"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <Power
+                            className={`w-4 h-4 shrink-0 ${
+                              generalSettings.close_action === "quit"
+                                ? "text-[var(--color-primary)]"
+                                : "text-[var(--color-muted)]"
+                            }`}
+                          />
+                          <span className="text-[13px] font-medium text-[var(--foreground)]">
+                            直接退出
+                          </span>
+                        </div>
+                        <span
+                          className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 transition-colors ${
+                            generalSettings.close_action === "quit"
+                              ? "border-[var(--color-primary)] bg-[var(--color-primary)] text-white"
+                              : "border-black/20 dark:border-white/25"
+                          }`}
+                        >
+                          {generalSettings.close_action === "quit" && (
+                            <Check className="w-2.5 h-2.5 stroke-[3]" />
+                          )}
+                        </span>
+                      </div>
+                      <p className="text-[12px] text-[var(--color-muted)] leading-snug pl-6">
+                        关闭窗口时结束进程并退出快捷助手
+                      </p>
+                    </button>
+                  </div>
+
+                  {generalSettings.close_action === "tray" && (
+                    <div className="rounded-xl border border-black/[0.08] dark:border-white/[0.1] bg-white dark:bg-white/[0.02] overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150">
+                      <SettingRow
+                        icon={<AppWindow className="w-4 h-4" />}
+                        title={isMac ? "在程序坞保留图标" : "在任务栏保留图标"}
+                        description={
+                          isMac
+                            ? "关闭窗口后继续在 Dock 显示图标，关闭则仅留菜单栏图标"
+                            : "关闭窗口后继续在任务栏显示图标，关闭则仅留系统托盘图标"
                         }
-                        description="开机自启时不主动弹出主界面，静默隐藏至后台与系统托盘，避免打断当前工作。"
                         right={
                           <SettingSwitch
-                            ariaLabel="开机时静默隐藏主窗口"
-                            checked={generalSettings.autostart_silent}
+                            ariaLabel={isMac ? "在程序坞保留图标" : "在任务栏保留图标"}
+                            checked={generalSettings.keep_dock_icon}
                             disabled={isSavingGeneral}
-                            onChange={() => handleUpdateGeneralSettings({ autostart_silent: !generalSettings.autostart_silent })}
+                            onChange={() =>
+                              handleUpdateGeneralSettings({
+                                keep_dock_icon: !generalSettings.keep_dock_icon,
+                              })
+                            }
                           />
                         }
                       />
                     </div>
                   )}
-                </div>
-              </div>
+                </section>
 
-              {/* 选项组 2：窗口关闭与图标交互 */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-[var(--color-muted)] uppercase tracking-wider">
-                    窗口与托盘
-                  </span>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-[13px] font-medium text-[var(--foreground)] block">
-                    关闭主窗口时
-                  </label>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {/* 选项 A: 常驻后台 */}
-                    <div
-                      onClick={() => handleUpdateGeneralSettings({ close_action: 'tray' })}
-                      className={`relative p-4 rounded-xl border-2 transition-all cursor-pointer select-none flex flex-col justify-between ${
-                        generalSettings.close_action === 'tray'
-                          ? 'border-[var(--color-primary)] bg-[var(--color-primary)]/[0.04] dark:bg-[var(--color-primary)]/10 shadow-xs'
-                          : 'border-black/10 dark:border-white/10 hover:border-black/20 dark:hover:border-white/20 bg-black/[0.01] dark:bg-white/[0.01]'
-                      }`}
-                    >
-                      <div>
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <div className={`p-1.5 rounded-lg ${generalSettings.close_action === 'tray' ? 'bg-[var(--color-primary)] text-white' : 'bg-black/5 dark:bg-white/10 text-[var(--color-muted)]'}`}>
-                              <Monitor className="w-4 h-4" />
-                            </div>
-                            <span className="text-[13.5px] font-semibold text-[var(--foreground)]">保持后台常驻</span>
-                          </div>
-                          <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200/80 dark:border-emerald-800/60">
-                            推荐
-                          </span>
-                        </div>
-                        <p className="text-[12px] text-[var(--color-muted)] leading-relaxed">
-                          隐藏到后台与系统托盘，点击托盘图标可随时打开快捷面板，点击应用图标立即恢复窗口。
-                        </p>
-                      </div>
-
-                      <div className="mt-3.5 flex items-center justify-end">
-                        <div className={`w-4 h-4 rounded-full border flex items-center justify-center transition-colors ${
-                          generalSettings.close_action === 'tray'
-                            ? 'border-[var(--color-primary)] bg-[var(--color-primary)] text-white'
-                            : 'border-black/20 dark:border-white/20'
-                        }`}>
-                          {generalSettings.close_action === 'tray' && <Check className="w-3 h-3 stroke-[3]" />}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* 选项 B: 直接退出 */}
-                    <div
-                      onClick={() => handleUpdateGeneralSettings({ close_action: 'quit' })}
-                      className={`relative p-4 rounded-xl border-2 transition-all cursor-pointer select-none flex flex-col justify-between ${
-                        generalSettings.close_action === 'quit'
-                          ? 'border-[var(--color-primary)] bg-[var(--color-primary)]/[0.04] dark:bg-[var(--color-primary)]/10 shadow-xs'
-                          : 'border-black/10 dark:border-white/10 hover:border-black/20 dark:hover:border-white/20 bg-black/[0.01] dark:bg-white/[0.01]'
-                      }`}
-                    >
-                      <div>
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <div className={`p-1.5 rounded-lg ${generalSettings.close_action === 'quit' ? 'bg-[var(--color-primary)] text-white' : 'bg-black/5 dark:bg-white/10 text-[var(--color-muted)]'}`}>
-                              <Power className="w-4 h-4" />
-                            </div>
-                            <span className="text-[13.5px] font-semibold text-[var(--foreground)]">直接退出应用</span>
-                          </div>
-                        </div>
-                        <p className="text-[12px] text-[var(--color-muted)] leading-relaxed">
-                          关闭窗口时直接结束进程并释放资源，随身快捷助手也会同步关闭。
-                        </p>
-                      </div>
-
-                      <div className="mt-3.5 flex items-center justify-end">
-                        <div className={`w-4 h-4 rounded-full border flex items-center justify-center transition-colors ${
-                          generalSettings.close_action === 'quit'
-                            ? 'border-[var(--color-primary)] bg-[var(--color-primary)] text-white'
-                            : 'border-black/20 dark:border-white/20'
-                        }`}>
-                          {generalSettings.close_action === 'quit' && <Check className="w-3 h-3 stroke-[3]" />}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 常驻时的程序坞/任务栏图标 */}
-                {generalSettings.close_action === 'tray' && (
-                  <div className="rounded-xl border border-black/[0.08] dark:border-white/[0.1] bg-black/[0.015] dark:bg-white/[0.02] overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150">
+                {/* 分组 3：后台同步 */}
+                <section className="space-y-2">
+                  <h4 className="text-[11.5px] font-medium text-[var(--color-muted)] px-0.5">
+                    后台同步
+                  </h4>
+                  <div className="rounded-xl border border-black/[0.08] dark:border-white/[0.1] bg-white dark:bg-white/[0.02] overflow-hidden">
                     <SettingRow
-                      icon={<AppWindow className="w-4 h-4" />}
-                      iconClassName={
-                        generalSettings.keep_dock_icon
-                          ? "bg-blue-500/12 text-blue-600 dark:text-blue-400"
-                          : "bg-black/5 dark:bg-white/10 text-[var(--color-muted)]"
-                      }
-                      title={isMac ? "常驻时保留程序坞图标" : "常驻时保留任务栏图标"}
-                      description={
-                        isMac
-                          ? "关闭时继续在 Dock 保留图标以便一键切回；关闭此项则仅留顶部菜单栏图标。"
-                          : "关闭时继续在任务栏保留图标；关闭此项则隐藏窗口后仅留系统托盘图标。"
-                      }
+                      icon={<RefreshCw className="w-4 h-4" />}
+                      title="后台自动同步仓库"
+                      description="开启后启动及每小时自动检查仓库更新；关闭则仅手动触发联网"
                       right={
                         <SettingSwitch
-                          ariaLabel={isMac ? "常驻时保留程序坞图标" : "常驻时保留任务栏图标"}
-                          checked={generalSettings.keep_dock_icon}
+                          ariaLabel="后台自动同步仓库"
+                          checked={generalSettings.auto_sync_repos}
                           disabled={isSavingGeneral}
-                          onChange={() => handleUpdateGeneralSettings({ keep_dock_icon: !generalSettings.keep_dock_icon })}
+                          onChange={() =>
+                            handleUpdateGeneralSettings({
+                              auto_sync_repos: !generalSettings.auto_sync_repos,
+                            })
+                          }
                         />
                       }
                     />
                   </div>
-                )}
+                </section>
               </div>
-            </div>
-          )}
+            )}
 
-          {activeTab === "store" && (
-            <div className="px-8 py-6 max-w-3xl mx-auto space-y-4">
-              <div className="mb-2">
-                <h3 className="text-xl font-bold text-[var(--foreground)]">资源与安装偏好</h3>
-                <p className="text-[var(--color-muted)] mt-0.5 text-xs">
-                  管理从资源社区安装、或从全局搜索克隆 GitHub 技能时的默认目标技能库与 API 访问配额。
-                </p>
+            {/* Tab 2：Agent 同步 */}
+            {activeTab === "agent" && (
+              <div className="px-8 py-6 max-w-2xl mx-auto pb-8">
+                <AgentSettingsDialog isOpen={true} onClose={() => {}} isInline={true} />
               </div>
+            )}
 
-              {/* 默认安装目标技能库 */}
-              <div className="bg-white dark:bg-[#1A1A1A] border border-black/5 dark:border-white/5 rounded-xl p-4 space-y-3 shadow-sm">
-                <div className="flex items-center justify-between gap-4">
-                  <div className="flex items-start gap-3 flex-1">
-                    <div className="p-2 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5">
-                      <FolderGit2 className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <h4 className="text-[13px] font-semibold text-[var(--foreground)]">默认安装 / 克隆目标技能库</h4>
-                      <p className="text-xs text-[var(--color-muted)] mt-0.5 leading-relaxed">
-                        从社区一键安装或全局克隆 GitHub 技能时的首选落盘目录。
-                      </p>
-                    </div>
-                  </div>
-                  <div className="shrink-0 w-56 relative">
-                    <select
-                      value={defaultInstallDirId}
-                      onChange={(e) => {
-                        const newVal = e.target.value;
-                        setLocalDefaultInstallDirId(newVal);
-                        setDefaultInstallDirId(newVal);
-                        showToast(newVal ? "已更新默认安装技能库" : "已设为每次安装时询问", "success");
-                      }}
-                      className="w-full pl-3 pr-8 py-1.5 text-xs rounded-lg border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.04] text-[var(--foreground)] focus:outline-none focus:border-[var(--color-primary)] cursor-pointer appearance-none"
-                    >
-                      <option value="">每次安装时询问</option>
-                      {directories.map(d => (
-                        <option key={d.id} value={d.id}>
-                          {d.label} {d.is_default ? '(主库)' : ''}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown className="w-3.5 h-3.5 text-[var(--color-muted)] absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                  </div>
+            {/* Tab 3：资源与安装 */}
+            {activeTab === "store" && (
+              <div className="px-8 py-6 max-w-2xl mx-auto space-y-6 pb-8">
+                <div>
+                  <h3 className="text-[17px] font-semibold text-[var(--foreground)] tracking-tight">
+                    资源与安装
+                  </h3>
+                  <p className="text-[12px] text-[var(--color-muted)] mt-1">
+                    默认安装目录与 GitHub API 访问令牌
+                  </p>
                 </div>
 
-                {defaultInstallDirId && (
-                  <div className="pt-2 border-t border-black/5 dark:border-white/5 flex items-center justify-between text-[11px] text-[var(--color-muted)] font-mono">
-                    <span className="text-[var(--color-muted)]">存储路径：</span>
-                    <span className="truncate max-w-[420px] bg-black/[0.03] dark:bg-white/[0.05] px-2 py-0.5 rounded text-[var(--foreground)] select-all">
-                      {directories.find(d => d.id === defaultInstallDirId)?.path || '未知路径'}
+                {/* 分组 1：安装目录 */}
+                <section className="space-y-2">
+                  <h4 className="text-[11.5px] font-medium text-[var(--color-muted)] px-0.5">
+                    安装目录
+                  </h4>
+                  <div className="rounded-xl border border-black/[0.08] dark:border-white/[0.1] bg-white dark:bg-white/[0.02] divide-y divide-black/[0.06] dark:divide-white/[0.06]">
+                    <SettingRow
+                      icon={<FolderGit2 className="w-4 h-4" />}
+                      title="默认目标技能库"
+                      description="从资源中心安装或克隆技能时的默认保存目录"
+                      right={
+                        <FilterSelectPopover
+                          value={defaultInstallDirId}
+                          defaultValue=""
+                          options={installDirOptions}
+                          highlightActive={false}
+                          minMenuWidth={208}
+                          triggerClassName="w-48 py-1.5"
+                          ariaLabel="选择默认目标技能库"
+                          onChange={newVal => {
+                            setLocalDefaultInstallDirId(newVal);
+                            setDefaultInstallDirId(newVal);
+                            showToast(
+                              newVal ? "已更新默认安装技能库" : "已设为每次安装时询问",
+                              "success"
+                            );
+                          }}
+                        />
+                      }
+                    />
+
+                    {defaultInstallDirId && (
+                      <div className="px-4 py-2.5 bg-black/[0.015] dark:bg-white/[0.02] flex items-center justify-between gap-3 text-[11.5px]">
+                        <span className="text-[var(--color-muted)] shrink-0">存储路径</span>
+                        <span className="font-mono text-[var(--foreground)]/80 truncate select-all">
+                          {directories.find(d => d.id === defaultInstallDirId)?.path || "未知路径"}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </section>
+
+                {/* 分组 2：GitHub 访问令牌 */}
+                <section className="space-y-2">
+                  <div className="flex items-center justify-between px-0.5">
+                    <h4 className="text-[11.5px] font-medium text-[var(--color-muted)]">
+                      GitHub API
+                    </h4>
+                    <span className="text-[11px] text-[var(--color-muted)] tabular-nums">
+                      {savedGithubToken ? "已配置 · 5,000 次/小时" : "未配置 · 匿名限 10 次/分"}
                     </span>
                   </div>
-                )}
-              </div>
 
-              {/* GitHub 访问令牌配置卡片 */}
-              <div className="bg-white dark:bg-[#1A1A1A] border border-black/5 dark:border-white/5 rounded-xl p-4 space-y-3.5 shadow-sm">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex items-start gap-3 flex-1">
-                    <div className="p-2 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5">
-                      <Key className="w-4 h-4" />
+                  <div className="rounded-xl border border-black/[0.08] dark:border-white/[0.1] bg-white dark:bg-white/[0.02] p-4 space-y-3.5">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-black/[0.04] dark:bg-white/[0.06] text-[var(--foreground)]/70 flex items-center justify-center shrink-0">
+                        <Key className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <h4 className="text-[13px] font-medium text-[var(--foreground)] leading-snug">
+                          Personal Access Token
+                        </h4>
+                        <p className="text-[12px] text-[var(--color-muted)] mt-0.5 leading-snug">
+                          用于提升 GitHub 仓库搜索与技能预览的速率限制，仅保存在本地
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h4 className="text-[13px] font-semibold text-[var(--foreground)]">GitHub 访问令牌 (Personal Access Token)</h4>
-                        {getGitHubToken() ? (
-                          <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
-                            已配置 · 5,000 次/小时
-                          </span>
-                        ) : (
-                          <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
-                            未配置 · 受限 10 次/分
-                          </span>
+
+                    <div className="flex items-center gap-2">
+                      <div className="relative flex-1">
+                        <input
+                          type="password"
+                          placeholder="ghp_xxxx 或 github_pat_xxxx"
+                          value={githubTokenInput}
+                          onChange={e => setGithubTokenInput(e.target.value)}
+                          className="w-full pl-3 pr-8 py-1.5 text-[12.5px] font-mono rounded-lg border border-black/[0.1] dark:border-white/[0.12] bg-black/[0.015] dark:bg-white/[0.04] text-[var(--foreground)] focus:bg-white dark:focus:bg-white/[0.06] focus:outline-none focus:border-[var(--color-primary)] transition-colors"
+                        />
+                        {githubTokenInput && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setGithubTokenInput("");
+                              setSavedGithubToken("");
+                              setGitHubToken("");
+                              showToast("已清除 GitHub Token", "info");
+                            }}
+                            aria-label="清除 Token"
+                            className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded text-[var(--color-muted)] hover:text-[var(--foreground)] transition-colors cursor-pointer"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
                         )}
                       </div>
-                      <p className="text-xs text-[var(--color-muted)] mt-0.5 leading-relaxed">
-                        用于全局搜索实时检索 GitHub 开源技能库。配置后独享高额个人配额，避免匿名请求被 GitHub 限频。
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Token 输入行 */}
-                <div className="flex items-center gap-2">
-                  <div className="relative flex-1">
-                    <input
-                      type="password"
-                      placeholder="ghp_xxxx 或 github_pat_xxxx"
-                      value={githubTokenInput}
-                      onChange={e => setGithubTokenInput(e.target.value)}
-                      className="w-full pl-3 pr-8 py-2 text-xs font-mono rounded-lg border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.04] text-[var(--foreground)] focus:outline-none focus:border-[var(--color-primary)] focus:ring-1 focus:ring-[var(--color-primary)]/20"
-                    />
-                    {githubTokenInput && (
                       <button
                         type="button"
                         onClick={() => {
-                          setGithubTokenInput("");
-                          setGitHubToken("");
-                          showToast("已清除 GitHub Token", "info");
+                          const trimmed = githubTokenInput.trim();
+                          setGitHubToken(trimmed);
+                          setSavedGithubToken(trimmed);
+                          showToast(
+                            trimmed ? "Token 已保存（5,000 次/小时）" : "已清除 GitHub Token",
+                            "success"
+                          );
                         }}
-                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--color-muted)] hover:text-red-500 text-xs px-1"
-                        title="清除 Token"
+                        className="px-3.5 py-1.5 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white rounded-lg text-[12.5px] font-medium transition-colors cursor-pointer shrink-0"
                       >
-                        ×
+                        保存
                       </button>
-                    )}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const trimmed = githubTokenInput.trim();
-                      setGitHubToken(trimmed);
-                      showToast(trimmed ? "GitHub Token 保存成功，额度提升至 5,000次/小时" : "已清除 GitHub Token", "success");
-                    }}
-                    className="px-4 py-2 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white rounded-lg text-xs font-medium transition-colors cursor-pointer shrink-0 shadow-sm"
-                  >
-                    保存
-                  </button>
-                </div>
-
-                {/* 极速配置指南（3 步横向网格，紧凑高级，彻底解决高度溢出） */}
-                <div className="p-3 bg-blue-50/60 dark:bg-blue-950/20 rounded-xl border border-blue-200/50 dark:border-blue-800/30 text-xs space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5 font-semibold text-blue-900 dark:text-blue-200 text-xs">
-                      <Sparkles className="w-3.5 h-3.5 text-[var(--color-primary)] shrink-0" />
-                      <span>极速获取指南</span>
-                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.2 rounded border border-emerald-200/60 ml-1">
-                        仅本地保存
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => openUrl("https://github.com/settings/tokens/new?description=SkillHub-Search&scopes=").catch(console.error)}
-                      className="text-[var(--color-primary)] hover:underline flex items-center gap-1 text-[11px] font-medium cursor-pointer"
-                    >
-                      <span>去 GitHub 一键生成</span>
-                      <ExternalLink className="w-3 h-3" />
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-0.5">
-                    <div className="p-2 rounded-lg bg-white/70 dark:bg-black/20 border border-blue-200/40 dark:border-blue-800/30 text-[11px]">
-                      <div className="font-semibold text-blue-950 dark:text-blue-200 mb-0.5 flex items-center gap-1">
-                        <span className="w-3.5 h-3.5 rounded-full bg-[var(--color-primary)] text-white text-[9px] flex items-center justify-center font-bold">1</span>
-                        <span>打开创建页</span>
-                      </div>
-                      <p className="text-[10px] text-blue-900/70 dark:text-blue-300/70 leading-relaxed">
-                        点击右上角直达，预设名称 Note 已自动填好。
-                      </p>
                     </div>
 
-                    <div className="p-2 rounded-lg bg-white/70 dark:bg-black/20 border border-blue-200/40 dark:border-blue-800/30 text-[11px]">
-                      <div className="font-semibold text-blue-950 dark:text-blue-200 mb-0.5 flex items-center gap-1">
-                        <span className="w-3.5 h-3.5 rounded-full bg-[var(--color-primary)] text-white text-[9px] flex items-center justify-center font-bold">2</span>
-                        <span>权限全部留空</span>
-                      </div>
-                      <p className="text-[10px] text-blue-900/70 dark:text-blue-300/70 leading-relaxed">
-                        无需勾选任何 Scopes，只读公开库最安全。
-                      </p>
-                    </div>
-
-                    <div className="p-2 rounded-lg bg-white/70 dark:bg-black/20 border border-blue-200/40 dark:border-blue-800/30 text-[11px]">
-                      <div className="font-semibold text-blue-950 dark:text-blue-200 mb-0.5 flex items-center gap-1">
-                        <span className="w-3.5 h-3.5 rounded-full bg-[var(--color-primary)] text-white text-[9px] flex items-center justify-center font-bold">3</span>
-                        <span>复制保存</span>
-                      </div>
-                      <p className="text-[10px] text-blue-900/70 dark:text-blue-300/70 leading-relaxed">
-                        页面底部点击 Generate，复制 <code className="font-mono bg-blue-100/50 dark:bg-blue-900/40 px-1 py-0.2 rounded">ghp_xx</code> 贴入保存。
-                      </p>
+                    <div className="pt-2.5 border-t border-black/[0.06] dark:border-white/[0.06] flex items-center justify-between gap-3 text-[11.5px] text-[var(--color-muted)]">
+                      <span>生成时无需勾选任何权限（Scopes 留空），复制密钥粘贴保存即可</span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          openUrl(
+                            "https://github.com/settings/tokens/new?description=SkillHub-Search&scopes="
+                          ).catch(console.error)
+                        }
+                        className="inline-flex items-center gap-1 text-[var(--color-primary)] hover:underline font-medium shrink-0 cursor-pointer"
+                      >
+                        <span>前往生成</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </button>
                     </div>
                   </div>
+                </section>
+              </div>
+            )}
+
+            {/* Tab 4：数据与备份 */}
+            {activeTab === "backup" && (
+              <div className="px-8 py-6 max-w-2xl mx-auto space-y-6 pb-8">
+                <div>
+                  <h3 className="text-[17px] font-semibold text-[var(--foreground)] tracking-tight">
+                    数据与备份
+                  </h3>
+                  <p className="text-[12px] text-[var(--color-muted)] mt-1">
+                    导出或恢复本地技能库、提示词与偏好配置
+                  </p>
                 </div>
-              </div>
-            </div>
-          )}
-          {activeTab === "agent" && (
-            <div className="px-8 py-6 max-w-3xl mx-auto space-y-4">
-              <AgentSettingsDialog 
-                isOpen={true} 
-                onClose={() => {}} 
-                isInline={true} 
-              />
-            </div>
-          )}
 
-          {activeTab === "backup" && (
-            <div className="p-8 max-w-3xl mx-auto h-full">
-              <div className="mb-6">
-                <h3 className="text-2xl font-bold text-[var(--foreground)]">数据导出与恢复</h3>
-                <p className="text-[var(--color-muted)] mt-1 text-sm">
-                  备份您的技能库、提示词、Agent 配置及使用记录。
-                </p>
-              </div>
+                <section className="space-y-2">
+                  <h4 className="text-[11.5px] font-medium text-[var(--color-muted)] px-0.5">
+                    备份管理
+                  </h4>
+                  <div className="rounded-xl border border-black/[0.08] dark:border-white/[0.1] bg-white dark:bg-white/[0.02] divide-y divide-black/[0.06] dark:divide-white/[0.06] overflow-hidden">
+                    <SettingRow
+                      icon={<Save className="w-4 h-4" />}
+                      title="导出备份"
+                      description="将当前技能库、提示词与配置打包为 ZIP 文件保存到本地"
+                      right={
+                        <button
+                          type="button"
+                          onClick={handleExport}
+                          disabled={isExporting}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white rounded-lg text-[12.5px] font-medium transition-colors disabled:opacity-50 cursor-pointer"
+                        >
+                          <span>{isExporting ? "导出中..." : "导出"}</span>
+                        </button>
+                      }
+                    />
 
-              <div className="bg-white dark:bg-[#1A1A1A] border border-black/5 dark:border-white/5 rounded-xl overflow-hidden divide-y divide-black/5 dark:divide-white/5">
-                <div className="flex items-center justify-between p-5">
-                  <div>
-                    <h4 className="text-[14px] font-medium text-[var(--foreground)]">导出所有数据</h4>
-                    <p className="text-[13px] text-[var(--color-muted)] mt-1">将当前的所有数据打包成 ZIP 文件保存到本地。</p>
+                    <SettingRow
+                      icon={<Upload className="w-4 h-4" />}
+                      title="恢复备份"
+                      description="从历史 ZIP 备份恢复，导入前系统会自动备份当前数据"
+                      right={
+                        <button
+                          type="button"
+                          onClick={handleImport}
+                          disabled={isImporting}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-white/[0.05] border border-black/[0.1] dark:border-white/[0.12] rounded-lg text-[12.5px] font-medium text-[var(--foreground)] hover:bg-black/[0.03] dark:hover:bg-white/[0.08] transition-colors disabled:opacity-50 cursor-pointer"
+                        >
+                          <span>{isImporting ? "恢复中..." : "选择文件"}</span>
+                        </button>
+                      }
+                    />
                   </div>
-                  <button 
-                    onClick={handleExport}
-                    disabled={isExporting}
-                    className="flex items-center space-x-1.5 px-3 py-1.5 bg-[var(--color-primary)] text-white rounded-md text-[13px] font-medium hover:bg-[var(--color-primary-hover)] transition-colors disabled:opacity-50 shadow-sm shrink-0"
-                  >
-                    <Save className="w-4 h-4" />
-                    <span>{isExporting ? "导出中..." : "开始导出"}</span>
-                  </button>
-                </div>
-                
-                <div className="flex items-center justify-between p-5">
-                  <div>
-                    <h4 className="text-[14px] font-medium text-[var(--foreground)]">从备份导入</h4>
-                    <p className="text-[13px] text-[var(--color-muted)] mt-1">选择历史备份的 ZIP 文件来恢复数据。</p>
-                  </div>
-                  <button 
-                    onClick={handleImport}
-                    disabled={isImporting}
-                    className="flex items-center space-x-1.5 px-3 py-1.5 bg-white border border-black/10 rounded-md text-[13px] font-medium text-[var(--foreground)] hover:bg-black/5 transition-colors disabled:opacity-50 shadow-sm shrink-0"
-                  >
-                    <Upload className="w-4 h-4 opacity-70" />
-                    <span>{isImporting ? "恢复中..." : "选择文件导入"}</span>
-                  </button>
-                </div>
+                </section>
               </div>
-
-              <div className="mt-6 flex items-start space-x-2 text-[12px] text-[var(--color-muted)] px-1">
-                <ShieldCheck className="w-4 h-4 shrink-0 mt-0.5" />
-                <p>
-                  为了防止意外覆盖，在您执行导入操作前，系统会自动对当前状态进行一次静默备份。您可以随时在应用数据目录下找到它。
-                </p>
-              </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
     </div>
-  </div>
   );
 }

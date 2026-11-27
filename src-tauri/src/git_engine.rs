@@ -1,10 +1,84 @@
 use git2::{Repository, FetchOptions, RemoteCallbacks};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::net::{TcpStream, ToSocketAddrs};
+use std::sync::{Arc, Mutex as StdMutex, OnceLock};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Instant;
 use tokio::process::Command;
+use tokio::sync::{Mutex as AsyncMutex, OwnedMutexGuard};
 use tokio::time::{timeout, Duration};
 use tokio::io::AsyncReadExt;
 use tauri::Emitter;
+
+/// 按本地目录路径分配的异步互斥锁表，防止同一仓库/技能目录并发执行 pull 或覆盖写入引发冲突
+static REPO_OP_LOCKS: OnceLock<StdMutex<HashMap<String, Arc<AsyncMutex<()>>>>> = OnceLock::new();
+
+/// 获取指定仓库/技能目录的独占操作锁（跨 `.await` 安全）
+pub(crate) async fn acquire_repo_op_lock(path: &Path) -> OwnedMutexGuard<()> {
+    let key = path
+        .to_string_lossy()
+        .replace('\\', "/")
+        .trim_end_matches('/')
+        .to_lowercase();
+    let lock = {
+        let map_mutex = REPO_OP_LOCKS.get_or_init(|| StdMutex::new(HashMap::new()));
+        let mut map = map_mutex.lock().unwrap();
+        map.entry(key)
+            .or_insert_with(|| Arc::new(AsyncMutex::new(())))
+            .clone()
+    };
+    lock.lock_owned().await
+}
+
+/// 判断 Git 克隆错误是否发生在已经开始传输对象数据流之后（避免流中断后再回退 ZIP 造成双倍流量）
+pub(crate) fn is_git_clone_mid_stream_error(raw: &str) -> bool {
+    let lower = raw.to_lowercase();
+    lower.contains("receiving objects:")
+        || lower.contains("resolving deltas:")
+        || lower.contains("early eof")
+        || lower.contains("unexpected disconnect")
+        || lower.contains("下载数据流超时")
+}
+
+/// 检测本机是否安装可用的 `git` 命令行工具（进程级缓存，仅检测一次）
+static GIT_CLI_AVAILABLE: OnceLock<bool> = OnceLock::new();
+
+fn is_git_cli_available() -> bool {
+    *GIT_CLI_AVAILABLE.get_or_init(|| {
+        let mut cmd = std::process::Command::new("git");
+        cmd.arg("--version");
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x08000000);
+        }
+        cmd.output().map(|o| o.status.success()).unwrap_or(false)
+    })
+}
+
+/// 判断 Git 错误是否属于明确的“非网络故障”（如仓库不存在、私有认证失败、本地冲突等）
+/// 命中后应立即终止后续直连/镜像/ZIP 降级重试，避免浪费时间与流量
+pub(crate) fn is_non_retryable_git_error(raw: &str) -> bool {
+    let lower = raw.to_lowercase();
+    lower.contains("repository not found")
+        || lower.contains("not found")
+        || lower.contains("does not exist")
+        || lower.contains("http 404")
+        || lower.contains("returned error: 404")
+        || lower.contains("authentication failed")
+        || lower.contains("could not read username")
+        || lower.contains("terminal prompts disabled")
+        || lower.contains("permission denied")
+        || lower.contains("returned error: 401")
+        || lower.contains("returned error: 403")
+        || lower.contains("would be overwritten by merge")
+        || lower.contains("would be overwritten by checkout")
+        || lower.contains("unmerged files")
+        || lower.contains("divergent branches")
+        || lower.contains("not possible to fast-forward")
+        || lower.contains("remote branch") && lower.contains("not found in upstream")
+}
 
 /// 经过实测在无 VPN 中国大陆环境下稳定可用的 GitHub 加速镜像前缀（支持 Git Smart-HTTP 与 ZIP archive）
 const GITHUB_MIRROR_PREFIXES: &[(&str, &str)] = &[
@@ -87,8 +161,28 @@ fn is_proxy_reachable(proxy_url: &str) -> bool {
     false
 }
 
+/// 系统代理探测结果短期缓存（10 秒 TTL），避免高并发拉取时反复拉起 scutil / reg / git 子进程
+static SYSTEM_PROXY_CACHE: OnceLock<StdMutex<Option<(Instant, Option<String>)>>> = OnceLock::new();
+
 /// 跨平台探测当前系统代理（兼容 Clash Verge / Surge / V2Ray / 系统网络设置 / 环境变量 / Git 配置）
 pub fn detect_system_proxy() -> Option<String> {
+    let cache = SYSTEM_PROXY_CACHE.get_or_init(|| StdMutex::new(None));
+    if let Ok(guard) = cache.lock() {
+        if let Some((ts, ref cached)) = *guard {
+            if ts.elapsed() < std::time::Duration::from_secs(10) {
+                return cached.clone();
+            }
+        }
+    }
+
+    let detected = detect_system_proxy_uncached();
+    if let Ok(mut guard) = cache.lock() {
+        *guard = Some((Instant::now(), detected.clone()));
+    }
+    detected
+}
+
+fn detect_system_proxy_uncached() -> Option<String> {
     // 1. 优先检查进程环境变量
     for key in &["HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy"] {
         if let Ok(val) = std::env::var(key) {
@@ -183,20 +277,30 @@ pub fn detect_system_proxy() -> Option<String> {
                     }
                 }
                 if proxy_enabled && !proxy_server.is_empty() {
-                    // 处理可能形如 "http=127.0.0.1:7890;https=127.0.0.1:7890" 或 "127.0.0.1:7890"
-                    let mut extracted = proxy_server.as_str();
+                    // 处理可能形如 "http=127.0.0.1:7890;https=127.0.0.1:7890"、"socks=127.0.0.1:1080" 或 "127.0.0.1:7890"
+                    let mut extracted: Option<(&str, &str)> = None;
                     for part in proxy_server.split(';') {
-                        if let Some(rest) = part.strip_prefix("https=") {
-                            extracted = rest;
+                        let p = part.trim();
+                        if let Some(rest) = p.strip_prefix("https=") {
+                            extracted = Some(("http", rest.trim()));
                             break;
-                        } else if let Some(rest) = part.strip_prefix("http=") {
-                            extracted = rest;
+                        } else if let Some(rest) = p.strip_prefix("http=") {
+                            extracted = Some(("http", rest.trim()));
+                        } else if let Some(rest) = p.strip_prefix("socks=") {
+                            if extracted.is_none() {
+                                extracted = Some(("socks5h", rest.trim()));
+                            }
                         }
                     }
-                    let candidate = if extracted.starts_with("http://") || extracted.starts_with("https://") {
-                        extracted.to_string()
+                    let (scheme, raw_addr) = extracted.unwrap_or(("http", proxy_server.trim()));
+                    let candidate = if raw_addr.starts_with("http://")
+                        || raw_addr.starts_with("https://")
+                        || raw_addr.starts_with("socks5://")
+                        || raw_addr.starts_with("socks5h://")
+                    {
+                        raw_addr.to_string()
                     } else {
-                        format!("http://{}", extracted)
+                        format!("{}://{}", scheme, raw_addr)
                     };
                     if is_proxy_reachable(&candidate) {
                         return Some(candidate);
@@ -363,6 +467,8 @@ async fn run_git_clone_attempt(
     let stderr_reader = child.stderr.take();
     let app_handle = app.cloned();
     let target_dir_clone = target_dir_str.clone();
+    let received_objects_flag = Arc::new(AtomicBool::new(false));
+    let received_objects_writer = received_objects_flag.clone();
 
     let read_stderr_task = tokio::spawn(async move {
         let mut full_log = Vec::new();
@@ -377,6 +483,9 @@ async fn run_git_clone_attempt(
                             if let Ok(line) = String::from_utf8(std::mem::take(&mut line_buf)) {
                                 let trimmed = line.trim().to_string();
                                 if !trimmed.is_empty() {
+                                    if trimmed.starts_with("Receiving objects:") || trimmed.starts_with("Resolving deltas:") {
+                                        received_objects_writer.store(true, Ordering::Relaxed);
+                                    }
                                     let (percent, stage, message) = parse_git_progress(&trimmed);
                                     if let Some(ref a) = app_handle {
                                         let _ = a.emit("clone-progress", CloneProgressPayload {
@@ -400,6 +509,9 @@ async fn run_git_clone_attempt(
                 if let Ok(line) = String::from_utf8(line_buf) {
                     let trimmed = line.trim().to_string();
                     if !trimmed.is_empty() {
+                        if trimmed.starts_with("Receiving objects:") || trimmed.starts_with("Resolving deltas:") {
+                            received_objects_writer.store(true, Ordering::Relaxed);
+                        }
                         full_log.push(trimmed);
                     }
                 }
@@ -424,7 +536,11 @@ async fn run_git_clone_attempt(
         }
         Err(_) => {
             let _ = std::fs::remove_dir_all(target_path);
-            Err("git clone 阶段连接超时".to_string())
+            if received_objects_flag.load(Ordering::Relaxed) {
+                Err("git clone 下载数据流超时".to_string())
+            } else {
+                Err("git clone 阶段连接超时".to_string())
+            }
         }
     }
 }
@@ -544,7 +660,193 @@ fn extract_github_zip_bytes(zip_bytes: Vec<u8>, target_path: &Path) -> Result<()
     Ok(())
 }
 
-/// 流式下载 ZIP 压缩包，校验 `PK\x03\x04` 魔数并向前端实时推送下载进度
+/// ZIP 降级仓库的版本校验元数据文件名（保存在 `<repo>/.git/.skillhub_zip_meta.json`）
+const ZIP_META_FILENAME: &str = ".skillhub_zip_meta.json";
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+struct ZipSyncMeta {
+    etag: Option<String>,
+    commit_sha: Option<String>,
+    branch: Option<String>,
+    updated_at: String,
+}
+
+fn read_zip_sync_meta(repo_path: &Path) -> Option<ZipSyncMeta> {
+    let p = repo_path.join(".git").join(ZIP_META_FILENAME);
+    let content = std::fs::read_to_string(p).ok()?;
+    serde_json::from_str(&content).ok()
+}
+
+fn write_zip_sync_meta(repo_path: &Path, meta: &ZipSyncMeta) {
+    let git_dir = repo_path.join(".git");
+    if std::fs::create_dir_all(&git_dir).is_ok() {
+        if let Ok(json) = serde_json::to_string_pretty(meta) {
+            let _ = std::fs::write(git_dir.join(ZIP_META_FILENAME), json);
+        }
+    }
+}
+
+/// 解析 Git Smart-HTTP `info/refs?service=git-upload-pack` 响应中的目标分支或 HEAD 的 40 位 Commit SHA
+/// 该接口仅几百字节，且不受 GitHub REST API 60次/小时 限额约束
+fn parse_git_info_refs_head_sha(body: &str, branch: Option<&str>) -> Option<String> {
+    let target_ref = branch
+        .map(|b| b.trim())
+        .filter(|b| !b.is_empty())
+        .map(|b| format!("refs/heads/{}", b));
+
+    let mut head_sha: Option<String> = None;
+    let mut branch_sha: Option<String> = None;
+
+    for raw_line in body.lines() {
+        // 剥离 pkt-line 4 位十六进制长度前缀（如 "003f<sha> refs/heads/main" 或 "00000159<sha> HEAD\0..."）
+        let mut line = raw_line.trim();
+        while line.len() >= 4 && line.as_bytes()[0..4].iter().all(|b| b.is_ascii_hexdigit()) {
+            // 如果前 40 位本身已经是 SHA + 空格，则不再剥离
+            if line.len() > 41
+                && line.as_bytes()[40] == b' '
+                && line.as_bytes()[0..40].iter().all(|b| b.is_ascii_hexdigit())
+            {
+                break;
+            }
+            line = &line[4..];
+        }
+
+        if line.len() < 42 || line.as_bytes()[40] != b' ' {
+            continue;
+        }
+        let sha_part = &line[0..40];
+        if !sha_part.as_bytes().iter().all(|b| b.is_ascii_hexdigit()) {
+            continue;
+        }
+        let rest = &line[41..];
+        // HEAD 行后面通常带有 `\0` 能力列表，只取 ref 名称部分
+        let ref_name = rest.split(['\0', ' ']).next().unwrap_or("").trim();
+
+        if ref_name == "HEAD" && head_sha.is_none() {
+            head_sha = Some(sha_part.to_lowercase());
+        }
+        if let Some(ref want) = target_ref {
+            if ref_name == want {
+                branch_sha = Some(sha_part.to_lowercase());
+                break;
+            }
+        }
+    }
+
+    branch_sha.or(head_sha)
+}
+
+/// 极轻量获取远端 GitHub 仓库当前 HEAD / 指定分支的 Commit SHA（仅 ~500 字节，零 ZIP 流量、零 GitHub API 配额）
+pub(crate) async fn fetch_remote_head_sha(
+    owner: &str,
+    repo: &str,
+    branch: Option<&str>,
+    system_proxy: Option<&str>,
+) -> Option<String> {
+    let official_url = format!(
+        "https://github.com/{}/{}.git/info/refs?service=git-upload-pack",
+        owner, repo
+    );
+    let mirror_urls: Vec<String> = GITHUB_MIRROR_PREFIXES
+        .iter()
+        .map(|(_, prefix)| {
+            format!("{}/{}/{}.git/info/refs?service=git-upload-pack", prefix, owner, repo)
+        })
+        .collect();
+
+    let direct_client = reqwest::Client::builder()
+        .http1_only()
+        .no_proxy()
+        .connect_timeout(Duration::from_secs(4))
+        .timeout(Duration::from_secs(10))
+        .user_agent("git/2.43.0")
+        .build()
+        .ok()?;
+
+    // 1. 有系统代理时优先经代理检查（仅几百字节）
+    if let Some(proxy_str) = system_proxy {
+        if let Ok(proxy) = reqwest::Proxy::all(proxy_str) {
+            if let Ok(proxy_client) = reqwest::Client::builder()
+                .http1_only()
+                .proxy(proxy)
+                .connect_timeout(Duration::from_secs(6))
+                .timeout(Duration::from_secs(10))
+                .user_agent("git/2.43.0")
+                .build()
+            {
+                if let Ok(resp) = proxy_client.get(&official_url).send().await {
+                    if resp.status().is_success() {
+                        if let Ok(text) = resp.text().await {
+                            if let Some(sha) = parse_git_info_refs_head_sha(&text, branch) {
+                                return Some(sha);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // 代理失败尝试快速直连
+        if let Ok(resp) = direct_client.get(&official_url).send().await {
+            if resp.status().is_success() {
+                if let Ok(text) = resp.text().await {
+                    if let Some(sha) = parse_git_info_refs_head_sha(&text, branch) {
+                        return Some(sha);
+                    }
+                }
+            }
+        }
+    }
+
+    // 2. 尝试国内镜像（无代理环境首选，有代理环境兜底）
+    for mirror_url in &mirror_urls {
+        if let Ok(resp) = direct_client.get(mirror_url).send().await {
+            if resp.status().is_success() {
+                if let Ok(text) = resp.text().await {
+                    if let Some(sha) = parse_git_info_refs_head_sha(&text, branch) {
+                        return Some(sha);
+                    }
+                }
+            }
+        }
+    }
+
+    // 3. 无代理且镜像都失败时最后尝试直连官方
+    if system_proxy.is_none() {
+        if let Ok(resp) = direct_client.get(&official_url).send().await {
+            if resp.status().is_success() {
+                if let Ok(text) = resp.text().await {
+                    if let Some(sha) = parse_git_info_refs_head_sha(&text, branch) {
+                        return Some(sha);
+                    }
+                }
+            }
+        }
+    }
+
+    None
+}
+
+enum ZipFetchResult {
+    Downloaded { bytes: Vec<u8>, etag: Option<String> },
+    NotModified,
+}
+
+enum ZipAttemptError {
+    /// 建连失败或服务端返回非 2xx（几乎未消耗流量，可安全回退下一通道）
+    BeforeBody(String),
+    /// 已开始接收较多正文数据后中途中断或超时（避免在同一官方源上重复重下放大流量）
+    MidStream(String),
+}
+
+impl ZipAttemptError {
+    fn message(&self) -> &str {
+        match self {
+            ZipAttemptError::BeforeBody(s) | ZipAttemptError::MidStream(s) => s,
+        }
+    }
+}
+
+/// 流式下载 ZIP 压缩包，支持 `If-None-Match` 条件校验（304 零流量跳过），校验 `PK\x03\x04` 魔数并推送进度
 async fn download_zip_with_progress(
     app: Option<&tauri::AppHandle>,
     target_dir_str: &str,
@@ -552,7 +854,8 @@ async fn download_zip_with_progress(
     client_label: &str,
     url_label: &str,
     zip_url: &str,
-) -> Result<Vec<u8>, String> {
+    if_none_match: Option<&str>,
+) -> Result<ZipFetchResult, ZipAttemptError> {
     emit_progress(
         app,
         target_dir_str,
@@ -562,15 +865,37 @@ async fn download_zip_with_progress(
         &format!("[ZIP 通道 - {}] 正在连接 {} ...", client_label, zip_url),
     );
 
-    let resp = client
-        .get(zip_url)
+    let mut req = client.get(zip_url);
+    if let Some(etag) = if_none_match {
+        let trimmed = etag.trim();
+        if !trimmed.is_empty() {
+            req = req.header("If-None-Match", trimmed);
+        }
+    }
+
+    let resp = req
         .send()
         .await
-        .map_err(|e| format!("{} 请求失败: {}", url_label, e))?;
+        .map_err(|e| ZipAttemptError::BeforeBody(format!("{} 请求失败: {}", url_label, e)))?;
+
+    if resp.status() == reqwest::StatusCode::NOT_MODIFIED {
+        return Ok(ZipFetchResult::NotModified);
+    }
 
     if !resp.status().is_success() {
-        return Err(format!("{} 返回 HTTP {}", url_label, resp.status()));
+        return Err(ZipAttemptError::BeforeBody(format!(
+            "{} 返回 HTTP {}",
+            url_label,
+            resp.status()
+        )));
     }
+
+    let response_etag = resp
+        .headers()
+        .get(reqwest::header::ETAG)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
 
     let total_size = resp.content_length();
     let mut buffer = Vec::new();
@@ -609,8 +934,22 @@ async fn download_zip_with_progress(
                 }
             }
             Ok(Ok(None)) => break,
-            Ok(Err(e)) => return Err(format!("读取数据流中断: {}", e)),
-            Err(_) => return Err("读取源码包数据流超时".to_string()),
+            Ok(Err(e)) => {
+                let msg = format!("读取数据流中断: {}", e);
+                return if buffer.len() > 64 * 1024 {
+                    Err(ZipAttemptError::MidStream(msg))
+                } else {
+                    Err(ZipAttemptError::BeforeBody(msg))
+                };
+            }
+            Err(_) => {
+                let msg = "读取源码包数据流超时".to_string();
+                return if buffer.len() > 64 * 1024 {
+                    Err(ZipAttemptError::MidStream(msg))
+                } else {
+                    Err(ZipAttemptError::BeforeBody(msg))
+                };
+            }
         }
     }
 
@@ -625,14 +964,18 @@ async fn download_zip_with_progress(
             "源码包下载完成，正在解压文件...",
             &format!("✅ 源码压缩包下载完成 ({:.1} KB)，正在解压到本地目录...", kb),
         );
-        Ok(buffer)
+        Ok(ZipFetchResult::Downloaded {
+            bytes: buffer,
+            etag: response_etag,
+        })
     } else {
-        Err("下载内容不是有效的 ZIP 压缩包".to_string())
+        Err(ZipAttemptError::BeforeBody("下载内容不是有效的 ZIP 压缩包".to_string()))
     }
 }
 
-/// 阶段二：通过 HTTPS 下载 GitHub 源码压缩包 (ZIP)，智能编排代理、国内高速镜像与官方直连顺序
-async fn download_github_zip_fallback(
+/// 阶段二：通过 HTTPS 下载 GitHub 源码压缩包 (ZIP)
+/// 返回 `Ok(true)` 表示已下载并解压新版本；返回 `Ok(false)` 表示远端返回 304 未变更（0 流量跳过）
+async fn download_github_zip_fallback_with_meta(
     app: Option<&tauri::AppHandle>,
     owner: &str,
     repo: &str,
@@ -640,7 +983,9 @@ async fn download_github_zip_fallback(
     normalized_git_url: &str,
     target_path: &Path,
     system_proxy: Option<&str>,
-) -> Result<(), String> {
+    if_none_match: Option<&str>,
+    known_commit_sha: Option<&str>,
+) -> Result<bool, String> {
     let target_dir_str = target_path.to_string_lossy().to_string();
 
     emit_progress(
@@ -652,27 +997,18 @@ async fn download_github_zip_fallback(
         "⚡ Git 协议连接受阻，已自动切换至「GitHub 源码包 (ZIP)」高速通道...",
     );
 
-    // 构建官方候选下载链接
-    let mut official_urls = Vec::new();
-    if let Some(b) = branch {
-        official_urls.push((
+    // 仅保留 1 个标准 codeload 官方地址，避免 github.com/archive 302 跳转回 codeload 导致大包重复双倍流量
+    let (official_label, official_url) = if let Some(b) = branch {
+        (
             format!("codeload ({})", b),
             format!("https://codeload.github.com/{}/{}/zip/refs/heads/{}", owner, repo, b),
-        ));
-        official_urls.push((
-            format!("github archive ({})", b),
-            format!("https://github.com/{}/{}/archive/refs/heads/{}.zip", owner, repo, b),
-        ));
+        )
     } else {
-        official_urls.push((
+        (
             "codeload (HEAD)".to_string(),
             format!("https://codeload.github.com/{}/{}/zip/HEAD", owner, repo),
-        ));
-        official_urls.push((
-            "github archive (HEAD)".to_string(),
-            format!("https://github.com/{}/{}/archive/HEAD.zip", owner, repo),
-        ));
-    }
+        )
+    };
 
     // 构建国内镜像候选下载链接
     let ref_part = branch
@@ -698,10 +1034,11 @@ async fn download_github_zip_fallback(
         .map_err(|e| format!("初始化 HTTP 客户端失败: {}", e))?;
 
     let mut last_error = String::new();
-    let mut downloaded_zip: Option<Vec<u8>> = None;
+    let mut downloaded: Option<(Vec<u8>, Option<String>)> = None;
+    let mut aborted_mid_stream = false;
 
     if let Some(proxy_str) = system_proxy {
-        // 1. 有活动系统代理：先通过系统代理请求官方源码包
+        // 1. 有活动系统代理：通过系统代理请求唯一的官方 codeload 地址（附带 If-None-Match）
         if let Ok(proxy) = reqwest::Proxy::all(proxy_str) {
             if let Ok(proxy_client) = reqwest::Client::builder()
                 .http1_only()
@@ -712,84 +1049,191 @@ async fn download_github_zip_fallback(
                 .build()
             {
                 let client_label = format!("系统代理 {}", proxy_str);
-                for (url_label, zip_url) in &official_urls {
-                    match download_zip_with_progress(app, &target_dir_str, &proxy_client, &client_label, url_label, zip_url).await {
-                        Ok(bytes) => {
-                            downloaded_zip = Some(bytes);
-                            break;
+                match download_zip_with_progress(
+                    app,
+                    &target_dir_str,
+                    &proxy_client,
+                    &client_label,
+                    &official_label,
+                    &official_url,
+                    if_none_match,
+                )
+                .await
+                {
+                    Ok(ZipFetchResult::NotModified) => return Ok(false),
+                    Ok(ZipFetchResult::Downloaded { bytes, etag }) => {
+                        downloaded = Some((bytes, etag));
+                    }
+                    Err(e) => {
+                        if matches!(e, ZipAttemptError::MidStream(_)) {
+                            aborted_mid_stream = true;
                         }
-                        Err(e) => last_error = e,
+                        last_error = e.message().to_string();
                     }
                 }
             }
         }
 
-        // 2. 代理失败时尝试 4 秒快速直连一次官方 codeload（兼容 TUN 模式）
-        if downloaded_zip.is_none() {
-            if let Some((url_label, zip_url)) = official_urls.first() {
-                match download_zip_with_progress(app, &target_dir_str, &direct_client, "直连/TUN 通道", url_label, zip_url).await {
-                    Ok(bytes) => downloaded_zip = Some(bytes),
-                    Err(e) => last_error = e,
+        // 2. 仅当代理建连阶段失败（未消耗正文流量）时，才尝试直连 codeload（兼容 TUN 模式）
+        if downloaded.is_none() && !aborted_mid_stream {
+            match download_zip_with_progress(
+                app,
+                &target_dir_str,
+                &direct_client,
+                "直连/TUN 通道",
+                &official_label,
+                &official_url,
+                if_none_match,
+            )
+            .await
+            {
+                Ok(ZipFetchResult::NotModified) => return Ok(false),
+                Ok(ZipFetchResult::Downloaded { bytes, etag }) => {
+                    downloaded = Some((bytes, etag));
+                }
+                Err(e) => {
+                    if matches!(e, ZipAttemptError::MidStream(_)) {
+                        aborted_mid_stream = true;
+                    }
+                    last_error = e.message().to_string();
                 }
             }
         }
 
-        // 3. 仍失败则兜底走国内镜像加速源
-        if downloaded_zip.is_none() {
+        // 3. 若官方通道未成功且非流中超时，兜底走国内镜像（不经 VPN 代理）
+        if downloaded.is_none() && !aborted_mid_stream {
             for (url_label, mirror_url) in &mirror_urls {
-                match download_zip_with_progress(app, &target_dir_str, &direct_client, "国内加速镜像", url_label, mirror_url).await {
-                    Ok(bytes) => {
-                        downloaded_zip = Some(bytes);
+                match download_zip_with_progress(
+                    app,
+                    &target_dir_str,
+                    &direct_client,
+                    "国内加速镜像",
+                    url_label,
+                    mirror_url,
+                    if_none_match,
+                )
+                .await
+                {
+                    Ok(ZipFetchResult::NotModified) => return Ok(false),
+                    Ok(ZipFetchResult::Downloaded { bytes, etag }) => {
+                        downloaded = Some((bytes, etag));
                         break;
                     }
-                    Err(e) => last_error = e,
+                    Err(e) => {
+                        last_error = e.message().to_string();
+                        if matches!(e, ZipAttemptError::MidStream(_)) {
+                            break;
+                        }
+                    }
                 }
             }
         }
     } else {
-        // 无 VPN / 无系统代理环境：优先直接走国内高速镜像（免除 32 秒直连超时盲等）
+        // 无 VPN / 无系统代理环境：优先直接走国内高速镜像
         for (url_label, mirror_url) in &mirror_urls {
-            match download_zip_with_progress(app, &target_dir_str, &direct_client, "国内加速镜像", url_label, mirror_url).await {
-                Ok(bytes) => {
-                    downloaded_zip = Some(bytes);
+            match download_zip_with_progress(
+                app,
+                &target_dir_str,
+                &direct_client,
+                "国内加速镜像",
+                url_label,
+                mirror_url,
+                if_none_match,
+            )
+            .await
+            {
+                Ok(ZipFetchResult::NotModified) => return Ok(false),
+                Ok(ZipFetchResult::Downloaded { bytes, etag }) => {
+                    downloaded = Some((bytes, etag));
                     break;
                 }
-                Err(e) => last_error = e,
+                Err(e) => {
+                    last_error = e.message().to_string();
+                    if matches!(e, ZipAttemptError::MidStream(_)) {
+                        aborted_mid_stream = true;
+                        break;
+                    }
+                }
             }
         }
 
-        // 镜像全部不可用时，最后尝试 4 秒快速直连官方源（兼容海外无代理或高校教育网直连用户）
-        if downloaded_zip.is_none() {
-            for (url_label, zip_url) in &official_urls {
-                match download_zip_with_progress(app, &target_dir_str, &direct_client, "官方直连通道", url_label, zip_url).await {
-                    Ok(bytes) => {
-                        downloaded_zip = Some(bytes);
-                        break;
-                    }
-                    Err(e) => last_error = e,
+        // 镜像全部不可用且未在流中中断时，尝试直连官方源（兼容海外无代理或教育网用户）
+        if downloaded.is_none() && !aborted_mid_stream {
+            match download_zip_with_progress(
+                app,
+                &target_dir_str,
+                &direct_client,
+                "官方直连通道",
+                &official_label,
+                &official_url,
+                if_none_match,
+            )
+            .await
+            {
+                Ok(ZipFetchResult::NotModified) => return Ok(false),
+                Ok(ZipFetchResult::Downloaded { bytes, etag }) => {
+                    downloaded = Some((bytes, etag));
                 }
+                Err(e) => last_error = e.message().to_string(),
             }
         }
     }
 
-    let zip_bytes = downloaded_zip.ok_or_else(|| {
+    let (zip_bytes, response_etag) = downloaded.ok_or_else(|| {
         format!("源码包 (ZIP) 备用通道下载失败: {}", last_error)
     })?;
+
+    // 下载成功后补齐远端 Commit SHA（若未预先传入），方便后续更新零流量比对
+    let resolved_sha = match known_commit_sha {
+        Some(s) if !s.is_empty() => Some(s.to_string()),
+        _ => fetch_remote_head_sha(owner, repo, branch, system_proxy).await,
+    };
 
     let _ = std::fs::remove_dir_all(target_path);
     let target_clone = target_path.to_path_buf();
     let git_url_owned = normalized_git_url.to_string();
     let branch_owned = branch.map(|s| s.to_string());
+    let sync_meta = ZipSyncMeta {
+        etag: response_etag,
+        commit_sha: resolved_sha,
+        branch: branch_owned.clone(),
+        updated_at: chrono::Utc::now().to_rfc3339(),
+    };
 
     tauri::async_runtime::spawn_blocking(move || {
         extract_github_zip_bytes(zip_bytes, &target_clone)?;
         ensure_git_metadata(&target_clone, &git_url_owned, branch_owned.as_deref());
+        write_zip_sync_meta(&target_clone, &sync_meta);
         Ok::<(), String>(())
     })
     .await
     .map_err(|e| format!("解压任务异常: {}", e))??;
 
-    Ok(())
+    Ok(true)
+}
+
+async fn download_github_zip_fallback(
+    app: Option<&tauri::AppHandle>,
+    owner: &str,
+    repo: &str,
+    branch: Option<&str>,
+    normalized_git_url: &str,
+    target_path: &Path,
+    system_proxy: Option<&str>,
+) -> Result<(), String> {
+    download_github_zip_fallback_with_meta(
+        app,
+        owner,
+        repo,
+        branch,
+        normalized_git_url,
+        target_path,
+        system_proxy,
+        None,
+        None,
+    )
+    .await
+    .map(|_| ())
 }
 
 pub async fn clone_repository(
@@ -822,6 +1266,8 @@ async fn clone_repository_with_proxy(
     // ==================== 阶段 1：Git 浅克隆（系统代理 / 极速直连 / 国内 Git 镜像） ====================
     let mut git_errors = Vec::new();
     let mut git_succeeded = false;
+    let mut fatal_non_network_err: Option<String> = None;
+    let mut aborted_mid_stream = false;
 
     if let Some(ref proxy) = system_proxy {
         emit_progress(
@@ -839,20 +1285,27 @@ async fn clone_repository_with_proxy(
             }
             Err(e) => {
                 git_errors.push(format!("[代理通道] {}", e));
-                emit_progress(
-                    app,
-                    &target_dir_str,
-                    Some(6),
-                    "retrying_direct",
-                    "代理通道受阻，正在尝试直连/TUN 通道...",
-                    &format!("⚠️ 代理通道返回错误: {}\n🔄 正在切换至无代理直连 / TUN 透明通道重试...", e.lines().last().unwrap_or(&e)),
-                );
+                if is_non_retryable_git_error(&e) {
+                    fatal_non_network_err = Some(e);
+                } else if is_git_clone_mid_stream_error(&e) {
+                    // 数据流中途断开时停止切换通道重下，避免重复消耗代理流量
+                    aborted_mid_stream = true;
+                } else {
+                    emit_progress(
+                        app,
+                        &target_dir_str,
+                        Some(6),
+                        "retrying_direct",
+                        "代理通道受阻，正在尝试直连/TUN 通道...",
+                        &format!("⚠️ 代理通道返回错误: {}\n🔄 正在切换至无代理直连 / TUN 透明通道重试...", e.lines().last().unwrap_or(&e)),
+                    );
+                }
             }
         }
     }
 
     // 尝试无代理直连（有代理时 5s 快速探测兼容 TUN；无代理时 4s 极速探测，避免大陆用户长时间盲等）
-    if !git_succeeded {
+    if !git_succeeded && fatal_non_network_err.is_none() && !aborted_mid_stream {
         let connect_timeout = if system_proxy.is_some() { 5 } else { 4 };
         let total_timeout = if system_proxy.is_some() { 40 } else { 30 };
         match run_git_clone_attempt(app, effective_git_url, branch_opt, target_path, None, connect_timeout, total_timeout).await {
@@ -861,12 +1314,17 @@ async fn clone_repository_with_proxy(
             }
             Err(e) => {
                 git_errors.push(format!("[直连通道] {}", e));
+                if is_non_retryable_git_error(&e) {
+                    fatal_non_network_err = Some(e);
+                } else if is_git_clone_mid_stream_error(&e) {
+                    aborted_mid_stream = true;
+                }
             }
         }
     }
 
-    // 若官方直连/代理 Git 通道受阻且目标为 GitHub 仓库，自动切换国内高速 Git 镜像浅克隆并还原 origin 地址
-    if !git_succeeded {
+    // 若官方直连/代理 Git 通道在建连阶段受阻且目标为 GitHub 仓库，自动切换国内高速 Git 镜像浅克隆并还原 origin 地址
+    if !git_succeeded && fatal_non_network_err.is_none() && !aborted_mid_stream {
         if let Some((ref owner, ref repo, _, ref norm_url)) = repo_info {
             for (mirror_name, prefix) in GITHUB_MIRROR_PREFIXES {
                 let mirror_git_url = format!("{}/{}/{}.git", prefix, owner, repo);
@@ -886,6 +1344,13 @@ async fn clone_repository_with_proxy(
                     }
                     Err(e) => {
                         git_errors.push(format!("[镜像 {}] {}", mirror_name, e));
+                        if is_non_retryable_git_error(&e) {
+                            fatal_non_network_err = Some(e);
+                            break;
+                        } else if is_git_clone_mid_stream_error(&e) {
+                            aborted_mid_stream = true;
+                            break;
+                        }
                     }
                 }
             }
@@ -902,6 +1367,17 @@ async fn clone_repository_with_proxy(
             "Clone finished successfully.",
         );
         return Ok(());
+    }
+
+    if let Some(fatal_err) = fatal_non_network_err {
+        let _ = std::fs::remove_dir_all(target_path);
+        return Err(format_git_error(&fatal_err));
+    }
+
+    // 若已在传输对象阶段中途中断，严禁继续穿透回退 ZIP 重下载造成双倍流量
+    if aborted_mid_stream {
+        let _ = std::fs::remove_dir_all(target_path);
+        return Err(format_git_error(&git_errors.join("\n")));
     }
 
     // ==================== 阶段 2：GitHub 源码包 (ZIP) 自动降级兜底 ====================
@@ -940,6 +1416,17 @@ async fn clone_repository_with_proxy(
     Err(format_git_error(&git_errors.join("\n")))
 }
 
+/// 从本地仓库的 `.git/HEAD` 中提取当前所在分支名称
+fn read_local_git_head_branch(repo_path: &Path) -> Option<String> {
+    let head_path = repo_path.join(".git").join("HEAD");
+    let content = std::fs::read_to_string(head_path).ok()?;
+    let trimmed = content.trim();
+    trimmed
+        .strip_prefix("ref: refs/heads/")
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
 /// 从本地仓库的 `.git/config` 中提取 `remote.origin.url`
 pub fn read_remote_url_from_git_config(repo_path: &Path) -> Option<String> {
     let config_path = repo_path.join(".git").join("config");
@@ -971,7 +1458,9 @@ async fn run_git_pull_attempt(repo_path: &Path, proxy: Option<&str>, connect_tim
             .env("http_proxy", p)
             .env("https_proxy", p)
             .env("HTTP_PROXY", p)
-            .env("HTTPS_PROXY", p);
+            .env("HTTPS_PROXY", p)
+            .env("all_proxy", p)
+            .env("ALL_PROXY", p);
     } else {
         cmd.arg("-c").arg("http.proxy=")
             .arg("-c").arg("https.proxy=");
@@ -1069,7 +1558,186 @@ async fn run_git_pull_mirror_attempt(repo_path: &Path, mirror_git_url: &str, bra
     }
 }
 
+enum ZipUpgradeOutcome {
+    /// 成功通过 Git 浅克隆转正为正式 Git 仓库（后续均走增量 git pull）
+    Upgraded,
+    /// Git 通道在建连阶段不可用（几乎未消耗流量），可安全回退到 ZIP 更新通道
+    FallbackToZip,
+    /// 命中明确的不可重试错误（404/认证失败）或已在流中中断（严禁再回退 ZIP 造成双倍流量）
+    Abort(String),
+}
+
+/// 当 ZIP 降级仓确认存在上游更新时，尝试通过一次浅克隆“原地转正”为正式 Git 仓库
+/// 转正成功后一劳永逸摆脱整包 ZIP 下载，未来所有更新均只拉取几 KB 的 Git 增量差异
+async fn try_upgrade_zip_repo_to_git(
+    repo_path: &Path,
+    owner: &str,
+    repo: &str,
+    branch: Option<&str>,
+    norm_url: &str,
+    system_proxy: Option<&str>,
+) -> ZipUpgradeOutcome {
+    if !is_git_cli_available() {
+        return ZipUpgradeOutcome::FallbackToZip;
+    }
+
+    let parent = repo_path.parent().unwrap_or_else(|| Path::new("."));
+    let temp_dir = parent.join(format!(
+        ".skillhub_upgrade_git_{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+
+    let mut cloned = false;
+
+    if let Some(proxy) = system_proxy {
+        // 1. 有系统代理：优先经代理浅克隆官方地址
+        match run_git_clone_attempt(None, norm_url, branch, &temp_dir, Some(proxy), 6, 60).await {
+            Ok(()) => cloned = true,
+            Err(e) => {
+                if is_non_retryable_git_error(&e) || is_git_clone_mid_stream_error(&e) {
+                    let _ = std::fs::remove_dir_all(&temp_dir);
+                    return ZipUpgradeOutcome::Abort(e);
+                }
+            }
+        }
+
+        // 2. 代理建连失败时尝试无代理直连（兼容 TUN 模式）
+        if !cloned {
+            match run_git_clone_attempt(None, norm_url, branch, &temp_dir, None, 5, 45).await {
+                Ok(()) => cloned = true,
+                Err(e) => {
+                    if is_non_retryable_git_error(&e) || is_git_clone_mid_stream_error(&e) {
+                        let _ = std::fs::remove_dir_all(&temp_dir);
+                        return ZipUpgradeOutcome::Abort(e);
+                    }
+                }
+            }
+        }
+
+        // 3. 官方通道均建连失败时，兜底尝试国内 Git 加速镜像并还原 origin
+        if !cloned {
+            for (_, prefix) in GITHUB_MIRROR_PREFIXES {
+                let mirror_git_url = format!("{}/{}/{}.git", prefix, owner, repo);
+                match run_git_clone_attempt(None, &mirror_git_url, branch, &temp_dir, None, 6, 45).await {
+                    Ok(()) => {
+                        set_git_remote_origin(&temp_dir, norm_url);
+                        cloned = true;
+                        break;
+                    }
+                    Err(e) => {
+                        if is_non_retryable_git_error(&e) || is_git_clone_mid_stream_error(&e) {
+                            let _ = std::fs::remove_dir_all(&temp_dir);
+                            return ZipUpgradeOutcome::Abort(e);
+                        }
+                    }
+                }
+            }
+        }
+    } else {
+        // 无系统代理环境：优先走国内高速 Git 镜像，建连失败再回退官方直连
+        for (_, prefix) in GITHUB_MIRROR_PREFIXES {
+            let mirror_git_url = format!("{}/{}/{}.git", prefix, owner, repo);
+            match run_git_clone_attempt(None, &mirror_git_url, branch, &temp_dir, None, 6, 45).await {
+                Ok(()) => {
+                    set_git_remote_origin(&temp_dir, norm_url);
+                    cloned = true;
+                    break;
+                }
+                Err(e) => {
+                    if is_non_retryable_git_error(&e) || is_git_clone_mid_stream_error(&e) {
+                        let _ = std::fs::remove_dir_all(&temp_dir);
+                        return ZipUpgradeOutcome::Abort(e);
+                    }
+                }
+            }
+        }
+
+        if !cloned {
+            match run_git_clone_attempt(None, norm_url, branch, &temp_dir, None, 4, 40).await {
+                Ok(()) => cloned = true,
+                Err(e) => {
+                    if is_non_retryable_git_error(&e) || is_git_clone_mid_stream_error(&e) {
+                        let _ = std::fs::remove_dir_all(&temp_dir);
+                        return ZipUpgradeOutcome::Abort(e);
+                    }
+                }
+            }
+        }
+    }
+
+    if !cloned || !temp_dir.join(".git").join("objects").exists() {
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        return ZipUpgradeOutcome::FallbackToZip;
+    }
+
+    // 原子替换旧的 ZIP 降级目录为完整 Git 仓库（失败自动回滚）
+    let repo_target = repo_path.to_path_buf();
+    let temp_source = temp_dir.clone();
+    let backup_dir = parent.join(format!(
+        ".skillhub_upgrade_bak_{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+
+    let replace_res = tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
+        // 1. 优先尝试整体目录原子重命名替换（包含全新的完整 .git 目录，且自动丢弃旧 .skillhub_zip_meta.json）
+        if std::fs::rename(&repo_target, &backup_dir).is_ok() {
+            if let Err(e) = std::fs::rename(&temp_source, &repo_target) {
+                let _ = std::fs::rename(&backup_dir, &repo_target);
+                let _ = std::fs::remove_dir_all(&temp_source);
+                return Err(format!("转正替换目录失败: {}", e));
+            }
+            let _ = std::fs::remove_dir_all(&backup_dir);
+            return Ok(());
+        }
+
+        // 2. Windows 若顶层目录被外部句柄占用导致整体 rename 失败，降级为目录内全量替换（连同 .git 一并替换为正式仓）
+        if let Ok(entries) = std::fs::read_dir(&repo_target) {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                if p.is_dir() {
+                    let _ = std::fs::remove_dir_all(&p);
+                } else {
+                    let _ = std::fs::remove_file(&p);
+                }
+            }
+        }
+        if let Ok(entries) = std::fs::read_dir(&temp_source) {
+            for entry in entries.flatten() {
+                let src = entry.path();
+                let dst = repo_target.join(entry.file_name());
+                if std::fs::rename(&src, &dst).is_err() {
+                    if src.is_dir() {
+                        fs_extra::dir::copy(
+                            &src,
+                            &repo_target,
+                            &fs_extra::dir::CopyOptions::new().overwrite(true),
+                        )
+                        .map_err(|e| format!("复制转正目录失败: {}", e))?;
+                    } else {
+                        std::fs::copy(&src, &dst)
+                            .map_err(|e| format!("复制转正文件失败: {}", e))?;
+                    }
+                }
+            }
+        }
+        let _ = std::fs::remove_file(repo_target.join(ZIP_META_FILENAME));
+        let _ = std::fs::remove_dir_all(&temp_source);
+        Ok(())
+    })
+    .await;
+
+    let _ = std::fs::remove_dir_all(&temp_dir);
+    match replace_res {
+        Ok(Ok(())) => ZipUpgradeOutcome::Upgraded,
+        Ok(Err(e)) => ZipUpgradeOutcome::Abort(e),
+        Err(e) => ZipUpgradeOutcome::Abort(format!("转正替换任务异常: {}", e)),
+    }
+}
+
 pub async fn pull_repository(repo_path: &Path) -> Result<String, String> {
+    // 按目录路径加独占异步锁，防止定时同步与手动刷新并发执行同一仓库 pull/替换
+    let _op_guard = acquire_repo_op_lock(repo_path).await;
+
     let system_proxy = detect_system_proxy();
     let has_git_objects = repo_path.join(".git").join("objects").exists();
     let remote_info = read_remote_url_from_git_config(repo_path)
@@ -1077,18 +1745,26 @@ pub async fn pull_repository(repo_path: &Path) -> Result<String, String> {
 
     let mut pull_err = String::new();
 
-    // 1. 如果是完整 Git 仓库，优先尝试 git pull（系统代理 -> 快速直连 -> 国内 Git 镜像）
+    // 1. 如果是完整 Git 仓库（含 .git/objects），只走增量 git pull（绝不穿透降级去重下整仓 ZIP 消耗流量）
     if has_git_objects {
         if let Some(ref proxy) = system_proxy {
             match run_git_pull_attempt(repo_path, Some(proxy), 8).await {
                 Ok(msg) => return Ok(msg),
-                Err(e) => pull_err = e,
+                Err(e) => {
+                    if is_non_retryable_git_error(&e) {
+                        return Err(format_git_error(&e));
+                    }
+                    pull_err = e;
+                }
             }
         }
         let direct_timeout = if system_proxy.is_some() { 5 } else { 4 };
         match run_git_pull_attempt(repo_path, None, direct_timeout).await {
             Ok(msg) => return Ok(msg),
             Err(e) => {
+                if is_non_retryable_git_error(&e) {
+                    return Err(format_git_error(&e));
+                }
                 if pull_err.is_empty() {
                     pull_err = e;
                 }
@@ -1096,40 +1772,156 @@ pub async fn pull_repository(repo_path: &Path) -> Result<String, String> {
         }
 
         if let Some((ref owner, ref repo, ref branch, _)) = remote_info {
+            let local_branch = read_local_git_head_branch(repo_path);
+            let target_branch = branch.as_deref().or(local_branch.as_deref());
             for (_, prefix) in GITHUB_MIRROR_PREFIXES {
                 let mirror_git_url = format!("{}/{}/{}.git", prefix, owner, repo);
-                match run_git_pull_mirror_attempt(repo_path, &mirror_git_url, branch.as_deref()).await {
+                match run_git_pull_mirror_attempt(repo_path, &mirror_git_url, target_branch).await {
                     Ok(msg) => return Ok(msg),
-                    Err(e) => pull_err = e,
+                    Err(e) => {
+                        if is_non_retryable_git_error(&e) {
+                            return Err(format_git_error(&e));
+                        }
+                        pull_err = e;
+                    }
                 }
             }
         }
+
+        return Err(format_git_error(&pull_err));
     }
 
-    // 2. 如果该仓库是之前通过 ZIP 降级下载的（仅有 .git/config），或者 git pull 失败，自动走 ZIP 通道更新
+    // 2. 仅针对无 .git/objects 的 ZIP 降级仓库：先做轻量版本校验（Commit SHA + If-None-Match ETag），未变 0 流量跳过
     if let Some((owner, repo, branch, norm_url)) = remote_info {
-            let parent = repo_path.parent().unwrap_or_else(|| Path::new("."));
-            let temp_dir = parent.join(format!(
-                ".skillhub_update_tmp_{}",
-                uuid::Uuid::new_v4().simple()
-            ));
+        let saved_meta = read_zip_sync_meta(repo_path);
+        let effective_branch_owned = branch
+            .clone()
+            .or_else(|| saved_meta.as_ref().and_then(|m| m.branch.clone()));
+        let effective_branch = effective_branch_owned.as_deref();
 
-            let zip_res = download_github_zip_fallback(
-                None,
+        // 2.1 先用 ~500 字节的 git-upload-pack info/refs 校验远端 HEAD Commit SHA
+        let remote_sha = fetch_remote_head_sha(
+            &owner,
+            &repo,
+            effective_branch,
+            system_proxy.as_deref(),
+        )
+        .await;
+
+        if let (Some(ref local_sha), Some(ref latest_sha)) = (
+            saved_meta.as_ref().and_then(|m| m.commit_sha.as_ref()),
+            &remote_sha,
+        ) {
+            if local_sha.eq_ignore_ascii_case(latest_sha) {
+                return Ok("已是最新".to_string());
+            }
+        }
+
+        // 2.2 已确认存在上游更新（或旧版 ZIP 仓无元数据时）：若本机有 Git 且无需先走纯 ETag 304 校验，
+        // 优先用一次浅克隆自动“转正”为正式 Git 仓库，从此一劳永逸享受几 KB 的增量 git pull
+        let has_only_etag_unverified = saved_meta.as_ref().is_some_and(|m| {
+            m.commit_sha.is_none()
+                && m.etag
+                    .as_deref()
+                    .is_some_and(|e| !e.trim().is_empty())
+        });
+        if !has_only_etag_unverified {
+            match try_upgrade_zip_repo_to_git(
+                repo_path,
                 &owner,
                 &repo,
-                branch.as_deref(),
+                effective_branch,
                 &norm_url,
-                &temp_dir,
                 system_proxy.as_deref(),
             )
-            .await;
+            .await
+            {
+                ZipUpgradeOutcome::Upgraded => {
+                    return Ok("更新成功（已升级为 Git 增量同步）".to_string());
+                }
+                ZipUpgradeOutcome::Abort(e) => {
+                    return Err(format_git_error(&e));
+                }
+                ZipUpgradeOutcome::FallbackToZip => {}
+            }
+        }
 
-            if zip_res.is_ok() {
-                // 将新文件覆盖到原仓库目录（保留原 .git 目录）
+        let parent = repo_path.parent().unwrap_or_else(|| Path::new("."));
+        let temp_dir = parent.join(format!(
+            ".skillhub_update_tmp_{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+
+        // 2.3 Git 转正不可用（如未装 Git 或协议受阻）时，携带 ETag 走 ZIP 条件更新，304 零字节跳过
+        let zip_res = download_github_zip_fallback_with_meta(
+            None,
+            &owner,
+            &repo,
+            effective_branch,
+            &norm_url,
+            &temp_dir,
+            system_proxy.as_deref(),
+            saved_meta.as_ref().and_then(|m| m.etag.as_deref()),
+            remote_sha.as_deref(),
+        )
+        .await;
+
+        match zip_res {
+            Ok(false) => {
+                // 304 未变更：顺手补齐 commit_sha 以便下次连 codeload 都不需要访问
+                let _ = std::fs::remove_dir_all(&temp_dir);
+                if let Some(latest_sha) = remote_sha {
+                    let mut updated_meta = saved_meta.unwrap_or(ZipSyncMeta {
+                        etag: None,
+                        commit_sha: None,
+                        branch: effective_branch.map(|s| s.to_string()),
+                        updated_at: chrono::Utc::now().to_rfc3339(),
+                    });
+                    updated_meta.commit_sha = Some(latest_sha);
+                    updated_meta.updated_at = chrono::Utc::now().to_rfc3339();
+                    write_zip_sync_meta(repo_path, &updated_meta);
+                }
+                return Ok("已是最新".to_string());
+            }
+            Ok(true) => {
+                // 原子备份替换：将原 .git 目录保留到 temp_dir，再备份原目录 -> 移入新目录 -> 失败自动回滚，防止半残状态
+                let new_meta = read_zip_sync_meta(&temp_dir);
                 let repo_target = repo_path.to_path_buf();
                 let temp_source = temp_dir.clone();
+                let backup_dir = parent.join(format!(
+                    ".skillhub_update_bak_{}",
+                    uuid::Uuid::new_v4().simple()
+                ));
                 let replace_res = tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
+                    // 把原 .git 配置复制到新暂存目录，保留仓库 origin 等元信息
+                    let old_git = repo_target.join(".git");
+                    let new_git = temp_source.join(".git");
+                    if old_git.exists() {
+                        let _ = std::fs::remove_dir_all(&new_git);
+                        fs_extra::dir::copy(
+                            &old_git,
+                            &temp_source,
+                            &fs_extra::dir::CopyOptions::new().overwrite(true),
+                        )
+                        .map_err(|e| format!("保留 .git 元数据失败: {}", e))?;
+                    }
+                    if let Some(meta) = new_meta {
+                        write_zip_sync_meta(&temp_source, &meta);
+                    }
+
+                    // 1. 尝试原子目录替换（最安全、零半残风险）
+                    if std::fs::rename(&repo_target, &backup_dir).is_ok() {
+                        if let Err(e) = std::fs::rename(&temp_source, &repo_target) {
+                            // 替换失败立刻回滚原目录
+                            let _ = std::fs::rename(&backup_dir, &repo_target);
+                            let _ = std::fs::remove_dir_all(&temp_source);
+                            return Err(format!("替换更新目录失败: {}", e));
+                        }
+                        let _ = std::fs::remove_dir_all(&backup_dir);
+                        return Ok(());
+                    }
+
+                    // 2. Windows 若原目录句柄被占用导致整体 rename 失败，降级为目录内文件替换
                     if let Ok(entries) = std::fs::read_dir(&repo_target) {
                         for entry in entries.flatten() {
                             if entry.file_name() == ".git" {
@@ -1152,13 +1944,15 @@ pub async fn pull_repository(repo_path: &Path) -> Result<String, String> {
                             let dst = repo_target.join(entry.file_name());
                             if std::fs::rename(&src, &dst).is_err() {
                                 if src.is_dir() {
-                                    let _ = fs_extra::dir::copy(
+                                    fs_extra::dir::copy(
                                         &src,
                                         &repo_target,
                                         &fs_extra::dir::CopyOptions::new().overwrite(true),
-                                    );
+                                    )
+                                    .map_err(|e| format!("复制更新目录失败: {}", e))?;
                                 } else {
-                                    let _ = std::fs::copy(&src, &dst);
+                                    std::fs::copy(&src, &dst)
+                                        .map_err(|e| format!("复制更新文件失败: {}", e))?;
                                 }
                             }
                         }
@@ -1169,13 +1963,18 @@ pub async fn pull_repository(repo_path: &Path) -> Result<String, String> {
                 .await;
 
                 let _ = std::fs::remove_dir_all(&temp_dir);
-                if let Ok(Ok(())) = replace_res {
-                    return Ok("更新成功".to_string());
+                match replace_res {
+                    Ok(Ok(())) => return Ok("更新成功".to_string()),
+                    Ok(Err(e)) => pull_err = e,
+                    Err(e) => pull_err = format!("替换更新任务异常: {}", e),
                 }
-            } else {
+            }
+            Err(e) => {
                 let _ = std::fs::remove_dir_all(&temp_dir);
+                pull_err = e;
             }
         }
+    }
 
     Err(format_git_error(&pull_err))
 }
@@ -1221,6 +2020,79 @@ mod tests {
         assert_eq!(info2.0, "owner");
         assert_eq!(info2.1, "repo");
         assert_eq!(info2.2.as_deref(), Some("dev"));
+    }
+
+    #[test]
+    fn test_parse_git_info_refs_head_sha() {
+        let sample = "001e# service=git-upload-pack\n\
+0000015957217cf86ba38148a57af9e90d14a4c049558330 HEAD\0multi_ack symref=HEAD:refs/heads/main\n\
+003f57217cf86ba38148a57af9e90d14a4c049558330 refs/heads/main\n\
+003ea1b2c3d4e5f60718293a4b5c6d7e8f9012345678 refs/heads/dev\n\
+0000";
+        assert_eq!(
+            parse_git_info_refs_head_sha(sample, None).as_deref(),
+            Some("57217cf86ba38148a57af9e90d14a4c049558330")
+        );
+        assert_eq!(
+            parse_git_info_refs_head_sha(sample, Some("dev")).as_deref(),
+            Some("a1b2c3d4e5f60718293a4b5c6d7e8f9012345678")
+        );
+        assert_eq!(
+            parse_git_info_refs_head_sha(sample, Some("nonexistent")).as_deref(),
+            Some("57217cf86ba38148a57af9e90d14a4c049558330")
+        );
+        assert_eq!(parse_git_info_refs_head_sha("invalid", None), None);
+    }
+
+    #[test]
+    fn test_is_non_retryable_git_error() {
+        assert!(is_non_retryable_git_error("remote: Repository not found."));
+        assert!(is_non_retryable_git_error("fatal: Authentication failed for 'https://github.com/a/b.git'"));
+        assert!(is_non_retryable_git_error("error: Your local changes to the following files would be overwritten by merge:"));
+        assert!(is_non_retryable_git_error("fatal: Not possible to fast-forward, aborting."));
+        assert!(!is_non_retryable_git_error("fatal: unable to access 'https://github.com/a/b.git': Failed to connect to github.com port 443"));
+        assert!(!is_non_retryable_git_error("git clone 阶段连接超时"));
+    }
+
+    #[test]
+    fn test_is_git_clone_mid_stream_error() {
+        assert!(is_git_clone_mid_stream_error("Receiving objects: 42% (120/285)\nfatal: early EOF"));
+        assert!(is_git_clone_mid_stream_error("git clone 下载数据流超时"));
+        assert!(is_git_clone_mid_stream_error("fatal: fetch-pack: unexpected disconnect while reading sideband packet"));
+        assert!(!is_git_clone_mid_stream_error("fatal: unable to access 'https://github.com/a/b.git': Failed to connect"));
+        assert!(!is_git_clone_mid_stream_error("git clone 阶段连接超时"));
+    }
+
+    #[test]
+    fn test_read_local_git_head_branch() {
+        let dir = std::env::temp_dir().join(format!("skillhub_head_test_{}", uuid::Uuid::new_v4().simple()));
+        let git_dir = dir.join(".git");
+        std::fs::create_dir_all(&git_dir).unwrap();
+        std::fs::write(git_dir.join("HEAD"), "ref: refs/heads/master\n").unwrap();
+        assert_eq!(read_local_git_head_branch(&dir).as_deref(), Some("master"));
+        std::fs::write(git_dir.join("HEAD"), "57217cf86ba38148a57af9e90d14a4c049558330\n").unwrap();
+        assert_eq!(read_local_git_head_branch(&dir), None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn test_acquire_repo_op_lock_serializes() {
+        let p = Path::new("/tmp/skillhub_lock_test_repo");
+        let guard = acquire_repo_op_lock(p).await;
+        // 锁持有期间，第二次尝试应该等待而非立刻穿透
+        let second = tokio::time::timeout(
+            Duration::from_millis(40),
+            acquire_repo_op_lock(p),
+        )
+        .await;
+        assert!(second.is_err(), "同一路径操作锁应阻止并发进入");
+        drop(guard);
+        let third = tokio::time::timeout(
+            Duration::from_millis(100),
+            acquire_repo_op_lock(p),
+        )
+        .await;
+        assert!(third.is_ok(), "释放后应可立即获取锁");
     }
 
     #[tokio::test]

@@ -8,6 +8,8 @@ pub mod agent_sync;
 pub mod menu;
 pub mod export;
 pub mod prompt_commands;
+pub mod resource_hub;
+pub mod prompt_hub;
 
 use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
@@ -334,7 +336,27 @@ pub fn run() {
             commands::update_general_settings,
             commands::export_database,
             commands::import_database,
-            commands::search_github_repositories
+            commands::search_github_repositories,
+            resource_hub::get_subscribed_repos,
+            resource_hub::add_subscribed_repo,
+            resource_hub::toggle_subscribed_repo,
+            resource_hub::delete_subscribed_repo,
+            resource_hub::get_subscribed_repo_skills,
+            resource_hub::sync_subscribed_repo,
+            resource_hub::get_host_tokens,
+            resource_hub::save_host_token,
+            resource_hub::delete_host_token,
+            resource_hub::fetch_linkly_leaderboard,
+            resource_hub::fetch_curated_leaderboards,
+            resource_hub::search_skills_sh,
+            resource_hub::fetch_remote_skill_preview,
+            resource_hub::install_remote_subskill_to_workspace,
+            resource_hub::get_installed_skill_sources,
+            prompt_hub::fetch_aishort_prompts,
+            prompt_hub::search_prompts_chat,
+            prompt_hub::fetch_fabric_patterns,
+            prompt_hub::fetch_fabric_pattern_content,
+            prompt_hub::fetch_langgpt_prompts
         ])
         .on_window_event(|window, event| match event {
             tauri::WindowEvent::CloseRequested { api, .. } => {

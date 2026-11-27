@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState } from 'react';
-import { PanelLeft, PanelLeftClose, ChevronLeft, ChevronRight, X, Plus, PanelRightOpen } from 'lucide-react';
+import { PanelLeftOpen, ChevronLeft, ChevronRight, X, Plus, PanelRightOpen } from 'lucide-react';
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Tab, TabType } from '../../types/tabs';
 import { Tooltip } from './Tooltip';
@@ -90,19 +90,21 @@ export function TabBar({
         />
       )}
 
-      {/* 左侧控制区：收起侧边栏 + 前进后退 */}
+      {/* 左侧控制区：侧边栏收起后在此处提供展开入口，其次为前进后退 */}
       <div
         className="flex items-center gap-1 px-2 pb-1 shrink-0 h-9"
         style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
       >
-        <Tooltip content={isSidebarOpen ? '收起侧边栏 (⌘\\)' : '展开侧边栏 (⌘\\)'}>
-          <button
-            onClick={onToggleSidebar}
-            className="p-1.5 rounded-md text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/[0.06] transition-colors"
-          >
-            {isSidebarOpen ? <PanelLeftClose className="w-4 h-4" /> : <PanelLeft className="w-4 h-4" />}
-          </button>
-        </Tooltip>
+        {!isSidebarOpen && (
+          <Tooltip content="展开侧边栏 (⌘\)" side="bottom">
+            <button
+              onClick={onToggleSidebar}
+              className="p-1.5 rounded-md text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/[0.06] transition-colors cursor-pointer"
+            >
+              <PanelLeftOpen className="w-4 h-4" />
+            </button>
+          </Tooltip>
+        )}
 
         <Tooltip content="后退 (⌘[)">
           <button

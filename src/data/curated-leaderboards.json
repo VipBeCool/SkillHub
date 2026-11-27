@@ -1,0 +1,455 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-11-23",
+  "leaderboards": [
+    {
+      "id": "global-top-installs-2026",
+      "title": "全球 AI Skills 累计安装榜 Top 10",
+      "subtitle": "找技能、理清需求、写代码、美化网页——全球开发者装机量最高的 10 个核心技能",
+      "badge": "全球热榜 · Top 10",
+      "category": "trending",
+      "accentColor": "#0055FF",
+      "sourceAttribution": "综合 skills.sh 全球安装量统计整理",
+      "sourceLinkLabel": "skills.sh",
+      "sourceLinkUrl": "https://skills.sh",
+      "updatedAt": "2026-11",
+      "items": [
+        {
+          "rank": 1,
+          "skillName": "find-skills",
+          "displayName": "find-skills",
+          "summaryZh": "按你的需求，自动搜索并推荐最合适的 AI 技能",
+          "installMode": "subskill",
+          "owner": "vercel-labs",
+          "repo": "skills",
+          "installs": 3800000,
+          "tags": ["元技能", "技能发现"]
+        },
+        {
+          "rank": 2,
+          "skillName": "grill-me",
+          "displayName": "grill-me",
+          "summaryZh": "让 AI 深度追问，帮你把模糊想法打磨成可执行方案",
+          "installMode": "subskill",
+          "owner": "mattpocock",
+          "repo": "skills",
+          "installs": 1300000,
+          "tags": ["需求访谈", "方案设计"]
+        },
+        {
+          "rank": 3,
+          "skillName": "grill-with-docs",
+          "displayName": "grill-with-docs",
+          "summaryZh": "边厘清开发需求，边沉淀结构化讨论结论与文档",
+          "installMode": "subskill",
+          "owner": "mattpocock",
+          "repo": "skills",
+          "installs": 1100000,
+          "tags": ["文档沉淀", "架构梳理"]
+        },
+        {
+          "rank": 4,
+          "skillName": "improve-codebase-architecture",
+          "displayName": "improve-codebase-architecture",
+          "summaryZh": "系统排查代码库维护痛点，给出可落地的架构重构建议",
+          "installMode": "subskill",
+          "owner": "mattpocock",
+          "repo": "skills",
+          "installs": 1100000,
+          "tags": ["架构重构", "代码质量"]
+        },
+        {
+          "rank": 5,
+          "skillName": "agent-browser",
+          "displayName": "agent-browser",
+          "summaryZh": "让 AI 像人一样点击网页、填写表单、截图与抓取数据",
+          "installMode": "subskill",
+          "owner": "vercel-labs",
+          "repo": "agent-browser",
+          "installs": 1100000,
+          "tags": ["浏览器自动化", "爬虫测试"]
+        },
+        {
+          "rank": 6,
+          "skillName": "tdd",
+          "displayName": "tdd",
+          "summaryZh": "先写失败的功能测试，再驱动 AI 写出高可靠性实现代码",
+          "installMode": "subskill",
+          "owner": "mattpocock",
+          "repo": "skills",
+          "installs": 1000000,
+          "tags": ["测试驱动", "工程规范"]
+        },
+        {
+          "rank": 7,
+          "skillName": "setup-matt-pocock-skills",
+          "displayName": "setup-matt-pocock-skills",
+          "summaryZh": "快速配置项目管理与任务流，让 AI 接管标准研发规范",
+          "installMode": "subskill",
+          "owner": "mattpocock",
+          "repo": "skills",
+          "installs": 969700,
+          "tags": ["任务管理", "工作流"]
+        },
+        {
+          "rank": 8,
+          "skillName": "frontend-design",
+          "displayName": "frontend-design",
+          "summaryZh": "Anthropic 官方出品：高审美网页布局、配色与前端视觉设计",
+          "installMode": "subskill",
+          "owner": "anthropics",
+          "repo": "skills",
+          "installs": 966800,
+          "tags": ["Anthropic 官方", "UI 设计"]
+        },
+        {
+          "rank": 9,
+          "skillName": "handoff",
+          "displayName": "handoff",
+          "summaryZh": "结构化记录当前会话进度，方便无缝换一个 AI 接着干",
+          "installMode": "subskill",
+          "owner": "mattpocock",
+          "repo": "skills",
+          "installs": 949100,
+          "tags": ["上下文交接", "长任务"]
+        },
+        {
+          "rank": 10,
+          "skillName": "triage",
+          "displayName": "triage",
+          "summaryZh": "快速分拣整理项目 Issue 与需求池，输出优先级执行清单",
+          "installMode": "subskill",
+          "owner": "mattpocock",
+          "repo": "skills",
+          "installs": 913500,
+          "tags": ["缺陷分拣", "项目管理"]
+        }
+      ]
+    },
+    {
+      "id": "ecommerce-growth-10",
+      "title": "电商与内容增长神级 Skills 精选",
+      "subtitle": "从选品验证、竞品对标、SEO 优化到小红书种草与商品详情页，一人顶一个运营团队",
+      "badge": "电商运营 · 场景严选",
+      "category": "domain",
+      "accentColor": "#EA580C",
+      "sourceAttribution": "社区电商实战技能精选整理",
+      "updatedAt": "2026-11",
+      "items": [
+        {
+          "rank": 1,
+          "skillName": "dropshipping-product-research",
+          "displayName": "dropshipping-product-research",
+          "summaryZh": "选品与市场验证：深入分析需求、竞争度、价格带与利润空间",
+          "installMode": "subskill",
+          "owner": "nexscope-ai",
+          "repo": "ecommerce-skills",
+          "installs": 2118,
+          "tags": ["选品调研", "跨境电商"]
+        },
+        {
+          "rank": 2,
+          "skillName": "ecommerce-competitor-analysis",
+          "displayName": "ecommerce-competitor-analysis",
+          "summaryZh": "竞品全维对标：拆解对手商品页、定价策略、评论口碑与卖点差异",
+          "installMode": "subskill",
+          "owner": "nexscope-ai",
+          "repo": "ecommerce-skills",
+          "tags": ["竞品分析", "定价策略"]
+        },
+        {
+          "rank": 3,
+          "skillName": "tiktok-shop-trending-products",
+          "displayName": "tiktok-shop-trending-products",
+          "summaryZh": "TikTok Shop 趋势监测：捕捉热度变化、候选爆品与最佳入场时机",
+          "installMode": "subskill",
+          "owner": "nexscope-ai",
+          "repo": "ecommerce-skills",
+          "tags": ["TikTok", "爆品趋势"]
+        },
+        {
+          "rank": 4,
+          "skillName": "seo-ecommerce",
+          "displayName": "seo-ecommerce",
+          "summaryZh": "商品页关键词与 SEO 审计：优化标题、描述、结构化数据与内链",
+          "installMode": "subskill",
+          "owner": "agricidaniel",
+          "repo": "claude-seo",
+          "installs": 7594,
+          "tags": ["SEO 优化", "搜索流量"]
+        },
+        {
+          "rank": 5,
+          "skillName": "xhs-note-creator",
+          "displayName": "xhs-note-creator",
+          "summaryZh": "小红书种草笔记全自动生成：爆款标题、正文、标签与配图卡片",
+          "installMode": "subskill",
+          "owner": "comeonzhj",
+          "repo": "auto-redbook-skills",
+          "installs": 1301,
+          "tags": ["小红书", "内容种草"]
+        },
+        {
+          "rank": 6,
+          "skillName": "ecom-pdp",
+          "displayName": "ecom-pdp",
+          "summaryZh": "高转化主图与详情页策划：一键规划卖点文案、版式与套图结构",
+          "installMode": "subskill",
+          "owner": "coolqoo",
+          "repo": "1click-ecom-detailpage",
+          "tags": ["商品详情页", "转化率"]
+        },
+        {
+          "rank": 7,
+          "skillName": "product-review-analysis",
+          "displayName": "product-review-analysis",
+          "summaryZh": "买家评论深度洞察：提炼好评爽点、差评槽点与高频退货雷区",
+          "installMode": "subskill",
+          "owner": "nexscope-ai",
+          "repo": "ecommerce-skills",
+          "tags": ["评论洞察", "产品改进"]
+        },
+        {
+          "rank": 8,
+          "skillName": "baoyu-xhs-images",
+          "displayName": "baoyu-xhs-images",
+          "summaryZh": "宝玉出品：一键产出高质感小红书信息图与图文轮播配图",
+          "installMode": "subskill",
+          "owner": "JimLiu",
+          "repo": "baoyu-skills",
+          "tags": ["小红书配图", "视觉创作"]
+        },
+        {
+          "rank": 9,
+          "skillName": "baoyu-cover-image",
+          "displayName": "baoyu-cover-image",
+          "summaryZh": "文章与内容封面图设计师：多种风格快速输出吸睛头图",
+          "installMode": "subskill",
+          "owner": "JimLiu",
+          "repo": "baoyu-skills",
+          "tags": ["封面设计", "自媒体"]
+        },
+        {
+          "rank": 10,
+          "skillName": "social-auto-upload",
+          "displayName": "social-auto-upload",
+          "summaryZh": "多平台自动化分发工具集：支持抖音、小红书、视频号等发布流程",
+          "installMode": "repo",
+          "owner": "dreammis",
+          "repo": "social-auto-upload",
+          "stars": 15385,
+          "tags": ["多平台分发", "自动化"]
+        }
+      ]
+    },
+    {
+      "id": "starter-workflow-10",
+      "title": "新手必装 10 大开发工作流 Skills",
+      "subtitle": "写代码、做规划、读项目、做测试、出原型——一套覆盖研发全链路的基础装机包",
+      "badge": "新手友好 · 基础装机包",
+      "category": "starter",
+      "accentColor": "#16A34A",
+      "sourceAttribution": "结合 Superpowers / Anthropic / Vercel 工程最佳实践整理",
+      "updatedAt": "2026-11",
+      "items": [
+        {
+          "rank": 1,
+          "stepLabel": "01 发现",
+          "skillName": "find-skills",
+          "summaryZh": "遇到不会的场景先问它，自动按意图推荐合适的新技能",
+          "installMode": "subskill",
+          "owner": "vercel-labs",
+          "repo": "skills",
+          "tags": ["入门必装"]
+        },
+        {
+          "rank": 2,
+          "stepLabel": "02 构思",
+          "skillName": "brainstorming",
+          "summaryZh": "动手写代码前先头脑风暴，把需求边界和方案选项想透",
+          "installMode": "subskill",
+          "owner": "obra",
+          "repo": "superpowers",
+          "tags": ["Superpowers", "需求梳理"]
+        },
+        {
+          "rank": 3,
+          "stepLabel": "03 规划",
+          "skillName": "writing-plans",
+          "summaryZh": "把复杂需求拆解为清晰、可验证、步骤明确的技术实施计划",
+          "installMode": "subskill",
+          "owner": "obra",
+          "repo": "superpowers",
+          "tags": ["Superpowers", "任务拆解"]
+        },
+        {
+          "rank": 4,
+          "stepLabel": "04 追问",
+          "skillName": "grill-me",
+          "summaryZh": "主动反问排查盲区，避免 AI 盲目猜需求写偏方向",
+          "installMode": "subskill",
+          "owner": "mattpocock",
+          "repo": "skills",
+          "tags": ["需求对齐"]
+        },
+        {
+          "rank": 5,
+          "stepLabel": "05 设计",
+          "skillName": "frontend-design",
+          "summaryZh": "拒绝廉价“AI 模板感”，快速做出高质感前端界面原型",
+          "installMode": "subskill",
+          "owner": "anthropics",
+          "repo": "skills",
+          "tags": ["UI/UX", "原型设计"]
+        },
+        {
+          "rank": 6,
+          "stepLabel": "06 测试",
+          "skillName": "test-driven-development",
+          "summaryZh": "遵循红-绿-重构 TDD 节奏，显著降低 AI 改坏旧逻辑的概率",
+          "installMode": "subskill",
+          "owner": "obra",
+          "repo": "superpowers",
+          "tags": ["TDD", "质量保障"]
+        },
+        {
+          "rank": 7,
+          "stepLabel": "07 排错",
+          "skillName": "systematic-debugging",
+          "summaryZh": "科学定位 Bug 根因，杜绝 AI 盲目试错乱改代码",
+          "installMode": "subskill",
+          "owner": "obra",
+          "repo": "superpowers",
+          "tags": ["Bug 排查"]
+        },
+        {
+          "rank": 8,
+          "stepLabel": "08 审查",
+          "skillName": "requesting-code-review",
+          "summaryZh": "代码提交前进行系统化自查，拦截安全隐患与逻辑漏洞",
+          "installMode": "subskill",
+          "owner": "obra",
+          "repo": "superpowers",
+          "tags": ["Code Review"]
+        },
+        {
+          "rank": 9,
+          "stepLabel": "09 验证",
+          "skillName": "agent-browser",
+          "summaryZh": "让 AI 自动打开本地开发页面点击测试、检查渲染效果",
+          "installMode": "subskill",
+          "owner": "vercel-labs",
+          "repo": "agent-browser",
+          "tags": ["端到端验证"]
+        },
+        {
+          "rank": 10,
+          "stepLabel": "10 沉淀",
+          "skillName": "skill-creator",
+          "summaryZh": "把你跑通的日常工作流自动封装成可复用的专属 Skill",
+          "installMode": "subskill",
+          "owner": "anthropics",
+          "repo": "skills",
+          "tags": ["技能制作"]
+        }
+      ]
+    },
+    {
+      "id": "ppt-office-suite",
+      "title": "PPT 与办公文档自动化专精榜",
+      "subtitle": "原生可编辑 PPTX、HTML 演示稿、Word/Excel/PDF 专业排版与视觉演示一站配齐",
+      "badge": "办公效率 · 口碑合集",
+      "category": "domain",
+      "accentColor": "#7C3AED",
+      "sourceAttribution": "精选社区高星办公与演示文档技能",
+      "updatedAt": "2026-11",
+      "items": [
+        {
+          "rank": 1,
+          "skillName": "pptx",
+          "displayName": "pptx (Anthropic 官方)",
+          "summaryZh": "Anthropic 官方 PowerPoint 技能：创建、编辑与深度分析演示文稿",
+          "installMode": "subskill",
+          "owner": "anthropics",
+          "repo": "skills",
+          "installs": 261382,
+          "tags": ["PPTX", "Anthropic 官方"]
+        },
+        {
+          "rank": 2,
+          "skillName": "baoyu-slide-deck",
+          "displayName": "baoyu-slide-deck",
+          "summaryZh": "高颜值可视化幻灯片套图生成，适合分享演讲与视觉化汇报",
+          "installMode": "subskill",
+          "owner": "JimLiu",
+          "repo": "baoyu-skills",
+          "installs": 32073,
+          "tags": ["视觉幻灯片", "中文友好"]
+        },
+        {
+          "rank": 3,
+          "skillName": "guizang-ppt-skill",
+          "displayName": "guizang-ppt-skill",
+          "summaryZh": "歸藏出品：高审美排版风格与设计规范驱动的 AI PPT 创作技能",
+          "installMode": "subskill",
+          "owner": "op7418",
+          "repo": "guizang-ppt-skill",
+          "installs": 29170,
+          "tags": ["PPT 设计", "中文社区"]
+        },
+        {
+          "rank": 4,
+          "skillName": "ppt-master",
+          "displayName": "ppt-master",
+          "summaryZh": "从任意文档一键生成原生可编辑 SVG/PPTX 演示文稿的专业工作流",
+          "installMode": "subskill",
+          "owner": "hugohe3",
+          "repo": "ppt-master",
+          "installs": 24169,
+          "tags": ["原生可编辑", "全流程"]
+        },
+        {
+          "rank": 5,
+          "skillName": "html-ppt",
+          "displayName": "html-ppt-skill",
+          "summaryZh": "制作丝滑交互式 HTML 网页版演示文稿，支持键盘翻页与动画",
+          "installMode": "subskill",
+          "owner": "lewislulu",
+          "repo": "html-ppt-skill",
+          "installs": 22000,
+          "tags": ["HTML 演示", "交互动画"]
+        },
+        {
+          "rank": 6,
+          "skillName": "docx",
+          "displayName": "docx (Anthropic 官方)",
+          "summaryZh": "专业 Word 文档生成、批注修订与格式保留编辑能力",
+          "installMode": "subskill",
+          "owner": "anthropics",
+          "repo": "skills",
+          "tags": ["Word 文档", "官方出品"]
+        },
+        {
+          "rank": 7,
+          "skillName": "xlsx",
+          "displayName": "xlsx (Anthropic 官方)",
+          "summaryZh": "复杂 Excel 电子表格建模、公式计算与财务报表美化",
+          "installMode": "subskill",
+          "owner": "anthropics",
+          "repo": "skills",
+          "tags": ["Excel 表格", "数据分析"]
+        },
+        {
+          "rank": 8,
+          "skillName": "pdf",
+          "displayName": "pdf (Anthropic 官方)",
+          "summaryZh": "PDF 文本/表格提取、合并拆分、表单填写与排版导出",
+          "installMode": "subskill",
+          "owner": "anthropics",
+          "repo": "skills",
+          "tags": ["PDF 处理", "官方出品"]
+        }
+      ]
+    }
+  ]
+}

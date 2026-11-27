@@ -5,6 +5,8 @@ on:
     branches: ["main"]
     paths:
       - "website/**"
+      - "CHANGELOG.md"
+      - "package.json"
       - ".github/workflows/deploy-website.yml"
   workflow_dispatch:
 

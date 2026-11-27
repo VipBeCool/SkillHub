@@ -144,7 +144,7 @@ export function ResourceDetail({
 
   if (!resource) {
     return (
-      <div className="flex-1 min-h-0 flex flex-col bg-[var(--color-background)]">
+      <div className="flex-1 min-h-0 flex flex-col bg-white">
         <TopBar onBack={onBack} title="" />
         <div className="flex-1 flex items-center justify-center text-[var(--color-muted)] text-[14px]">
           未找到该资源
@@ -201,7 +201,7 @@ export function ResourceDetail({
   const currentStars = resource.stars;
 
   return (
-    <div className="flex-1 min-h-0 flex flex-col h-full overflow-hidden bg-[var(--color-background)] relative">
+    <div className="flex-1 min-h-0 flex flex-col h-full overflow-hidden bg-white relative">
       <TopBar 
         onBack={onBack} 
         title={resource.displayName} 

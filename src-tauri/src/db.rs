@@ -190,6 +190,61 @@ pub fn init_db(db_path: &PathBuf) -> Result<Connection> {
         [],
     )?;
 
+    // 资源中心：订阅的远程技能仓库表
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS subscribed_repos (
+            id              TEXT PRIMARY KEY,
+            host            TEXT NOT NULL DEFAULT 'github.com',
+            owner           TEXT NOT NULL,
+            repo            TEXT NOT NULL,
+            branch          TEXT NOT NULL DEFAULT '',
+            enabled         BOOLEAN NOT NULL DEFAULT 1,
+            last_commit_sha TEXT,
+            skill_count     INTEGER NOT NULL DEFAULT 0,
+            last_synced_at  DATETIME,
+            created_at      DATETIME NOT NULL
+        )",
+        [],
+    )?;
+
+    // 资源中心：订阅仓库扫描出的技能索引缓存表
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS subscribed_repo_skills (
+            id            TEXT PRIMARY KEY,
+            repo_id       TEXT NOT NULL,
+            skill_name    TEXT NOT NULL,
+            display_name  TEXT,
+            description   TEXT NOT NULL DEFAULT '',
+            subpath       TEXT NOT NULL,
+            skill_md_path TEXT NOT NULL,
+            tree_sha      TEXT,
+            tags          TEXT,
+            FOREIGN KEY (repo_id) REFERENCES subscribed_repos(id) ON DELETE CASCADE
+        )",
+        [],
+    )?;
+
+    // 资源中心：通用远程数据缓存表（Linkly AI 每日榜单 CSV、Git Tree 等）
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS resource_cache (
+            cache_key   TEXT PRIMARY KEY,
+            payload     TEXT NOT NULL,
+            etag_or_sha TEXT,
+            updated_at  DATETIME NOT NULL
+        )",
+        [],
+    )?;
+
+    // 资源中心：多站点只读访问令牌表（如 github.com、自建 GitLab）
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS host_tokens (
+            host       TEXT PRIMARY KEY,
+            token      TEXT NOT NULL,
+            updated_at DATETIME NOT NULL
+        )",
+        [],
+    )?;
+
     // 执行数据库迁移
     run_migrations(&mut conn)?;
 
@@ -415,8 +470,15 @@ pub fn get_repositories_with_skills(db: &Connection) -> Result<Vec<GroupedRepo>,
             repo.repo_type = "single".to_string();
         }
 
-        // 解析 GitHub 作者
-        if repo.source_type == "github" {
+        // 解析远程来源作者（优先兼容单技能溯源文件 .skillhub-source.json，其次回退 .git/config）
+        if let Some(meta) = crate::resource_hub::read_source_meta(std::path::Path::new(&repo.path)) {
+            if !meta.owner.trim().is_empty() {
+                repo.author = Some(meta.owner);
+            }
+            if repo.source_type == "local" {
+                repo.source_type = "github".to_string();
+            }
+        } else if repo.source_type == "github" {
             let git_config_path = std::path::Path::new(&repo.path).join(".git/config");
             if let Ok(config_content) = std::fs::read_to_string(git_config_path) {
                 // 简单查找 url = https://github.com/owner/repo.git 或者 git@github.com:owner/repo.git
@@ -613,7 +675,7 @@ pub fn insert_source_directory(db: &Connection, path: &str, dir_type: &str) -> R
 fn is_in_git_repo(path: &std::path::Path) -> bool {
     let mut current = path;
     loop {
-        if current.join(".git").exists() {
+        if current.join(".git").exists() || current.join(".skillhub-source.json").exists() {
             return true;
         }
         match current.parent() {

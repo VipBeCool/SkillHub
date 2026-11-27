@@ -817,15 +817,15 @@ export function QuickAccessPanel() {
                       : "bg-white/60 dark:bg-slate-800/40 border-transparent hover:bg-white dark:hover:bg-slate-800/80"
                       }`}
                   >
-                    {/* 类别图标 */}
+                    {/* 类别图标（统一品牌蓝与中性灰体系，去除突兀的紫色与青色） */}
                     <div
                       className={`mt-0.5 p-1.5 rounded-lg flex-shrink-0 mr-2.5 transition-colors ${item.type === "prompt"
                         ? "bg-blue-500/10 text-blue-600 dark:text-blue-400"
                         : item.isCollectionRepo
-                          ? "bg-purple-500/10 text-purple-600 dark:text-purple-400"
+                          ? "bg-slate-900/[0.06] text-slate-700 dark:bg-white/[0.1] dark:text-slate-200"
                           : item.sourceType === "online"
-                            ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                            : "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400"
+                            ? "bg-blue-500/10 text-blue-600 dark:text-blue-400"
+                            : "bg-blue-500/10 text-blue-600 dark:text-blue-400"
                         }`}
                     >
                       {item.type === "prompt" ? (
@@ -849,10 +849,10 @@ export function QuickAccessPanel() {
                           <Star className="w-3 h-3 text-amber-500 fill-amber-500 flex-shrink-0" />
                         )}
                         {item.type === "skill" && item.badge && (
-                          <span className={`text-[9px] px-1.5 py-[1px] rounded font-normal flex-shrink-0 ${item.isSubSkill
-                            ? "bg-black/[0.04] dark:bg-white/[0.06] text-slate-400 dark:text-slate-500"
+                          <span className={`text-[9px] px-1.5 py-[1px] rounded flex-shrink-0 ${item.isSubSkill
+                            ? "bg-black/[0.04] dark:bg-white/[0.06] text-slate-400 dark:text-slate-500 font-normal"
                             : item.badge.startsWith("技能包")
-                              ? "bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 font-medium"
+                              ? "bg-black/[0.05] dark:bg-white/[0.08] text-slate-600 dark:text-slate-300 font-medium"
                               : "bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 font-medium"
                             }`}>
                             {item.badge}

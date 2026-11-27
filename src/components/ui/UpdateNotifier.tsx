@@ -10,12 +10,11 @@ import {
   Maximize2,
   ArrowRight,
   AlertCircle,
-  FileText,
 } from 'lucide-react';
 import logo from '../../assets/logo.png';
 import { Tooltip } from './Tooltip';
 import {
-  ReleaseNotesView,
+  CollapsibleChangelogBox,
   UpdateChangelogModal,
   formatBytes,
   useResolvedReleaseNotes,
@@ -24,12 +23,13 @@ import {
 /**
  * 应用内更新检查组件
  * 启动后静默检查 GitHub Releases 上的 latest.json，
- * 有新版本时在右下角弹出可预览更新日志的提醒卡片，并支持展开查看完整变更弹窗。
+ * 有新版本时在右下角弹出更新卡片：更新日志默认收起为摘要，支持原地「展开全部」或弹出大窗阅读。
  */
 export function UpdateNotifier() {
   const [currentVersion, setCurrentVersion] = useState('');
   const [update, setUpdate] = useState<Update | null>(null);
   const [dismissed, setDismissed] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -97,7 +97,11 @@ export function UpdateNotifier() {
   return (
     <>
       <div className="fixed bottom-5 right-5 z-[99998] animate-in slide-in-from-bottom-4 fade-in duration-300">
-        <div className="modal-glass rounded-2xl shadow-[0_14px_40px_rgba(0,0,0,0.14)] border border-black/[0.08] dark:border-white/[0.1] p-4 w-[376px] max-w-[calc(100vw-2.5rem)]">
+        <div
+          className={`modal-glass rounded-2xl shadow-[0_14px_40px_rgba(0,0,0,0.14)] border border-black/[0.08] dark:border-white/[0.1] p-4 max-w-[calc(100vw-2.5rem)] transition-[width] duration-200 ${
+            isExpanded ? 'w-[440px]' : 'w-[360px]'
+          }`}
+        >
           {/* 顶部版本与操作入口 */}
           <div className="flex items-start justify-between gap-2 mb-3">
             <div className="flex items-center gap-2.5 min-w-0">
@@ -133,12 +137,12 @@ export function UpdateNotifier() {
             </div>
 
             <div className="flex items-center gap-0.5 shrink-0">
-              <Tooltip content="查看完整更新日志">
+              <Tooltip content="独立弹窗查看完整更新日志">
                 <button
                   type="button"
                   onClick={() => setIsDetailOpen(true)}
                   className="p-1.5 rounded-lg text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors cursor-pointer"
-                  aria-label="查看完整更新日志"
+                  aria-label="独立弹窗查看完整更新日志"
                 >
                   <Maximize2 className="w-3.5 h-3.5" />
                 </button>
@@ -158,30 +162,17 @@ export function UpdateNotifier() {
             </div>
           </div>
 
-          {/* 内嵌更新日志摘要卡片 */}
-          <div className="rounded-xl bg-black/[0.025] dark:bg-white/[0.03] border border-black/[0.05] dark:border-white/[0.06] mb-3 overflow-hidden">
-            <div className="flex items-center justify-between px-3 py-1.5 border-b border-black/[0.04] dark:border-white/[0.05]">
-              <span className="inline-flex items-center gap-1 text-[10.5px] font-semibold text-[var(--color-muted)]">
-                <FileText className="w-3 h-3" />
-                <span>更新内容</span>
-              </span>
-              <button
-                type="button"
-                onClick={() => setIsDetailOpen(true)}
-                className="text-[10.5px] font-medium text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
-              >
-                放大阅读
-              </button>
-            </div>
-            <div className="px-3 py-2 max-h-[156px] overflow-y-auto hover-scroll">
-              <ReleaseNotesView
-                notes={notes}
-                isLoading={isLoadingNotes}
-                compact
-                releaseUrl={releaseUrl}
-              />
-            </div>
-          </div>
+          {/* 默认收起摘要、支持点击原地展开全部的 Changelog 卡片 */}
+          <CollapsibleChangelogBox
+            notes={notes}
+            isLoading={isLoadingNotes}
+            releaseUrl={releaseUrl}
+            isExpanded={isExpanded}
+            onToggleExpand={() => setIsExpanded((v) => !v)}
+            collapsedMaxHeightClass="max-h-[70px]"
+            expandedMaxHeightClass="max-h-[320px]"
+            className="mb-3"
+          />
 
           {/* 错误反馈 */}
           {errorMessage && !isDownloading && (

@@ -81,8 +81,10 @@ pub fn get_git_repos_in_directory(path: String) -> Result<Vec<GitRepoInfo>, Stri
     let target_path = Path::new(&path);
     let mut repos = Vec::new();
 
-    // 如果根目录本身就是 Git 仓库
-    if target_path.join(".git").exists() {
+    // 如果根目录本身就是 Git 仓库或单技能溯源目录
+    if target_path.join(".git").exists()
+        || target_path.join(crate::resource_hub::SOURCE_META_FILENAME).exists()
+    {
         if let Some(name) = target_path.file_name().and_then(|n| n.to_str()) {
             repos.push(GitRepoInfo {
                 name: name.to_string(),
@@ -92,11 +94,14 @@ pub fn get_git_repos_in_directory(path: String) -> Result<Vec<GitRepoInfo>, Stri
         return Ok(repos);
     }
 
-    // 否则扫描其直接子目录
+    // 否则扫描其直接子目录（兼容标准 .git 仓库与资源中心精准安装的单技能目录）
     if let Ok(entries) = std::fs::read_dir(target_path) {
         for entry in entries.flatten() {
             let p = entry.path();
-            if p.is_dir() && p.join(".git").exists() {
+            if p.is_dir()
+                && (p.join(".git").exists()
+                    || p.join(crate::resource_hub::SOURCE_META_FILENAME).exists())
+            {
                 if let (Some(name), Some(path_str)) = (p.file_name().and_then(|n| n.to_str()), p.to_str()) {
                     repos.push(GitRepoInfo {
                         name: name.to_string(),
@@ -111,13 +116,25 @@ pub fn get_git_repos_in_directory(path: String) -> Result<Vec<GitRepoInfo>, Stri
 }
 
 #[tauri::command]
-pub async fn pull_single_repo(path: String) -> Result<String, String> {
-    crate::git_engine::pull_repository(std::path::Path::new(&path)).await
+pub async fn pull_single_repo(state: State<'_, AppState>, path: String) -> Result<String, String> {
+    let target = std::path::Path::new(&path);
+    // 完整 Git 仓库（含 .git/objects）优先走增量 git pull；仅无 .git 对象库的提取型单技能走子目录更新
+    if !target.join(".git").join("objects").exists()
+        && target.join(crate::resource_hub::SOURCE_META_FILENAME).exists()
+    {
+        return crate::resource_hub::update_installed_subskill(&state, target).await;
+    }
+    crate::git_engine::pull_repository(target).await
 }
 
 #[tauri::command]
 pub fn get_git_remote_url(path: String) -> Result<String, String> {
-    // 优先直接解析 .git/config，无需启动子进程且兼容 ZIP 降级下载的仓库
+    // 优先兼容单技能溯源文件 .skillhub-source.json，直达精确上游子目录
+    if let Some(meta) = crate::resource_hub::read_source_meta(Path::new(&path)) {
+        return Ok(crate::resource_hub::build_remote_browse_url(&meta));
+    }
+
+    // 其次直接解析 .git/config，无需启动子进程且兼容 ZIP 降级下载的仓库
     let raw_url = if let Some(u) = crate::git_engine::read_remote_url_from_git_config(Path::new(&path)) {
         Some(u)
     } else {
@@ -822,8 +839,14 @@ fn sync_skills_to_db(db: &mut rusqlite::Connection, path: &Path, source_dir_id: 
 pub async fn pull_repository(state: State<'_, AppState>, path: String) -> Result<String, String> {
     let target_path = Path::new(&path);
     
-    // Pull from git asynchronously
-    let msg = crate::git_engine::pull_repository(target_path).await?;
+    // 完整 Git 仓库优先走增量 git pull；仅无 .git/objects 的提取型单技能走子目录更新
+    let msg = if !target_path.join(".git").join("objects").exists()
+        && target_path.join(crate::resource_hub::SOURCE_META_FILENAME).exists()
+    {
+        crate::resource_hub::update_installed_subskill(&state, target_path).await?
+    } else {
+        crate::git_engine::pull_repository(target_path).await?
+    };
     
     let mut db = state.db.lock().unwrap();
     let (source_dir_id, source_type): (String, String) = db.query_row(
@@ -2779,6 +2802,9 @@ pub struct GeneralSettings {
     pub autostart: bool,
     #[serde(default = "default_autostart_silent")]
     pub autostart_silent: bool,
+    /// 是否允许应用在启动与后台定时静默同步 GitHub 仓库（默认关闭，避免后台静默消耗代理/VPN 流量）
+    #[serde(default)]
+    pub auto_sync_repos: bool,
 }
 
 #[tauri::command]
@@ -2819,11 +2845,17 @@ pub fn get_general_settings(
         .map(|v| v == "true")
         .unwrap_or(true);
 
+    let auto_sync_repos = crate::db::get_setting(&db, "auto_sync_repos")
+        .map_err(|e| e.to_string())?
+        .map(|v| v == "true")
+        .unwrap_or(false);
+
     Ok(GeneralSettings {
         close_action,
         keep_dock_icon,
         autostart,
         autostart_silent,
+        auto_sync_repos,
     })
 }
 
@@ -2855,6 +2887,7 @@ pub fn update_general_settings(
     crate::db::set_setting(&db, "keep_dock_icon", if settings.keep_dock_icon { "true" } else { "false" }).map_err(|e| e.to_string())?;
     crate::db::set_setting(&db, "autostart", if settings.autostart { "true" } else { "false" }).map_err(|e| e.to_string())?;
     crate::db::set_setting(&db, "autostart_silent", if settings.autostart_silent { "true" } else { "false" }).map_err(|e| e.to_string())?;
+    crate::db::set_setting(&db, "auto_sync_repos", if settings.auto_sync_repos { "true" } else { "false" }).map_err(|e| e.to_string())?;
     Ok(())
 }
 

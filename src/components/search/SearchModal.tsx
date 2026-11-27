@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { FolderGit2, Package, HardDrive, X, Command, PanelRight, Filter, Type, Globe, Copy, FolderOpen, Trash2, RefreshCw, Clock, ArrowDownAZ, Check, MessageSquareQuote, Star, Tag, FileCode, Compass, Download, Loader2, Code2, AlertCircle, GitFork, Key, ExternalLink, Sparkles, ShieldCheck } from 'lucide-react';
+import { FolderGit2, Package, HardDrive, X, Command, PanelRight, Filter, Type, Globe, Copy, FolderOpen, Trash2, RefreshCw, Clock, ArrowDownAZ, Check, MessageSquareQuote, Star, Tag, FileCode, Compass, Download, Loader2, Code2, AlertCircle, GitFork, Key, ExternalLink } from 'lucide-react';
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { showToast } from "../ui/Toast";
@@ -607,7 +607,8 @@ const SEARCH_SCOPE_STORAGE_KEY = 'skillhub_last_search_scope';
       list = [...list].sort((a, b) => (b.stars || 0) - (a.stars || 0));
     }
 
-    return list;
+    // 限制单次渲染上限，避免订阅大仓含上千技能时弹窗卡顿
+    return list.slice(0, 80);
   }, [allResources, communityFilterType, communityFilterCategory, query, communitySortOrder]);
 
   // GitHub Rate Limit 频率限制恢复倒计时
@@ -2494,94 +2495,65 @@ const SEARCH_SCOPE_STORAGE_KEY = 'skillhub_last_search_scope';
 
       {/* GitHub Token 配置对话框 */}
       {showTokenDialog && (
-        <div 
+        <div
           className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150"
           onClick={() => setShowTokenDialog(false)}
         >
-          <div 
-            className="bg-white rounded-2xl shadow-2xl border border-black/10 w-full max-w-md p-6 animate-in zoom-in-95 duration-150 relative"
+          <div
+            className="bg-white rounded-2xl shadow-2xl border border-black/10 w-full max-w-[400px] p-5 animate-in zoom-in-95 duration-150 relative"
             onClick={e => e.stopPropagation()}
           >
             <button
+              type="button"
               onClick={() => setShowTokenDialog(false)}
-              className="absolute top-4 right-4 p-1.5 text-gray-400 hover:text-gray-700 hover:bg-black/5 rounded-lg transition-colors cursor-pointer"
+              className="absolute top-3.5 right-3.5 p-1.5 text-gray-400 hover:text-gray-700 hover:bg-black/5 rounded-lg transition-colors cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
 
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-xl bg-blue-50 text-[var(--color-primary)] flex items-center justify-center shrink-0">
-                <Key className="w-5 h-5" />
+            <div className="flex items-center gap-3 mb-4 pr-6">
+              <div className="w-9 h-9 rounded-xl bg-[var(--color-primary)]/[0.08] text-[var(--color-primary)] flex items-center justify-center shrink-0">
+                <Key className="w-4 h-4" />
               </div>
               <div>
-                <h3 className="font-semibold text-gray-900 text-sm">配置 GitHub Personal Token</h3>
-                <p className="text-xs text-gray-500">解除 10次/分 限制，独享 5,000次/小时 额度</p>
+                <h3 className="font-semibold text-[var(--foreground)] text-[14px]">配置 GitHub Token</h3>
+                <p className="text-[11.5px] text-[var(--color-muted)] mt-0.5">
+                  提升额度至 5,000 次/小时，仅保存在本地
+                </p>
               </div>
             </div>
 
-            <div className="space-y-3">
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">
-                  GitHub Token
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between">
+                <label className="text-[12px] font-medium text-[var(--foreground)]/80">
+                  Personal Access Token
                 </label>
-                <input
-                  type="password"
-                  placeholder="ghp_xxxx 或 github_pat_xxxx"
-                  value={tempTokenValue}
-                  onChange={e => setTempTokenValue(e.target.value)}
-                  className="w-full px-3 py-2 text-xs font-mono border border-gray-200 rounded-lg outline-none focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/20 transition-all bg-gray-50/50"
-                  autoFocus
-                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    openUrl("https://github.com/settings/tokens/new?description=SkillHub-Search&scopes=").catch(console.error);
+                  }}
+                  className="inline-flex items-center gap-1 text-[11.5px] font-medium text-[var(--color-primary)] hover:underline cursor-pointer"
+                >
+                  <span>前往 GitHub 生成</span>
+                  <ExternalLink className="w-3 h-3" />
+                </button>
               </div>
 
-              <div className="p-3.5 bg-blue-50/70 dark:bg-blue-950/20 rounded-xl border border-blue-200/60 dark:border-blue-800/40 text-xs space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5 font-semibold text-blue-900 dark:text-blue-200 text-[12px]">
-                    <Sparkles className="w-3.5 h-3.5 text-[var(--color-primary)] shrink-0" />
-                    <span>快速配置指南</span>
-                  </div>
-                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 rounded border border-emerald-200/60 flex items-center gap-0.5">
-                    <ShieldCheck className="w-3 h-3" /> 本地存储
-                  </span>
-                </div>
+              <input
+                type="password"
+                placeholder="ghp_xxxx 或 github_pat_xxxx"
+                value={tempTokenValue}
+                onChange={e => setTempTokenValue(e.target.value)}
+                className="w-full px-3 py-2 text-[12.5px] font-mono border border-black/12 rounded-lg outline-none focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/15 transition-all bg-black/[0.02] focus:bg-white"
+                autoFocus
+              />
 
-                <div className="space-y-2 text-[11px] text-blue-900/90 dark:text-blue-200/90 pl-0.5 leading-relaxed">
-                  <div className="flex items-start gap-2">
-                    <span className="w-4 h-4 rounded-full bg-[var(--color-primary)] text-white text-[10px] flex items-center justify-center shrink-0 mt-0.5 font-bold">1</span>
-                    <span>点击下方链接打开 GitHub 令牌创建页（已自动填好名称 Note）。</span>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <span className="w-4 h-4 rounded-full bg-[var(--color-primary)] text-white text-[10px] flex items-center justify-center shrink-0 mt-0.5 font-bold">2</span>
-                    <div>
-                      <strong className="text-blue-950 dark:text-white">权限选项（Select scopes）：全部留空，一个都不要勾选！</strong>
-                      <div className="text-[10px] text-blue-700/80 dark:text-blue-300/70 mt-0.5">
-                        检索开源公开库仅需只读身份，全部不勾选最安全，绝不会访问你的私有仓库或个人信息。
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <span className="w-4 h-4 rounded-full bg-[var(--color-primary)] text-white text-[10px] flex items-center justify-center shrink-0 mt-0.5 font-bold">3</span>
-                    <span>
-                      拉到页面最底部点击绿色按钮 <code className="bg-emerald-100/80 dark:bg-emerald-900/50 text-emerald-800 dark:text-emerald-200 px-1 py-0.2 rounded font-mono font-medium">Generate token</code>，复制生成的 <code className="font-mono text-gray-700 dark:text-gray-200">ghp_xxxx</code> 贴到上方输入框即可。
-                    </span>
-                  </div>
-                </div>
+              <p className="text-[11.5px] text-[var(--color-muted)] leading-relaxed">
+                生成时无需勾选任何权限（Scopes 留空），复制密钥粘贴保存即可。
+              </p>
 
-                <div className="pt-2 border-t border-blue-200/50 dark:border-blue-800/40 flex items-center justify-end">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      openUrl("https://github.com/settings/tokens/new?description=SkillHub-Search&scopes=").catch(console.error);
-                    }}
-                    className="text-[var(--color-primary)] hover:underline flex items-center gap-1 font-semibold text-xs cursor-pointer"
-                  >
-                    <span>生成Github Personal Token</span>
-                    <ExternalLink className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between pt-2">
+              <div className="flex items-center justify-between pt-3">
                 {githubToken ? (
                   <button
                     type="button"
@@ -2592,9 +2564,9 @@ const SEARCH_SCOPE_STORAGE_KEY = 'skillhub_last_search_scope';
                       showToast('已清除 GitHub Token', 'info');
                       if (query.trim()) fetchGitHubRepos(query, 1, false, true);
                     }}
-                    className="px-3 py-1.5 text-xs text-red-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                    className="px-2.5 py-1.5 text-[12px] text-red-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
                   >
-                    清除 Token
+                    清除
                   </button>
                 ) : <div />}
 
@@ -2602,7 +2574,7 @@ const SEARCH_SCOPE_STORAGE_KEY = 'skillhub_last_search_scope';
                   <button
                     type="button"
                     onClick={() => setShowTokenDialog(false)}
-                    className="px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer"
+                    className="px-3 py-1.5 text-[12px] text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/[0.05] rounded-lg transition-colors cursor-pointer"
                   >
                     取消
                   </button>
@@ -2613,15 +2585,15 @@ const SEARCH_SCOPE_STORAGE_KEY = 'skillhub_last_search_scope';
                       setGitHubToken(trimmed);
                       setShowTokenDialog(false);
                       if (trimmed) {
-                        showToast('GitHub Token 已保存，额度已提升至 5000次/小时', 'success');
+                        showToast('GitHub Token 已保存（5,000 次/小时）', 'success');
                       }
                       if (query.trim()) {
                         fetchGitHubRepos(query, 1, false, true);
                       }
                     }}
-                    className="px-4 py-1.5 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white text-xs font-medium rounded-lg shadow-sm transition-colors cursor-pointer"
+                    className="px-4 py-1.5 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white text-[12px] font-medium rounded-lg shadow-xs transition-colors cursor-pointer"
                   >
-                    保存并生效
+                    保存
                   </button>
                 </div>
               </div>

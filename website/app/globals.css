@@ -1,43 +1,66 @@
 @import "tailwindcss";
 
 :root {
-  --background: #F5F5F7;
+  --background: #FAFAFC;
+  --surface: #FFFFFF;
+  --surface-subtle: #F4F5F8;
   --foreground: #1D1D1F;
+  --muted: #6E6E73;
   --primary: #0055FF;
   --primary-hover: #0044CC;
   --border: rgba(0, 0, 0, 0.08);
 }
 
+html {
+  scroll-behavior: smooth;
+  background-color: var(--background);
+}
+
 body {
   color: var(--foreground);
-  background: var(--background);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background-color: var(--background);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Glassmorphism utilities */
-.glass {
-  background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.4);
+/* 顶部纯净毛玻璃导航 */
+.nav-glass {
+  background: rgba(250, 250, 252, 0.82);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
 }
 
-/* Cool animated gradient text */
-.text-gradient {
-  background: linear-gradient(135deg, var(--primary) 0%, #00E5FF 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+/* 原生 macOS 风格展示窗体 */
+.studio-window {
+  background: #FFFFFF;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.03),
+    0 16px 48px -12px rgba(15, 23, 42, 0.08),
+    0 32px 80px -24px rgba(0, 85, 255, 0.06);
 }
 
-/* Button glow effect */
-.btn-glow {
-  box-shadow: 0 8px 32px rgba(0, 85, 255, 0.24);
-  transition: all 0.3s ease;
+/* 首屏以下重内容楼层延迟渲染优化（遵循 defer-rendering-heavy-content） */
+.deferred-section {
+  content-visibility: auto;
+  contain-intrinsic-size: auto none auto 720px;
 }
-.btn-glow:hover {
-  box-shadow: 0 12px 48px rgba(0, 85, 255, 0.36);
-  transform: translateY(-2px);
+
+/* 原生 <dialog> 顶层遮罩样式 */
+dialog.native-modal {
+  margin: auto;
+  padding: 0;
+  border: 1px solid rgba(0, 0, 0, 0.09);
+  background: #FFFFFF;
+  color: var(--foreground);
+  box-shadow: 0 28px 70px -16px rgba(0, 0, 0, 0.24);
+}
+
+dialog.native-modal::backdrop {
+  background-color: rgba(15, 23, 42, 0.42);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
 }

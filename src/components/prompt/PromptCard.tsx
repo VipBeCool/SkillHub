@@ -74,11 +74,6 @@ export function PromptCard({ prompt, selected, onSelect, onClick, onDoubleClick,
           : "border-black/5 hover:border-black/10 hover:shadow-sm"
         }`}
     >
-      {/* 星标色条 */}
-      {prompt.is_favorite && (
-        <div className="absolute top-0 left-0 w-full h-0.5 bg-gradient-to-r from-amber-400 to-orange-400" />
-      )}
-
       <div className="p-4 flex flex-col gap-2 grow">
         {/* 标题行 */}
         <div className="flex items-start justify-between gap-2">

@@ -1,3 +1,5 @@
+import type { RemotePromptItem, RemoteSkillTarget } from './resourceHub';
+
 // Tab 系统类型定义
 
 export type TabType =
@@ -20,6 +22,12 @@ export interface TabContext {
   resourceId?: string;    // 社区资源 ID
   resourceCategory?: string; // 社区资源分类/频道筛选
   categoryName?: string;  // 社区资源父级菜单/分类名称（用于面包屑展示）
+  remoteSkillTarget?: RemoteSkillTarget; // 资源中心统一远程技能预览对象
+  remotePromptItem?: RemotePromptItem;   // 资源中心统一远程提示词预览对象
+  leaderboardId?: string;
+  leaderboardTab?: 'linkly' | 'curated';
+  repoFilter?: string;
+  directoryEngine?: 'skills-sh' | 'github';
   filter?: string;        // 筛选条件
   // 用于 prompt-home 展示
   promptFilter?: string;

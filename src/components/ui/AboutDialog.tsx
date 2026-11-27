@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { X, RefreshCw, User, GitFork, Coffee, MessageSquare, Mail, Download, Maximize2, FileText, ArrowRight } from "lucide-react";
+import { X, RefreshCw, User, GitFork, Coffee, MessageSquare, Mail, Download, ArrowRight } from "lucide-react";
 import { getVersion } from "@tauri-apps/api/app";
 import { check, Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
@@ -8,7 +8,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { Tooltip } from "./Tooltip";
 import logo from "../../assets/logo.png";
 import {
-  ReleaseNotesView,
+  CollapsibleChangelogBox,
   UpdateChangelogModal,
   formatBytes,
   useResolvedReleaseNotes,
@@ -67,6 +67,7 @@ export function AboutDialog({ isOpen, onClose, onOpenCommunity }: AboutDialogPro
   const [appVersion, setAppVersion] = useState<string>("...");
   const [isChecking, setIsChecking] = useState(false);
   const [update, setUpdate] = useState<Update | null>(null);
+  const [isNotesExpanded, setIsNotesExpanded] = useState(false);
   const [isChangelogModalOpen, setIsChangelogModalOpen] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -84,6 +85,7 @@ export function AboutDialog({ isOpen, onClose, onOpenCommunity }: AboutDialogPro
     if (isOpen) {
       getVersion().then((version) => setAppVersion(version)).catch(console.error);
       setUpdate(null);
+      setIsNotesExpanded(false);
       setIsChangelogModalOpen(false);
       setIsDownloading(false);
       setProgress(0);
@@ -312,13 +314,18 @@ export function AboutDialog({ isOpen, onClose, onOpenCommunity }: AboutDialogPro
 
           {/* 检测到新版本时展示内嵌 Changelog 卡片与一键更新区 */}
           {update && (
-            <div className="w-full mb-5 rounded-xl bg-black/[0.025] dark:bg-white/[0.03] border border-blue-500/20 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
-              <div className="flex items-center justify-between px-3.5 py-2 border-b border-black/[0.05] dark:border-white/[0.06] bg-blue-500/[0.04]">
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <FileText className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-                  <span className="text-[11.5px] font-semibold text-[var(--foreground)]">
-                    更新内容
-                  </span>
+            <CollapsibleChangelogBox
+              notes={notes}
+              isLoading={isLoadingNotes}
+              releaseUrl={releaseUrl}
+              isExpanded={isNotesExpanded}
+              onToggleExpand={() => setIsNotesExpanded((v) => !v)}
+              onOpenModal={() => setIsChangelogModalOpen(true)}
+              collapsedMaxHeightClass="max-h-[78px]"
+              expandedMaxHeightClass="max-h-[240px]"
+              className="w-full mb-5 border-blue-500/20 animate-in fade-in slide-in-from-top-2 duration-200"
+              headerExtra={
+                <>
                   <span className="inline-flex items-center gap-1 text-[10.5px] font-mono text-[var(--color-muted)]">
                     <ArrowRight className="w-2.5 h-2.5 opacity-60" />
                     <span>v{update.version.replace(/^v/i, '')}</span>
@@ -328,59 +335,41 @@ export function AboutDialog({ isOpen, onClose, onOpenCommunity }: AboutDialogPro
                       · {releaseDate}
                     </span>
                   )}
-                </div>
-                <Tooltip content="放大查看完整更新日志">
-                  <button
-                    type="button"
-                    onClick={() => setIsChangelogModalOpen(true)}
-                    className="inline-flex items-center gap-1 text-[11px] font-medium text-blue-600 dark:text-blue-400 hover:underline cursor-pointer shrink-0"
-                  >
-                    <span>完整日志</span>
-                    <Maximize2 className="w-3 h-3" />
-                  </button>
-                </Tooltip>
-              </div>
-
-              <div className="px-3.5 py-2.5 max-h-[140px] overflow-y-auto hover-scroll text-left">
-                <ReleaseNotesView
-                  notes={notes}
-                  isLoading={isLoadingNotes}
-                  compact
-                  releaseUrl={releaseUrl}
-                />
-              </div>
-
-              <div className="px-3.5 py-2.5 border-t border-black/[0.05] dark:border-white/[0.06] bg-black/[0.015] dark:bg-white/[0.02] flex items-center justify-between gap-2">
-                {isDownloading ? (
-                  <div className="w-full space-y-1.5">
-                    <div className="w-full bg-black/[0.06] dark:bg-white/[0.1] rounded-full h-1.5 overflow-hidden">
-                      <div
-                        className="h-full bg-gradient-to-r from-blue-500 to-cyan-500 rounded-full transition-all duration-300"
-                        style={{ width: `${progress}%` }}
-                      />
+                </>
+              }
+              footerSlot={
+                <div className="px-3.5 py-2.5 border-t border-black/[0.05] dark:border-white/[0.06] bg-black/[0.015] dark:bg-white/[0.02] flex items-center justify-between gap-2">
+                  {isDownloading ? (
+                    <div className="w-full space-y-1.5">
+                      <div className="w-full bg-black/[0.06] dark:bg-white/[0.1] rounded-full h-1.5 overflow-hidden">
+                        <div
+                          className="h-full bg-gradient-to-r from-blue-500 to-cyan-500 rounded-full transition-all duration-300"
+                          style={{ width: `${progress}%` }}
+                        />
+                      </div>
                     </div>
-                  </div>
-                ) : (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => openUrl(releaseUrl).catch(console.error)}
-                      className="text-[11px] text-[var(--color-muted)] hover:text-[var(--foreground)] transition-colors cursor-pointer"
-                    >
-                      前往 GitHub 查看
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleDownload}
-                      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-[11.5px] font-medium text-white bg-blue-500 hover:bg-blue-600 active:bg-blue-700 transition-colors shadow-xs cursor-pointer"
-                    >
-                      <Download className="w-3.5 h-3.5" />
-                      <span>{downloadError ? '重试更新' : '立即更新并重启'}</span>
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => openUrl(releaseUrl).catch(console.error)}
+                        className="text-[11px] text-[var(--color-muted)] hover:text-[var(--foreground)] transition-colors cursor-pointer"
+                      >
+                        前往 GitHub 查看
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleDownload}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-[11.5px] font-medium text-white bg-blue-500 hover:bg-blue-600 active:bg-blue-700 transition-colors shadow-xs cursor-pointer"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        <span>{downloadError ? '重试更新' : '立即更新并重启'}</span>
+                      </button>
+                    </>
+                  )}
+                </div>
+              }
+            />
           )}
 
           <div className="grid grid-cols-3 gap-2.5 w-full mb-5">

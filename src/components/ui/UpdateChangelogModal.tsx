@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Update } from '@tauri-apps/plugin-updater';
 import { openUrl } from '@tauri-apps/plugin-opener';
@@ -13,6 +13,9 @@ import {
   ArrowRight,
   AlertCircle,
   FileText,
+  ChevronDown,
+  ChevronUp,
+  Maximize2,
 } from 'lucide-react';
 import logo from '../../assets/logo.png';
 
@@ -299,6 +302,119 @@ export function ReleaseNotesView({
       >
         {notes}
       </ReactMarkdown>
+    </div>
+  );
+}
+
+interface CollapsibleChangelogBoxProps {
+  notes: string;
+  isLoading?: boolean;
+  releaseUrl?: string;
+  isExpanded: boolean;
+  onToggleExpand: () => void;
+  onOpenModal?: () => void;
+  headerExtra?: ReactNode;
+  collapsedMaxHeightClass?: string;
+  expandedMaxHeightClass?: string;
+  className?: string;
+  footerSlot?: ReactNode;
+}
+
+/** 可收起/原地展开全部的更新日志内嵌卡片，供右下角更新提示与「关于」弹窗共用 */
+export function CollapsibleChangelogBox({
+  notes,
+  isLoading = false,
+  releaseUrl,
+  isExpanded,
+  onToggleExpand,
+  onOpenModal,
+  headerExtra,
+  collapsedMaxHeightClass = 'max-h-[72px]',
+  expandedMaxHeightClass = 'max-h-[300px]',
+  className = '',
+  footerSlot,
+}: CollapsibleChangelogBoxProps) {
+  const canToggle = Boolean(notes) && !isLoading;
+
+  return (
+    <div
+      className={`rounded-xl bg-black/[0.025] dark:bg-white/[0.03] border border-black/[0.06] dark:border-white/[0.08] overflow-hidden ${className}`}
+    >
+      {/* 卡片顶栏：标题 + 展开/收起按钮 + 独立大窗入口 */}
+      <div className="flex items-center justify-between gap-2 px-3 py-1.5 border-b border-black/[0.04] dark:border-white/[0.05] bg-black/[0.015] dark:bg-white/[0.015]">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <FileText className="w-3 h-3 text-blue-500 shrink-0" />
+          <span className="text-[11px] font-semibold text-[var(--foreground)] shrink-0">
+            更新内容
+          </span>
+          {headerExtra}
+        </div>
+
+        <div className="flex items-center gap-1.5 shrink-0">
+          {canToggle && (
+            <button
+              type="button"
+              onClick={onToggleExpand}
+              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[10.5px] font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 transition-colors cursor-pointer"
+            >
+              <span>{isExpanded ? '收起' : '展开全部'}</span>
+              {isExpanded ? (
+                <ChevronUp className="w-3 h-3" />
+              ) : (
+                <ChevronDown className="w-3 h-3" />
+              )}
+            </button>
+          )}
+          {onOpenModal && (
+            <button
+              type="button"
+              onClick={onOpenModal}
+              title="在独立大窗中查看"
+              className="p-1 rounded-md text-[var(--color-muted)] hover:text-[var(--foreground)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors cursor-pointer"
+              aria-label="在独立大窗中查看"
+            >
+              <Maximize2 className="w-3 h-3" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* 正文摘要 / 全部内容区 */}
+      <div
+        onClick={() => {
+          if (!isExpanded && canToggle) onToggleExpand();
+        }}
+        className={`relative px-3 py-2 text-left transition-all duration-200 ${
+          isExpanded
+            ? `${expandedMaxHeightClass} overflow-y-auto hover-scroll`
+            : `${collapsedMaxHeightClass} overflow-hidden ${canToggle ? 'cursor-pointer' : ''}`
+        }`}
+      >
+        <ReleaseNotesView
+          notes={notes}
+          isLoading={isLoading}
+          compact
+          releaseUrl={releaseUrl}
+        />
+
+        {!isExpanded && canToggle && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-7 bg-gradient-to-t from-[#f8f8f9] via-[#f8f8f9]/85 to-transparent dark:from-[#222224] dark:via-[#222224]/85" />
+        )}
+      </div>
+
+      {/* 收起态底部的快捷展开条 */}
+      {!isExpanded && canToggle && (
+        <button
+          type="button"
+          onClick={onToggleExpand}
+          className="w-full py-1 border-t border-black/[0.04] dark:border-white/[0.05] text-[10.5px] font-medium text-[var(--color-muted)] hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-500/[0.04] transition-colors flex items-center justify-center gap-1 cursor-pointer"
+        >
+          <span>点击展开全部更新内容</span>
+          <ChevronDown className="w-3 h-3" />
+        </button>
+      )}
+
+      {footerSlot}
     </div>
   );
 }
